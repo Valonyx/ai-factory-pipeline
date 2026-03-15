@@ -12,3 +12,35 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (NEVER commit)
+*.pem
+*.key
+service-account*.json
+
+# Build artifacts
+*.ipa
+*.aab
+*.apk

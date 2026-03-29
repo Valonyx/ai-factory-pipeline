@@ -43,4 +43,5 @@ service-account*.json
 # Build artifacts
 *.ipa
 *.aab
-*.apk.claude/
+*.apk
+.claude/

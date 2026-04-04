@@ -226,6 +226,11 @@ async def pre_deploy_gate(state: PipelineState) -> bool:
     Copilot: requires explicit /deploy_confirm (1-hour timeout → auto-approve)
     Autopilot: 15-minute auto-approve timer with /deploy_cancel escape
     """
+    # CLI / dry-run bypass — no Telegram configured, auto-approve immediately
+    import os
+    if os.getenv("TELEGRAM_BOT_TOKEN") is None or os.getenv("DRY_RUN", "false").lower() == "true":
+        logger.info(f"[{state.project_id}] pre_deploy_gate: CLI/dry-run bypass — auto-approved")
+        return True
     from factory.telegram.notifications import notify_operator
     from factory.telegram.decisions import check_deploy_decision, clear_deploy_decision
 

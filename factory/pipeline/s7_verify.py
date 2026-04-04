@@ -1,0 +1,210 @@
+"""
+AI Factory Pipeline v5.6 — S7 Verify Node
+
+Implements:
+  - §4.8 S7 Verify (smoke tests on deployed app)
+  - Web: HTTP health check
+  - Mobile: App Store processing status
+  - Legal: Final compliance verification via Scout
+
+Spec Authority: v5.6 §4.8
+
+PATCH NOTE (NB1 Part 8):
+  check_circuit_breaker() belongs to factory.intelligence.circuit_breaker
+  which is built in Part 9. Replaced with inline budget guard using
+  BUDGET_CONFIG until Part 9 wires the real circuit breaker.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+from factory.core.state import (
+    AIRole,
+    PipelineState,
+    Stage,
+    BUDGET_CONFIG,
+)
+from factory.core.roles import call_ai
+from factory.core.execution import ExecutionModeManager
+from factory.core.user_space import enforce_user_space
+from factory.pipeline.graph import pipeline_node, register_stage_node
+
+logger = logging.getLogger("factory.pipeline.s7_verify")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.8 S7 Verify Node
+# ═══════════════════════════════════════════════════════════════════
+
+
+@pipeline_node(Stage.S7_VERIFY)
+async def s7_verify_node(state: PipelineState) -> PipelineState:
+    """S7: Verify — smoke tests on deployed app.
+
+    Spec: §4.8
+    1. Web: HTTP health check
+    2. Mobile: App Store processing status
+    3. Legal: Final compliance verification (Scout)
+
+    Cost target: <$0.20
+    """
+    deployments = (state.s6_output or {}).get("deployments", {})
+    checks: list[dict] = []
+
+    # ── Web verification ──
+    if "web" in deployments:
+        web_check = await _verify_web(state, deployments["web"])
+        checks.append(web_check)
+
+    # ── Mobile verification ──
+    for platform in ("android", "ios"):
+        if platform in deployments:
+            mobile_check = _verify_mobile(platform, deployments[platform])
+            checks.append(mobile_check)
+
+    # ── App Store guidelines check (Scout) ──
+    guidelines_check = await _verify_store_guidelines(state)
+    if guidelines_check:
+        checks.append(guidelines_check)
+
+    all_passed = all(c.get("passed", False) for c in checks)
+
+    state.s7_output = {
+        "passed": all_passed,
+        "checks": checks,
+        "check_count": len(checks),
+    }
+
+    logger.info(
+        f"[{state.project_id}] S7 Verify: "
+        f"passed={all_passed}, checks={len(checks)}"
+    )
+    return state
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Verification Checks
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _verify_web(
+    state: PipelineState, web_deploy: dict,
+) -> dict:
+    """HTTP health check on deployed web app.
+
+    Spec: §4.8 (web verification)
+    """
+    url = web_deploy.get("url")
+    if not url:
+        return {
+            "type": "web_health",
+            "passed": web_deploy.get("success", False),
+            "note": "No URL available for health check",
+        }
+
+    exec_mgr = ExecutionModeManager(state)
+
+    # Generate curl command via Quick Fix
+    health_cmd = await call_ai(
+        role=AIRole.QUICK_FIX,
+        prompt=(
+            f"Generate a curl command to health-check this URL: {url}\n"
+            f"Include -s -o /dev/null -w '%{{http_code}}' for status code.\n"
+            f"Return ONLY the curl command."
+        ),
+        state=state,
+        action="general",
+    )
+
+    result = await exec_mgr.execute_task({
+        "name": "web_health_check",
+        "type": "backend_deploy",
+        "command": enforce_user_space(health_cmd.strip()),
+        "timeout": 30,
+    }, requires_macincloud=False)
+
+    return {
+        "type": "web_health",
+        "passed": result.get("exit_code", 1) == 0,
+        "url": url,
+        "status_code": result.get("stdout", "").strip(),
+    }
+
+
+def _verify_mobile(platform: str, deploy: dict) -> dict:
+    """Check mobile deployment status.
+
+    Spec: §4.8 (mobile verification)
+    """
+    method = deploy.get("method", "unknown")
+
+    if method == "api":
+        return {
+            "type": f"{platform}_upload",
+            "passed": True,
+            "status": deploy.get("status", "submitted"),
+        }
+    elif method == "airlock_telegram":
+        return {
+            "type": f"{platform}_airlock",
+            "passed": True,
+            "note": "Binary sent to operator for manual upload",
+        }
+    else:
+        return {
+            "type": f"{platform}_deploy",
+            "passed": deploy.get("success", False),
+            "status": "unknown",
+        }
+
+
+async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
+    """Scout-based App Store guidelines check.
+
+    Spec: §4.8 (legal verification)
+
+    PATCH (NB1 Part 8): Inline budget guard replaces check_circuit_breaker()
+    which is wired in Part 9 (factory.intelligence.circuit_breaker).
+    Guard passes when per-project AI spend is below the per-project cap.
+    """
+    # Inline budget guard — replaced by real circuit breaker in Part 9
+    current_spend = state.total_cost_usd
+    per_project_cap = BUDGET_CONFIG.get("per_project_ai_cap", 25.00)
+    can_research = current_spend < per_project_cap
+
+    if not can_research:
+        logger.warning(
+            f"[{state.project_id}] S7: Budget cap reached "
+            f"(${current_spend:.2f}), skipping Scout guidelines check."
+        )
+        return None
+
+    s0 = state.s0_output or {}
+    guidelines = await call_ai(
+        role=AIRole.SCOUT,
+        prompt=(
+            f"Does this app description violate Apple App Store "
+            f"or Google Play guidelines?\n"
+            f"App: {s0.get('app_description', '')}\n"
+            f"Category: {s0.get('app_category', '')}\n"
+            f"Has payments: {s0.get('has_payments', False)}\n"
+            f"Return: pass/fail with specific guideline references."
+        ),
+        state=state,
+        action="general",
+    )
+
+    passed = "pass" in guidelines.lower()[:100]
+    return {
+        "type": "store_guidelines",
+        "passed": passed,
+        "details": guidelines[:500],
+    }
+
+
+# Register with DAG (replaces stub)
+register_stage_node("s7_verify", s7_verify_node)

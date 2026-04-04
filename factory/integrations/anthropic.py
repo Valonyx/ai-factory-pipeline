@@ -361,43 +361,80 @@ async def dispatch_ai_call(
 
 async def _call_anthropic(
     prompt: str, model: str, contract: dict, state: PipelineState,
-) -> str:
-    """Call Anthropic Claude API.
+    system_prompt: Optional[str] = None,
+) -> tuple[str, int, int]:
+    """Call Anthropic Claude API via AsyncAnthropic SDK.
 
     Spec: §2.2
-    Stub: returns simulated response for offline dev.
+    Falls back to offline stub when ANTHROPIC_API_KEY is absent.
+    Streams when max_output_tokens > 8192 to prevent HTTP timeouts.
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
+        Real token counts from message.usage when API key present.
+        Zero counts for stub responses.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
     if not api_key:
-        # Offline stub response
-        return json.dumps({
+        stub = json.dumps({
             "_stub": True,
             "_model": model,
             "_prompt_length": len(prompt),
             "result": "Stub response from AI dispatch",
         })
+        return stub, 0, 0
 
-    # Production: httpx call to Anthropic API
-    import httpx
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": model,
-                "max_tokens": contract.get("max_output_tokens", 4096),
-                "temperature": contract.get("temperature", 0.3),
-                "messages": [{"role": "user", "content": prompt}],
-            },
+    import anthropic as sdk
+
+    max_tokens = contract.get("max_output_tokens", 4096)
+    temperature = contract.get("temperature", 0.3)
+    client = sdk.AsyncAnthropic(api_key=api_key)
+
+    # Build kwargs — system prompt is optional
+    create_kwargs: dict = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system_prompt:
+        create_kwargs["system"] = system_prompt
+
+    try:
+        if max_tokens > 8192:
+            async with client.messages.stream(**create_kwargs) as stream:
+                response = await stream.get_final_message()
+        else:
+            response = await client.messages.create(**create_kwargs)
+
+        text = ""
+        for block in response.content:
+            if block.type == "text":
+                text = block.text
+                break
+
+        # Real token counts from SDK response (§3.6 cost tracking)
+        in_tok = response.usage.input_tokens
+        out_tok = response.usage.output_tokens
+        logger.info(
+            f"[{state.project_id}] {model}: "
+            f"{in_tok} in / {out_tok} out tokens"
         )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["content"][0]["text"]
+        return text, in_tok, out_tok
+
+    except sdk.AuthenticationError:
+        logger.error("Anthropic auth failed — check ANTHROPIC_API_KEY")
+        raise
+    except sdk.RateLimitError as e:
+        logger.warning(f"Anthropic rate limit: {e}")
+        raise
+    except sdk.APIConnectionError as e:
+        logger.error(f"Anthropic connection/timeout error: {e}")
+        raise
+    except sdk.APIStatusError as e:
+        logger.error(f"Anthropic API error {e.status_code}: {e.message}")
+        raise
 
 
 async def _call_perplexity(

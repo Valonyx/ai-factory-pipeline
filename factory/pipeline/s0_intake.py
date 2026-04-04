@@ -108,8 +108,11 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
         }
 
     # ── Step 2: Scout market scan (optional) ──
-    from factory.core.roles import check_circuit_breaker
-    can_research = await check_circuit_breaker(state, 0.02)
+    # check_circuit_breaker moved to factory.monitoring.circuit_breaker (Part 9)
+    # Inline budget guard (check_circuit_breaker wired in Part 9)
+    current_spend = state.total_cost_usd
+    per_project_cap = 25.00
+    can_research = current_spend < per_project_cap
     if can_research:
         try:
             market_intel = await call_ai(

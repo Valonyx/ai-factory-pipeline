@@ -225,8 +225,9 @@ async def _preflight_store_compliance(
         return warnings
 
     try:
-        from factory.core.roles import check_circuit_breaker
-        can_research = await check_circuit_breaker(state, 0.02)
+        # Inline budget guard (check_circuit_breaker wired in Part 9)
+        current_spend = state.total_cost_usd
+        can_research = current_spend < 25.00
         if not can_research:
             return warnings
 

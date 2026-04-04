@@ -11,6 +11,7 @@ Spec Authority: v5.6 §4.6, §4.6.1, §4.6.2
 """
 
 from __future__ import annotations
+import os
 
 import asyncio
 import json
@@ -48,7 +49,7 @@ TEST_COMMANDS: dict[TechStack, str] = {
 
 # Pre-deploy gate timeouts
 COPILOT_DEPLOY_TIMEOUT = 3600   # 1 hour
-AUTOPILOT_DEPLOY_TIMEOUT = 900  # 15 minutes
+AUTOPILOT_DEPLOY_TIMEOUT = int(os.getenv("AUTOPILOT_DEPLOY_TIMEOUT", "900"))  # 15 min, override via env
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -336,6 +337,16 @@ async def _wait_for_deploy_decision(
     Polls deploy_decisions every 5 seconds.
     """
     from factory.telegram.decisions import check_deploy_decision, clear_deploy_decision
+
+    # Check immediately before entering poll loop (handles pre-recorded decisions)
+    decision = await check_deploy_decision(state.project_id)
+    if decision:
+        await clear_deploy_decision(state.project_id)
+        return decision
+
+    # If timeout is 0 (test/stub mode), return timeout immediately
+    if timeout_seconds == 0:
+        return "timeout"
 
     poll_interval = 5  # seconds
     elapsed = 0

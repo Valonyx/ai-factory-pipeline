@@ -798,6 +798,7 @@ class PipelineState(BaseModel):
     project_id: str
     operator_id: str
     snapshot_id: Optional[int] = None
+    snapshot_count: int = 0  # alias counter for orchestrator decorator
     program_id: Optional[str] = None
 
     # ── Stage Control ──

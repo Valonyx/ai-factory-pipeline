@@ -2,7 +2,6 @@
 AI Factory Pipeline v5.6 — Pipeline Module
 
 LangGraph DAG and stage node implementations.
-Import this module to register all stage nodes with the DAG.
 """
 
 # Import graph infrastructure first
@@ -20,13 +19,16 @@ from factory.pipeline.graph import (
     SimpleExecutor,
 )
 
-# Import stage nodes (registers them with DAG via register_stage_node)
+# Import real stage nodes (S0–S5) — registers them with DAG
 from factory.pipeline.s0_intake import s0_intake_node
 from factory.pipeline.s1_legal import s1_legal_node
 from factory.pipeline.s2_blueprint import s2_blueprint_node
+from factory.pipeline.s3_codegen import s3_codegen_node
+from factory.pipeline.s4_build import s4_build_node
+from factory.pipeline.s5_test import s5_test_node, pre_deploy_gate
 from factory.pipeline.halt_handler import halt_handler_node
 
-# Import stubs for S3–S8 (registers them with DAG)
+# Import stubs for S6–S8 (registers them with DAG)
 from factory.pipeline import stubs  # noqa: F401
 
 __all__ = [
@@ -36,5 +38,9 @@ __all__ = [
     "s0_intake_node",
     "s1_legal_node",
     "s2_blueprint_node",
+    "s3_codegen_node",
+    "s4_build_node",
+    "s5_test_node",
+    "pre_deploy_gate",
     "halt_handler_node",
 ]

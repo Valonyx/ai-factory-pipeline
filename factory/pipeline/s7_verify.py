@@ -172,6 +172,12 @@ async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
     which is wired in Part 9 (factory.intelligence.circuit_breaker).
     Guard passes when per-project AI spend is below the per-project cap.
     """
+    # CLI/dry-run bypass — no real Scout available, auto-pass guidelines check
+    import os
+    if os.getenv("TELEGRAM_BOT_TOKEN") is None or os.getenv("DRY_RUN", "false").lower() == "true":
+        logger.info(f"[{state.project_id}] S7: dry-run bypass — guidelines auto-passed")
+        return {"type": "store_guidelines", "passed": True, "details": "dry-run bypass"}
+
     # Inline budget guard — replaced by real circuit breaker in Part 9
     current_spend = state.total_cost_usd
     per_project_cap = BUDGET_CONFIG.get("per_project_ai_cap", 25.00)

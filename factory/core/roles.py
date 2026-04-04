@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -215,28 +216,80 @@ def _phase_budget_key(role: AIRole, state: PipelineState) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Provider Calls (stubs — replaced by real clients in Part 9)
+# Provider Calls
 # ═══════════════════════════════════════════════════════════════════
+
+# Cost rates per model: (input_$/M, output_$/M)
+_MODEL_COSTS: dict[str, tuple[float, float]] = {
+    "claude-opus-4-6":            (5.00, 25.00),
+    "claude-opus-4-5-20250929":   (3.00, 15.00),
+    "claude-sonnet-4-5-20250929": (3.00, 15.00),
+    "claude-sonnet-4-20250514":   (3.00, 15.00),
+    "claude-haiku-4-5-20251001":  (0.80,  4.00),
+}
 
 
 async def _call_anthropic(
     prompt: str, contract: RoleContract,
 ) -> tuple[str, float]:
-    """Call Anthropic API (Opus/Sonnet/Haiku).
+    """Call Anthropic Claude API via AsyncAnthropic SDK.
 
     Spec: §2.2.2
-    Full implementation in intelligence/strategist.py.
-    This stub returns a mock response for dry-run testing (P2).
+    Falls back to mock when ANTHROPIC_API_KEY is absent (dry-run).
+    Streams when max_output_tokens > 8192 to prevent HTTP timeouts.
+    Returns (response_text, cost_usd) using actual token counts.
     """
-    logger.info(
-        f"[MOCK] Calling {contract.model} for {contract.role.value} "
-        f"(max_tokens={contract.max_output_tokens})"
-    )
-    # Mock response for local dry-run (P2 milestone)
-    return (
-        f"[MOCK {contract.model}] Response to: {prompt[:100]}...",
-        0.01,  # Mock cost
-    )
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+
+    if not api_key:
+        logger.info(
+            f"[MOCK] Calling {contract.model} for {contract.role.value} "
+            f"(max_tokens={contract.max_output_tokens})"
+        )
+        return (
+            f"[MOCK {contract.model}] Response to: {prompt[:100]}...",
+            0.01,
+        )
+
+    import anthropic as sdk
+
+    max_tokens = contract.max_output_tokens
+    client = sdk.AsyncAnthropic(api_key=api_key)
+
+    try:
+        if max_tokens > 8192:
+            async with client.messages.stream(
+                model=contract.model,
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                response = await stream.get_final_message()
+        else:
+            response = await client.messages.create(
+                model=contract.model,
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+        text = next(
+            (b.text for b in response.content if b.type == "text"), ""
+        )
+        cost_in, cost_out = _MODEL_COSTS.get(contract.model, (3.00, 15.00))
+        cost = (
+            response.usage.input_tokens / 1_000_000 * cost_in
+            + response.usage.output_tokens / 1_000_000 * cost_out
+        )
+        return text, cost
+
+    except sdk.AuthenticationError:
+        logger.error("Anthropic auth failed — check ANTHROPIC_API_KEY")
+        raise
+    except sdk.RateLimitError as e:
+        logger.warning(f"Anthropic rate limit: {e}")
+        raise
+    except sdk.APIStatusError as e:
+        logger.error(f"Anthropic API error {e.status_code}: {e.message}")
+        raise
 
 
 async def _call_perplexity_safe(
@@ -244,30 +297,15 @@ async def _call_perplexity_safe(
 ) -> tuple[str, float]:
     """Safe Perplexity call with degradation policy.
 
-    Spec: §2.2.3 [C5]
-    Never falls back to ungrounded LLM research.
-    Enforces SCOUT_MAX_CONTEXT_TIER ceiling.
-    Full implementation in intelligence/perplexity.py (Part 9).
+    Spec: §2.2.3 [C5], §3.1, ADR-049, FIX-19
+    Delegates to factory.integrations.perplexity for real implementation.
     """
-    tier = SCOUT_MAX_CONTEXT_TIER
-    if tier not in CONTEXT_TIER_LIMITS:
-        tier = "medium"
-    limits = CONTEXT_TIER_LIMITS[tier]
-
-    # Truncate to tier limit
-    max_chars = limits["max_tokens"] * 4  # rough char estimate
-    if len(prompt) > max_chars:
-        prompt = prompt[:max_chars]
-        logger.warning(f"Prompt truncated to {tier} tier limit")
-
-    logger.info(
-        f"[MOCK] Calling Perplexity {contract.model} "
-        f"(tier={tier}, max_sources={limits['max_sources']})"
-    )
-    # Mock response for local dry-run
-    return (
-        f"[MOCK Perplexity {contract.model}] Research for: {prompt[:100]}...",
-        0.005,  # Mock cost
+    from factory.integrations.perplexity import call_perplexity_safe
+    return await call_perplexity_safe(
+        prompt=prompt,
+        contract=contract,
+        state=state,
+        tier=SCOUT_MAX_CONTEXT_TIER,
     )
 
 

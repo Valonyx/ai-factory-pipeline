@@ -100,6 +100,7 @@ async def s5_test_node(state: PipelineState) -> PipelineState:
     # ── Step 3: Analyze results ──
     test_output = await _analyze_test_results(state, result)
     state.s5_output = test_output
+    state.project_metadata["tests_passed"] = test_output.get("passed", False)
 
     # ── Step 4: Pre-deploy gate (FIX-08) ──
     if test_output.get("passed", False):

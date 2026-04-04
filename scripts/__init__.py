@@ -1,0 +1,1 @@
+"""AI Factory Pipeline v5.6 — Operational Scripts."""

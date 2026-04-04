@@ -73,6 +73,7 @@ async def s7_verify_node(state: PipelineState) -> PipelineState:
 
     all_passed = all(c.get("passed", False) for c in checks)
 
+    state.project_metadata["verify_passed"] = all_passed
     state.s7_output = {
         "passed": all_passed,
         "checks": checks,

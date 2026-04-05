@@ -25,6 +25,76 @@ from scripts.migrate_neo4j import run_neo4j_migration
 
 logger = logging.getLogger("factory.migrate.v36")
 
+
+# ═══════════════════════════════════════════════════════════════════
+# §8.3 — Migration Steps (for test validation)
+# ═══════════════════════════════════════════════════════════════════
+
+MIGRATION_STEPS: list[dict] = [
+    {
+        "name": "Rename legacy tables",
+        "sql": [
+            "ALTER TABLE IF EXISTS pipeline_states RENAME TO pipeline_states_v36",
+            "ALTER TABLE IF EXISTS state_snapshots RENAME TO state_snapshots_v36",
+        ],
+    },
+    {
+        "name": "Create new schema",
+        "description": "Run standard Supabase migration",
+        "sql": [],  # Delegates to migrate_supabase
+    },
+    {
+        "name": "Migrate pipeline states",
+        "sql": [
+            """INSERT INTO pipeline_states (
+                project_id, operator_id, current_stage,
+                autonomy_mode, state_json, total_cost_usd,
+                created_at, updated_at
+            )
+            SELECT
+                project_id,
+                COALESCE(operator_id, 'migrated'),
+                COALESCE(current_stage, 'S0_INTAKE'),
+                COALESCE(autonomy_mode, 'copilot'),
+                COALESCE(state_json, '{}'),
+                COALESCE(total_cost_usd, 0.0),
+                COALESCE(created_at, NOW()),
+                NOW()
+            FROM pipeline_states_v36
+            ON CONFLICT (project_id) DO NOTHING""",
+        ],
+    },
+    {
+        "name": "Migrate snapshots",
+        "sql": [
+            """INSERT INTO state_snapshots (
+                project_id, stage, snapshot_json,
+                checksum, created_at
+            )
+            SELECT
+                project_id,
+                COALESCE(stage, 'unknown'),
+                COALESCE(snapshot_json, '{}'),
+                COALESCE(checksum, 'migrated'),
+                COALESCE(created_at, NOW())
+            FROM state_snapshots_v36""",
+        ],
+    },
+    {
+        "name": "Migrate operator data",
+        "sql": [
+            """INSERT INTO operator_whitelist (
+                telegram_id, display_name, active
+            )
+            SELECT
+                telegram_id, display_name, TRUE
+            FROM operator_whitelist
+            ON CONFLICT (telegram_id) DO NOTHING""",
+        ],
+    },
+]
+
+
 # Columns to add to existing pipeline_states table
 V36_COLUMN_ADDITIONS = [
     "ALTER TABLE pipeline_states ADD COLUMN IF NOT EXISTS snapshot_id INTEGER DEFAULT 0",
@@ -43,8 +113,20 @@ V36_METADATA_MIGRATIONS = [
 ]
 
 
-async def migrate_v36_to_v54(supabase_client=None, neo4j_client=None) -> dict:
+async def migrate_v36_to_v54(
+    supabase_client=None,
+    neo4j_client=None,
+    dry_run: bool = False,
+) -> dict:
     """One-time migration from v3.6 to v5.4+ format.
+
+    Args:
+        supabase_client: Supabase client. None = dry-run.
+        neo4j_client: Neo4j driver. None = dry-run.
+        dry_run: If True, only log steps without executing.
+
+    Returns:
+        {"steps_completed": int, "total_steps": int, "errors": []}
 
     Spec: §8.3.2
     """
@@ -53,6 +135,11 @@ async def migrate_v36_to_v54(supabase_client=None, neo4j_client=None) -> dict:
         "total_steps": 5,
         "errors": [],
     }
+
+    # dry_run=True forces no-client mode regardless of client args
+    if dry_run:
+        supabase_client = None
+        neo4j_client = None
 
     print("═══ v3.6 → v5.4 Migration ═══\n")
 

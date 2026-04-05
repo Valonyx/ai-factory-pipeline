@@ -2,14 +2,18 @@
 AI Factory Pipeline v5.6 — GCP Secret Manager Bootstrap
 
 Implements:
-  - §7.7.1 Required secrets setup
-  - Interactive prompts for each secret
-  - Validates connectivity to GCP
-  - Idempotent — skips existing secrets
+  - §2.11 Secrets Management
+  - §7.7.1 GCP Secret Manager setup
+  - Appendix B: Complete Secrets List
 
-Run: python -m scripts.setup_secrets
+Interactive setup: prompts for each required secret,
+creates in GCP Secret Manager, validates presence.
 
-Spec Authority: v5.6 §7.7.1
+Usage:
+  python -m scripts.setup_secrets
+  python -m scripts.setup_secrets --validate-only
+
+Spec Authority: v5.6 §2.11, Appendix B
 """
 
 from __future__ import annotations
@@ -20,9 +24,82 @@ import os
 import sys
 from getpass import getpass
 
-from factory.config import REQUIRED_SECRETS, CONDITIONAL_SECRETS, GCP_PROJECT_ID
-
 logger = logging.getLogger("factory.setup.secrets")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §2.11 + Appendix B — Secret Definitions
+# ═══════════════════════════════════════════════════════════════════
+
+SECRET_DEFINITIONS: list[dict] = [
+    {
+        "name": "ANTHROPIC_API_KEY",
+        "description": "Anthropic API key (Strategist/Engineer/Quick Fix)",
+        "required": True,
+        "rotation_days": 90,
+        "prefix": "sk-ant-",
+    },
+    {
+        "name": "PERPLEXITY_API_KEY",
+        "description": "Perplexity API key (Scout)",
+        "required": True,
+        "rotation_days": 90,
+        "prefix": "pplx-",
+    },
+    {
+        "name": "TELEGRAM_BOT_TOKEN",
+        "description": "Telegram Bot API token",
+        "required": True,
+        "rotation_days": 180,
+        "prefix": "",
+    },
+    {
+        "name": "GITHUB_TOKEN",
+        "description": "GitHub personal access token",
+        "required": True,
+        "rotation_days": 90,
+        "prefix": "ghp_",
+    },
+    {
+        "name": "SUPABASE_URL",
+        "description": "Supabase project URL",
+        "required": True,
+        "rotation_days": 180,
+        "prefix": "https://",
+    },
+    {
+        "name": "SUPABASE_SERVICE_KEY",
+        "description": "Supabase service role key",
+        "required": True,
+        "rotation_days": 180,
+        "prefix": "eyJ",
+    },
+    {
+        "name": "NEO4J_URI",
+        "description": "Neo4j connection URI",
+        "required": True,
+        "rotation_days": 180,
+        "prefix": "neo4j",
+    },
+    {
+        "name": "NEO4J_PASSWORD",
+        "description": "Neo4j database password",
+        "required": True,
+        "rotation_days": 180,
+        "prefix": "",
+    },
+    {
+        "name": "GCP_PROJECT_ID",
+        "description": "Google Cloud project ID",
+        "required": True,
+        "rotation_days": 0,
+        "prefix": "",
+    },
+]
+
+# Keep backward-compat references for existing code
+REQUIRED_SECRETS = [s["name"] for s in SECRET_DEFINITIONS if s["required"]]
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
 
 
 async def check_secret_exists(name: str, gcp_project: str) -> bool:
@@ -135,8 +212,8 @@ async def setup_secrets_interactive():
     print(f"Errors: {errors}")
 
 
-async def validate_secrets(gcp_project: str = None) -> dict:
-    """Validate that all required secrets exist."""
+async def validate_secrets_gcp(gcp_project: str = None) -> dict:
+    """Validate that all required secrets exist in GCP Secret Manager."""
     gcp_project = gcp_project or GCP_PROJECT_ID
     result = {"present": [], "missing": [], "project": gcp_project}
 
@@ -145,6 +222,42 @@ async def validate_secrets(gcp_project: str = None) -> dict:
             result["present"].append(name)
         else:
             result["missing"].append(name)
+
+    return result
+
+
+def validate_secrets() -> dict:
+    """Validate all required secrets are present via env vars.
+
+    Returns:
+        {"valid": bool, "present": [...], "missing": [...], "warnings": [...]}
+
+    Spec: §2.11 — env-var fallback check for local dev.
+    """
+    result: dict = {
+        "valid": True,
+        "present": [],
+        "missing": [],
+        "warnings": [],
+    }
+
+    for secret in SECRET_DEFINITIONS:
+        name = secret["name"]
+        value = os.getenv(name)
+
+        if value:
+            result["present"].append(name)
+            if (
+                secret["prefix"]
+                and not value.startswith(secret["prefix"])
+            ):
+                result["warnings"].append(
+                    f"{name}: unexpected prefix "
+                    f"(expected '{secret['prefix']}')"
+                )
+        elif secret["required"]:
+            result["missing"].append(name)
+            result["valid"] = False
 
     return result
 

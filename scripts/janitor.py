@@ -32,10 +32,10 @@ logger = logging.getLogger("factory.janitor")
 # ═══════════════════════════════════════════════════════════════════
 
 JANITOR_SCHEDULE = {
-    "janitor_clean": "every 6 hours",
-    "snapshot_prune": "1st of month",
-    "memory_stats": "every 24 hours",
-    "heartbeat_check": "every 30 seconds (in-process)",
+    "janitor_clean": "0 */6 * * *",      # Every 6 hours
+    "snapshot_prune": "0 0 1 * *",        # 1st of month
+    "memory_stats": "0 0 * * *",          # Daily
+    "graveyard_update": "0 */6 * * *",    # Every 6 hours
 }
 
 # Snapshot retention: keep last N per project

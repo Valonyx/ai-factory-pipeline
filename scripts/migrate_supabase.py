@@ -78,14 +78,17 @@ SUPABASE_SCHEMAS = [
         updated_at      TIMESTAMPTZ DEFAULT NOW()
     )""",
 
-    """CREATE TABLE IF NOT EXISTS archived_projects (
+    # ── §5.5 Decision queue (async operator decisions) ──
+    """CREATE TABLE IF NOT EXISTS decision_queue (
         id              BIGSERIAL PRIMARY KEY,
-        project_id      TEXT UNIQUE,
-        operator_id     TEXT,
-        final_stage     TEXT,
-        total_cost_usd  REAL,
-        state_json      JSONB NOT NULL,
-        archived_at     TIMESTAMPTZ DEFAULT NOW()
+        project_id      TEXT NOT NULL,
+        operator_id     TEXT NOT NULL,
+        decision_type   TEXT NOT NULL,
+        options         JSONB NOT NULL DEFAULT '[]',
+        selected        TEXT,
+        timeout_at      TIMESTAMPTZ,
+        resolved_at     TIMESTAMPTZ,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
     )""",
 
     """CREATE TABLE IF NOT EXISTS monthly_costs (

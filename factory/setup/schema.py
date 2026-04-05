@@ -29,6 +29,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from factory.integrations.supabase import get_supabase_client, SupabaseFallback
+from factory.integrations.neo4j import neo4j_run
+
 logger = logging.getLogger("factory.setup.schema")
 
 
@@ -265,7 +268,6 @@ async def initialize_schema() -> dict[str, Any]:
 
     # ── Supabase tables ──────────────────────────────────────────────
     try:
-        from factory.integrations.supabase import get_supabase_client, SupabaseFallback
         client = get_supabase_client()
 
         if isinstance(client, SupabaseFallback):
@@ -294,8 +296,6 @@ async def initialize_schema() -> dict[str, Any]:
 
     # ── Neo4j indexes ────────────────────────────────────────────────
     try:
-        from factory.integrations.neo4j import neo4j_run
-
         for idx in NEO4J_INDEXES:
             try:
                 await neo4j_run(idx["cypher"])

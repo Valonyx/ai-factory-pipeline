@@ -20,6 +20,7 @@ Spec Authority: v5.6 §7.1.2, §7.1.3
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any
 
 from factory.core.secrets import store_secret
@@ -234,7 +235,8 @@ async def _collect_single_key(
     store_secret(secret_name, value.strip())
     logger.info(f"[Wizard] {secret_name}: stored for {operator_id}")
 
-    verifier = _VERIFIERS.get(verifier_name)
+    # Dynamic lookup so monkeypatching works in tests
+    verifier = getattr(sys.modules[__name__], f"verify_{verifier_name}", None)
     if verifier:
         try:
             result = await verifier()

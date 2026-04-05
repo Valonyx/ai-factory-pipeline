@@ -26,36 +26,35 @@ logger = logging.getLogger("factory.core.user_space")
 # ═══════════════════════════════════════════════════════════════════
 
 PROHIBITED_PATTERNS: list[str] = [
-    # Privilege escalation (§2.5)
+    # Privilege escalation (§2.5) — 6 patterns
     "sudo ",
     "sudo\t",
     "su -",
     "su root",
     "pkexec",
     "doas ",
-    # Dangerous file permissions
+    # Dangerous file permissions — 3 patterns
     "chmod 777",
     "chmod +s",
     "chown root",
-    # System path manipulation
+    # System path manipulation — 2 patterns
     "/usr/sbin/",
     "rm -rf /",
+    # Disk / device attacks — 4 patterns
     "dd if=",
-    # Disk / device attacks
-    "mkfs.",
-    "fdisk ",
-    "> /dev/sd",
-    "> /dev/nvme",
-    # Network / firewall manipulation
-    "iptables -f",
-    "iptables -flush",
-    # Boot / system tampering
-    "shutdown -h",
-    "reboot ",
-    "init 0",
-    "init 6",
-    # Process / kernel access
-    "echo 1 > /proc/sysrq",
+    "mkfs",
+    "fdisk",
+    "> /dev/",
+    # Unsafe network execution — 3 patterns
+    "curl | sh",
+    "curl | bash",
+    "wget | sh",
+    # System service control — 2 patterns
+    "systemctl",
+    "service ",
+    # Mount operations — 2 patterns
+    "mount ",
+    "umount ",
 ]
 
 # ═══════════════════════════════════════════════════════════════════

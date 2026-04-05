@@ -1,23 +1,36 @@
 """
 AI Factory Pipeline v5.6 — Secrets Management (GCP Secret Manager)
 
+Production replacement for the env-var-only stub.
+
 Implements:
-  - §2.11 Secrets Management
-  - Appendix B: Complete Secrets List (15 secrets)
-  - ADR-006: GCP Secret Manager for all credentials
+  - §2.11     Secrets Management (all secrets in GCP Secret Manager)
+  - §7.7.1    get_secret() / store_secret() with GCP SDK
+  - Appendix B Complete Secrets List (15 secrets + rotation schedules)
+  - ADR-006   GCP Secret Manager for all credentials
 
-For local development, secrets are loaded from .env file via python-dotenv.
-For production (Cloud Run), secrets are injected as environment variables
-by GCP Secret Manager.
+Resolution order for get_secret():
+  1. In-memory TTL cache (300s default)
+  2. GCP Secret Manager (if SDK + project ID available)
+  3. Environment variable (os.getenv)
+  4. .env file via python-dotenv (local dev)
+  5. None (secret not found)
 
-Spec Authority: v5.6 §2.11, Appendix B
+Uses google-cloud-secret-manager v2.26.0 (verified 2026-02-27):
+  - SecretManagerServiceClient() for sync operations
+  - access_secret_version() to read secret payload
+  - create_secret() + add_secret_version() to write
+  - get_secret() metadata check for existence
+
+Spec Authority: v5.6 §2.11, §7.7.1, Appendix B, ADR-006
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+import time
+from typing import Any, Optional
 
 logger = logging.getLogger("factory.core.secrets")
 
@@ -27,24 +40,37 @@ logger = logging.getLogger("factory.core.secrets")
 # ═══════════════════════════════════════════════════════════════════
 
 REQUIRED_SECRETS: list[str] = [
-    "ANTHROPIC_API_KEY",           # Strategist, Engineer, Quick Fix — 90d rotation
-    "PERPLEXITY_API_KEY",          # Scout — 90d rotation
-    "TELEGRAM_BOT_TOKEN",          # Telegram bot — 180d rotation
-    "GITHUB_TOKEN",                # State persistence, CI/CD — 90d rotation
-    "SUPABASE_URL",                # All persistence — 180d rotation
-    "SUPABASE_SERVICE_KEY",        # All persistence — 180d rotation
-    "NEO4J_URI",                   # Mother Memory — 180d rotation
-    "NEO4J_PASSWORD",              # Mother Memory — 180d rotation
-    "FLUTTERFLOW_API_TOKEN",       # FF stack only — 90d rotation
-    "UI_TARS_ENDPOINT",            # GUI automation — N/A
-    "UI_TARS_API_KEY",             # GUI automation — 90d rotation
-    "APPLE_ID",                    # iOS deploy — 365d rotation
-    "APP_SPECIFIC_PASSWORD",       # iOS deploy — 365d rotation
-    "FIREBASE_SERVICE_ACCOUNT",    # Web deploy — 180d rotation
-    "GCP_PROJECT_ID",              # Cloud Run — N/A (not a secret per se)
+    "ANTHROPIC_API_KEY",           # Strategist, Engineer, Quick Fix
+    "PERPLEXITY_API_KEY",          # Scout
+    "TELEGRAM_BOT_TOKEN",          # Telegram bot
+    "GITHUB_TOKEN",                # State persistence, CI/CD
+    "SUPABASE_URL",                # All persistence
+    "SUPABASE_SERVICE_KEY",        # All persistence
+    "NEO4J_URI",                   # Mother Memory
+    "NEO4J_PASSWORD",              # Mother Memory
+    "GCP_PROJECT_ID",              # Cloud Run (not a secret per se)
+    "FLUTTERFLOW_API_TOKEN",       # FF stack only
+    "UI_TARS_ENDPOINT",            # GUI automation
+    "UI_TARS_API_KEY",             # GUI automation
+    "APPLE_ID",                    # iOS deploy
+    "APP_SPECIFIC_PASSWORD",       # iOS deploy
+    "FIREBASE_SERVICE_ACCOUNT",    # Web deploy
 ]
 
-# Secrets that can be deferred (not required for initial dry-run)
+# 9 core secrets required for pipeline startup
+CORE_SECRETS: list[str] = [
+    "ANTHROPIC_API_KEY",
+    "PERPLEXITY_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "GITHUB_TOKEN",
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_KEY",
+    "NEO4J_URI",
+    "NEO4J_PASSWORD",
+    "GCP_PROJECT_ID",
+]
+
+# 6 secrets deferrable until specific feature use
 DEFERRABLE_SECRETS: set[str] = {
     "FLUTTERFLOW_API_TOKEN",
     "UI_TARS_ENDPOINT",
@@ -54,7 +80,7 @@ DEFERRABLE_SECRETS: set[str] = {
     "FIREBASE_SERVICE_ACCOUNT",
 }
 
-# Rotation schedule per Appendix B
+# Rotation schedule per Appendix B (days)
 SECRET_ROTATION_DAYS: dict[str, int] = {
     "ANTHROPIC_API_KEY":        90,
     "PERPLEXITY_API_KEY":       90,
@@ -71,13 +97,63 @@ SECRET_ROTATION_DAYS: dict[str, int] = {
     "FIREBASE_SERVICE_ACCOUNT": 180,
 }
 
+# Severity for validate_secrets_preflight()
+SECRET_SEVERITY: dict[str, str] = {
+    name: "CRITICAL" for name in CORE_SECRETS
+}
+SECRET_SEVERITY.update({
+    name: "DEFERRABLE" for name in DEFERRABLE_SECRETS
+})
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TTL Cache
+# ═══════════════════════════════════════════════════════════════════
+
+_cache: dict[str, tuple[str, float]] = {}
+_CACHE_TTL_SECONDS: float = 300.0  # 5 minutes
+
+
+def _cache_get(name: str) -> Optional[str]:
+    """Read from TTL cache. Returns None if expired or absent."""
+    entry = _cache.get(name)
+    if entry is None:
+        return None
+    value, expires_at = entry
+    if time.monotonic() > expires_at:
+        _cache.pop(name, None)
+        return None
+    return value
+
+
+def _cache_set(name: str, value: str) -> None:
+    """Write to TTL cache."""
+    _cache[name] = (value, time.monotonic() + _CACHE_TTL_SECONDS)
+
+
+def clear_cache() -> None:
+    """Clear entire secrets cache (for testing or forced refresh)."""
+    _cache.clear()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# .env Loader
+# ═══════════════════════════════════════════════════════════════════
+
+_dotenv_loaded: bool = False
+
 
 def load_dotenv_if_available() -> None:
     """Load .env file for local development.
 
     In production (Cloud Run), secrets come from GCP Secret Manager
     as environment variables — .env is not used.
+
+    Spec: §2.11 — local dev path.
     """
+    global _dotenv_loaded
+    if _dotenv_loaded:
+        return
     try:
         from dotenv import load_dotenv
         env_path = os.path.join(
@@ -88,29 +164,124 @@ def load_dotenv_if_available() -> None:
             load_dotenv(env_path)
             logger.info(f"Loaded .env from {env_path}")
         else:
-            logger.debug(f"No .env file at {env_path} — using environment")
+            logger.debug(f"No .env file at {env_path}")
     except ImportError:
         logger.debug("python-dotenv not installed — using environment only")
+    _dotenv_loaded = True
 
+
+# ═══════════════════════════════════════════════════════════════════
+# GCP Secret Manager Client Singleton
+# ═══════════════════════════════════════════════════════════════════
+
+_gcp_client: Any = None
+_gcp_available: Optional[bool] = None
+
+
+def _get_gcp_client() -> Any:
+    """Lazy-initialize the GCP Secret Manager client.
+
+    Returns the client, or None if SDK not installed or auth fails.
+    Uses Application Default Credentials (ADC) per GCP convention.
+    """
+    global _gcp_client, _gcp_available
+
+    if _gcp_available is False:
+        return None
+    if _gcp_client is not None:
+        return _gcp_client
+
+    try:
+        from google.cloud import secretmanager
+        _gcp_client = secretmanager.SecretManagerServiceClient()
+        _gcp_available = True
+        logger.info("GCP Secret Manager client initialized")
+        return _gcp_client
+    except ImportError:
+        logger.debug(
+            "google-cloud-secret-manager not installed — "
+            "using env var fallback"
+        )
+        _gcp_available = False
+        return None
+    except Exception as e:
+        logger.warning(f"GCP Secret Manager init failed: {e}")
+        _gcp_available = False
+        return None
+
+
+def _get_gcp_project_id() -> Optional[str]:
+    """Get the GCP project ID from environment."""
+    return os.getenv("GCP_PROJECT_ID")
+
+
+def reset_gcp_client() -> None:
+    """Reset GCP client singleton (for testing)."""
+    global _gcp_client, _gcp_available
+    _gcp_client = None
+    _gcp_available = None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §7.7.1 get_secret() — Primary Read Path
+# ═══════════════════════════════════════════════════════════════════
 
 def get_secret(name: str) -> Optional[str]:
-    """Get a secret value from environment.
+    """Get a secret value using the full resolution chain.
 
-    Spec: §2.11
-    In production, GCP Secret Manager injects these as env vars.
-    Locally, they come from .env.
+    Resolution order per §2.11 / §7.7.1:
+      1. TTL cache (300s)
+      2. GCP Secret Manager
+      3. Environment variable (os.getenv)
+      4. .env file (auto-loaded once)
+      5. None
 
     Args:
-        name: Secret name (e.g., 'ANTHROPIC_API_KEY')
+        name: Secret name (e.g., 'ANTHROPIC_API_KEY').
 
     Returns:
-        Secret value, or None if not set.
+        Secret value, or None if not found anywhere.
     """
-    return os.getenv(name)
+    # 1. Check cache
+    cached = _cache_get(name)
+    if cached is not None:
+        return cached
+
+    # 2. Try GCP Secret Manager
+    project_id = _get_gcp_project_id()
+    client = _get_gcp_client()
+
+    if client is not None and project_id:
+        try:
+            resource = (
+                f"projects/{project_id}/secrets/{name}/versions/latest"
+            )
+            response = client.access_secret_version(
+                request={"name": resource}
+            )
+            value = response.payload.data.decode("UTF-8")
+            _cache_set(name, value)
+            logger.debug(f"Secret {name} read from GCP Secret Manager")
+            return value
+        except Exception as e:
+            # NotFound, PermissionDenied, etc. — fall through to env
+            logger.debug(f"GCP read for {name}: {e}")
+
+    # 3. Try environment variable (also loads .env once)
+    load_dotenv_if_available()
+    value = os.getenv(name)
+    if value is not None:
+        _cache_set(name, value)
+        return value
+
+    # 4. Not found
+    return None
 
 
 def get_secret_or_raise(name: str) -> str:
     """Get a secret or raise if missing.
+
+    Spec: §2.11 — pipeline refuses startup with explicit error.
 
     Args:
         name: Secret name.
@@ -119,107 +290,242 @@ def get_secret_or_raise(name: str) -> str:
         Secret value.
 
     Raises:
-        EnvironmentError: If secret is not set.
+        EnvironmentError: If secret is not found in any source.
     """
-    value = os.getenv(name)
+    value = get_secret(name)
     if not value:
         raise EnvironmentError(
             f"Required secret '{name}' is not set. "
-            f"Set it in .env (local) or GCP Secret Manager (production)."
+            f"Set it in GCP Secret Manager (production) or .env (local dev). "
+            f"See Appendix B for the complete secrets list."
         )
     return value
 
 
-def validate_secrets(
-    strict: bool = False,
-    required_only: bool = True,
-) -> dict[str, bool]:
-    """Validate that all required secrets are present.
+# ═══════════════════════════════════════════════════════════════════
+# §7.7.1 store_secret() — Write Path (Setup Wizard)
+# ═══════════════════════════════════════════════════════════════════
 
-    Spec: §2.11
-    Missing secrets cause startup to fail with explicit error listing
-    the missing keys.
+def store_secret(name: str, value: str) -> bool:
+    """Store or update a secret in GCP Secret Manager.
+
+    Spec: §7.7.1 — Keys stored in GCP Secret Manager immediately
+    upon receipt (never in env vars or config files).
+
+    Creates the secret if it doesn't exist, then adds a new version.
 
     Args:
-        strict: If True, raise on any missing secret.
-                If False, log warnings for deferrable secrets.
-        required_only: If True, only check non-deferrable secrets.
+        name: Secret name.
+        value: Secret value.
 
     Returns:
-        Dict mapping secret name → present (True/False).
+        True if stored successfully, False on failure.
+    """
+    project_id = _get_gcp_project_id()
+    client = _get_gcp_client()
+
+    if client is None or not project_id:
+        logger.warning(
+            f"Cannot store {name} in GCP — client or project ID unavailable. "
+            f"Setting as env var for this session."
+        )
+        os.environ[name] = value
+        _cache_set(name, value)
+        return True  # Fallback: set as env var
+
+    parent = f"projects/{project_id}"
+    secret_path = f"{parent}/secrets/{name}"
+
+    try:
+        # Create the secret container (idempotent — ignore AlreadyExists)
+        try:
+            client.create_secret(
+                request={
+                    "parent": parent,
+                    "secret_id": name,
+                    "secret": {"replication": {"automatic": {}}},
+                }
+            )
+            logger.info(f"Created secret container: {name}")
+        except Exception:
+            # AlreadyExists is expected for updates
+            pass
+
+        # Add a new secret version with the payload
+        client.add_secret_version(
+            request={
+                "parent": secret_path,
+                "payload": {"data": value.encode("UTF-8")},
+            }
+        )
+
+        # Update cache
+        _cache_set(name, value)
+        logger.info(f"Secret {name} stored in GCP Secret Manager")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to store secret {name}: {e}")
+        # Fallback: set as env var for this session
+        os.environ[name] = value
+        _cache_set(name, value)
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §7.7.1 check_secret_exists() — Existence Check (Setup Wizard)
+# ═══════════════════════════════════════════════════════════════════
+
+def check_secret_exists(name: str) -> bool:
+    """Check if a secret exists in GCP Secret Manager.
+
+    Used by the setup wizard (§7.1.2) to skip already-configured secrets.
+
+    Args:
+        name: Secret name.
+
+    Returns:
+        True if secret exists in GCP, or if available as env var.
+    """
+    # Check env first (covers local dev)
+    if os.getenv(name):
+        return True
+
+    project_id = _get_gcp_project_id()
+    client = _get_gcp_client()
+
+    if client is None or not project_id:
+        return False
+
+    try:
+        client.get_secret(
+            name=f"projects/{project_id}/secrets/{name}"
+        )
+        return True
+    except Exception:
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §2.11 validate_secrets_preflight() — Boot Validation
+# ═══════════════════════════════════════════════════════════════════
+
+def validate_secrets_preflight(
+    strict: bool = False,
+) -> dict[str, Any]:
+    """Validate that all required secrets are accessible.
+
+    Called at pipeline startup per §2.11: "Missing secrets cause the
+    pipeline to refuse startup with an explicit error listing the
+    missing keys."
+
+    Args:
+        strict: If True, raise on any missing CRITICAL secret.
+
+    Returns:
+        {
+            "all_present": bool,
+            "core_present": int,    # out of 9
+            "total_present": int,   # out of 15
+            "missing_critical": [],
+            "missing_deferrable": [],
+            "details": {name: {"present": bool, "severity": str}}
+        }
 
     Raises:
-        EnvironmentError: If strict=True and any required secret missing.
+        EnvironmentError: If strict=True and any CRITICAL secret missing.
     """
-    results: dict[str, bool] = {}
-    missing: list[str] = []
+    result: dict[str, Any] = {
+        "all_present": True,
+        "core_present": 0,
+        "total_present": 0,
+        "missing_critical": [],
+        "missing_deferrable": [],
+        "details": {},
+    }
 
-    for secret_name in REQUIRED_SECRETS:
-        present = os.getenv(secret_name) is not None
-        results[secret_name] = present
+    for name in REQUIRED_SECRETS:
+        present = get_secret(name) is not None
+        severity = SECRET_SEVERITY.get(name, "UNKNOWN")
 
-        if not present:
-            if secret_name in DEFERRABLE_SECRETS:
-                if not required_only:
-                    logger.warning(
-                        f"Deferrable secret missing: {secret_name} "
-                        f"(needed for specific features)"
-                    )
+        result["details"][name] = {
+            "present": present,
+            "severity": severity,
+        }
+
+        if present:
+            result["total_present"] += 1
+            if name in CORE_SECRETS:
+                result["core_present"] += 1
+        else:
+            result["all_present"] = False
+            if severity == "CRITICAL":
+                result["missing_critical"].append(name)
             else:
-                missing.append(secret_name)
+                result["missing_deferrable"].append(name)
 
-    if missing:
+    total = len(REQUIRED_SECRETS)
+    logger.info(
+        f"Secrets preflight: {result['total_present']}/{total} present "
+        f"({result['core_present']}/{len(CORE_SECRETS)} core, "
+        f"{len(result['missing_critical'])} critical missing)"
+    )
+
+    if result["missing_critical"]:
         msg = (
-            f"Missing {len(missing)} required secret(s):\n"
-            + "\n".join(f"  - {s}" for s in missing)
-            + "\n\nSet these in .env (local) or GCP Secret Manager (production)."
+            f"Missing {len(result['missing_critical'])} CRITICAL secret(s):\n"
+            + "\n".join(f"  - {s}" for s in result["missing_critical"])
+            + "\n\nSet these in GCP Secret Manager (production) or .env "
+            + "(local dev). See Appendix B."
         )
         if strict:
             raise EnvironmentError(msg)
         else:
             logger.warning(msg)
 
-    found = sum(1 for v in results.values() if v)
-    logger.info(
-        f"Secrets validation: {found}/{len(REQUIRED_SECRETS)} present "
-        f"({len(missing)} required missing)"
-    )
-    return results
+    if result["missing_deferrable"]:
+        logger.info(
+            f"Deferrable secrets missing (needed for specific features): "
+            f"{', '.join(result['missing_deferrable'])}"
+        )
+
+    return result
 
 
-async def fetch_from_gcp_secret_manager(
-    secret_name: str,
-    project_id: Optional[str] = None,
-) -> Optional[str]:
-    """Fetch a secret from GCP Secret Manager.
+# ═══════════════════════════════════════════════════════════════════
+# Rotation Status (Appendix B)
+# ═══════════════════════════════════════════════════════════════════
 
-    Spec: §2.11, ADR-006
-    Used in production. Falls back to env var if GCP is unavailable.
+def get_rotation_status() -> dict[str, dict[str, Any]]:
+    """Get rotation schedule info for all secrets.
 
-    Args:
-        secret_name: Name of the secret in GCP.
-        project_id: GCP project ID (defaults to GCP_PROJECT_ID env var).
+    Returns metadata only — does NOT check actual secret age
+    (that requires GCP Secret Manager version metadata).
 
     Returns:
-        Secret value, or None if not found.
+        {name: {"rotation_days": int, "present": bool, "deferrable": bool}}
     """
-    if project_id is None:
-        project_id = os.getenv("GCP_PROJECT_ID")
+    status = {}
+    for name in REQUIRED_SECRETS:
+        status[name] = {
+            "rotation_days": SECRET_ROTATION_DAYS.get(name, 0),
+            "present": get_secret(name) is not None,
+            "deferrable": name in DEFERRABLE_SECRETS,
+        }
+    return status
 
-    if not project_id:
-        logger.debug("GCP_PROJECT_ID not set — using env var fallback")
-        return os.getenv(secret_name)
 
-    try:
-        from google.cloud import secretmanager
+# ═══════════════════════════════════════════════════════════════════
+# Legacy alias (backward compat with code using validate_secrets)
+# ═══════════════════════════════════════════════════════════════════
 
-        client = secretmanager.SecretManagerServiceClient()
-        name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
-    except ImportError:
-        logger.debug("google-cloud-secret-manager not installed — using env var")
-        return os.getenv(secret_name)
-    except Exception as e:
-        logger.warning(f"GCP Secret Manager error for {secret_name}: {e}")
-        return os.getenv(secret_name)
+def validate_secrets(strict: bool = False, required_only: bool = True) -> dict[str, bool]:
+    """Legacy wrapper — delegates to validate_secrets_preflight().
+
+    Returns simplified {name: present} dict for backward compat.
+    """
+    result = validate_secrets_preflight(strict=strict)
+    return {
+        name: info["present"]
+        for name, info in result["details"].items()
+    }

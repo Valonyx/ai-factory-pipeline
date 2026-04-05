@@ -102,11 +102,17 @@ from factory.core.execution import (
 from factory.core.secrets import (
     get_secret,
     get_secret_or_raise,
+    store_secret,
+    check_secret_exists,
     validate_secrets,
-    fetch_from_gcp_secret_manager,
+    validate_secrets_preflight,
+    get_rotation_status,
+    clear_cache,
     load_dotenv_if_available,
     SECRET_ROTATION_DAYS,
     DEFERRABLE_SECRETS,
+    CORE_SECRETS,
+    SECRET_SEVERITY,
 )
 
 __all__ = [
@@ -120,7 +126,9 @@ __all__ = [
     "call_ai", "war_room_escalate", "transition_to",
     "stage_gate", "pipeline_node",
     "enforce_user_space", "execute_command", "write_file",
-    "get_secret", "validate_secrets",
+    "get_secret", "get_secret_or_raise", "store_secret",
+    "check_secret_exists", "validate_secrets", "validate_secrets_preflight",
+    "get_rotation_status", "clear_cache",
     # Config
     "BUDGET_CONFIG", "MODEL_CONFIG", "ROLE_CONTRACTS",
 ]

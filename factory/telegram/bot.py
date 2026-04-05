@@ -62,21 +62,16 @@ async def authenticate_operator(update: Any) -> bool:
     user_id = str(update.effective_user.id)
 
     try:
-        from factory.infra.supabase import supabase_client
-        result = (
-            await supabase_client.table("operator_whitelist")
-            .select("*")
-            .eq("telegram_id", user_id)
-            .execute()
-        )
-        if not result.data:
+        from factory.integrations.supabase import check_operator_whitelist
+        allowed = await check_operator_whitelist(user_id)
+        if not allowed:
             await update.message.reply_text(
                 "🚫 Unauthorized. Contact admin for access."
             )
             return False
         return True
-    except (ImportError, Exception):
-        # Dry-run or Supabase not configured — allow all
+    except Exception:
+        # Supabase not configured — allow all in dry-run mode
         logger.debug(f"Auth check skipped for {user_id} (dry-run mode)")
         return True
 
@@ -455,6 +450,18 @@ async def cmd_deploy_cancel(update: Any, context: Any):
 
 
 @require_auth
+async def cmd_setup(update: Any, context: Any):
+    """§7.1.2: /setup — Run the setup wizard to configure API keys."""
+    user_id = str(update.effective_user.id)
+
+    async def send_to_operator(text: str) -> None:
+        await update.message.reply_text(text, parse_mode="Markdown")
+
+    from factory.setup.wizard import run_setup_wizard
+    await run_setup_wizard(operator_id=user_id, send_message=send_to_operator)
+
+
+@require_auth
 async def cmd_help(update: Any, context: Any):
     """§5.2: /help — Show all commands."""
     await update.message.reply_text(format_help_message())
@@ -522,6 +529,14 @@ async def handle_message(update: Any, context: Any):
         return
 
     user_id = str(update.effective_user.id)
+
+    # §7.1.2 — Intercept if wizard is awaiting a free-text reply
+    from factory.telegram.decisions import has_pending_reply, resolve_reply
+    if update.message and update.message.text and has_pending_reply(user_id):
+        resolved = await resolve_reply(user_id, update.message.text.strip())
+        if resolved:
+            return  # Wizard captured this message
+
     op_state = await get_operator_state(user_id)
 
     if op_state == "awaiting_project_description":
@@ -641,6 +656,7 @@ async def setup_bot() -> Any:
         # ── Diagnostics ──
         app.add_handler(CommandHandler("warroom", cmd_warroom))
         app.add_handler(CommandHandler("legal", cmd_legal))
+        app.add_handler(CommandHandler("setup", cmd_setup))
         app.add_handler(CommandHandler("help", cmd_help))
 
         # ── Inline callbacks ──

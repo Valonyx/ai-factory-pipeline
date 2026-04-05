@@ -57,6 +57,12 @@ The core layer defines all shared types, state management, and role contracts.
 
 ---
 
+## Pipeline DAG (§2.10)
+
+S0 Intake → S1 Legal → S2 Blueprint → S3 CodeGen → S4 Build → S5 Test → S6 Deploy → S7 Verify → S8 Handoff
+
+Retry loops: S5 fail → S3 (max 3 retries); S7 fail → S6 (max 2 retries).
+
 ## P2 Pipeline Stages (§4.0–§4.9)
 
 Each stage is an async function wrapped by `@pipeline_node` which adds legal hooks and snapshot persistence.

@@ -541,5 +541,250 @@ def main():
     return 0 if all_passed else 1
 
 
+# ═══════════════════════════════════════════════════════════════════
+# §8.1 Phase API — used by tests/test_prod_17_final.py
+# Each returns {"passed": int, "failed": int, "errors": []}
+# ═══════════════════════════════════════════════════════════════════
+
+def phase_1_imports() -> dict:
+    """Phase 1: Verify all modules import cleanly."""
+    results: dict = {"passed": 0, "failed": 0, "errors": []}
+    modules = [
+        "factory", "factory.config",
+        "factory.core.state", "factory.core.roles",
+        "factory.core.secrets", "factory.core.execution",
+        "factory.core.user_space",
+        "factory.integrations.anthropic",
+        "factory.integrations.perplexity",
+        "factory.integrations.supabase",
+        "factory.integrations.github",
+        "factory.integrations.neo4j",
+        "factory.pipeline.s0_intake",
+        "factory.pipeline.s1_legal",
+        "factory.pipeline.s2_blueprint",
+        "factory.pipeline.s3_codegen",
+        "factory.pipeline.s4_build",
+        "factory.pipeline.s5_test",
+        "factory.pipeline.s6_deploy",
+        "factory.pipeline.s7_verify",
+        "factory.pipeline.s8_handoff",
+        "factory.design.contrast",
+        "factory.design.grid_enforcer",
+        "factory.design.vibe_check",
+        "factory.design.mocks",
+        "factory.legal.regulatory",
+        "factory.legal.checks",
+        "factory.legal.docugen",
+        "factory.telegram.bot",
+        "factory.telegram.commands",
+        "factory.telegram.notifications",
+        "factory.orchestrator",
+        "factory.main",
+        "factory.cli",
+        "scripts.migrate_supabase",
+        "scripts.migrate_neo4j",
+        "scripts.janitor",
+        "scripts.setup_secrets",
+        "scripts.migrate_v36_to_v54",
+    ]
+    for mod_name in modules:
+        try:
+            importlib.import_module(mod_name)
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"{mod_name}: {str(e)[:100]}")
+    return results
+
+
+def phase_2_config() -> dict:
+    """Phase 2: Verify configuration integrity."""
+    results: dict = {"passed": 0, "failed": 0, "errors": []}
+    try:
+        from factory.config import (
+            MODELS, BUDGET, DELIVERY, COMPLIANCE,
+            DATA_RESIDENCY, APP_STORE, WAR_ROOM,
+            PIPELINE_FULL_VERSION,
+            REQUIRED_SECRETS, CONDITIONAL_SECRETS,
+            get_config_summary,
+        )
+        assert PIPELINE_FULL_VERSION == "5.6.0"
+        results["passed"] += 1
+        configs = [MODELS, BUDGET, DELIVERY, COMPLIANCE, DATA_RESIDENCY, APP_STORE, WAR_ROOM]
+        assert len(configs) == 7
+        results["passed"] += 1
+        assert MODELS.strategist == "claude-opus-4-6"
+        assert MODELS.engineer == "claude-sonnet-4-5-20250929"
+        assert MODELS.quick_fix == "claude-haiku-4-5-20251001"
+        assert MODELS.scout == "sonar-pro"
+        results["passed"] += 1
+        assert BUDGET.monthly_budget_usd == 300.0
+        results["passed"] += 1
+        try:
+            MODELS.strategist = "changed"  # type: ignore[misc]
+            results["failed"] += 1
+            results["errors"].append("ModelConfig is not frozen")
+        except Exception:
+            results["passed"] += 1
+        summary = get_config_summary()
+        assert summary["version"] == "5.6.0"
+        assert "models" in summary and "budget" in summary
+        results["passed"] += 1
+        assert len(REQUIRED_SECRETS) == 9
+        assert len(CONDITIONAL_SECRETS) == 4
+        results["passed"] += 1
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(str(e)[:200])
+    return results
+
+
+def phase_3_pipeline() -> dict:
+    """Phase 3: Verify pipeline DAG integrity."""
+    results: dict = {"passed": 0, "failed": 0, "errors": []}
+    try:
+        from factory.orchestrator import (
+            STAGE_SEQUENCE,
+            pipeline_node,
+            route_after_test, route_after_verify,
+        )
+        from factory.core.state import PipelineState
+        assert len(STAGE_SEQUENCE) == 9
+        names = [s[0] for s in STAGE_SEQUENCE]
+        assert names[0] == "s0_intake" and names[-1] == "s8_handoff"
+        results["passed"] += 1
+        # 9 stage functions registered
+        assert all(callable(fn) for _, fn in STAGE_SEQUENCE)
+        results["passed"] += 1
+        state = PipelineState(project_id="val_001", operator_id="validator")
+        state.project_metadata["tests_passed"] = True
+        assert route_after_test(state) == "s6_deploy"
+        results["passed"] += 1
+        state.project_metadata["tests_passed"] = False
+        state.retry_count = 0
+        assert route_after_test(state) == "s3_codegen"
+        results["passed"] += 1
+        state.project_metadata["verify_passed"] = True
+        assert route_after_verify(state) == "s8_handoff"
+        results["passed"] += 1
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(str(e)[:200])
+    return results
+
+
+def phase_4_schemas() -> dict:
+    """Phase 4: Verify database schema definitions."""
+    results: dict = {"passed": 0, "failed": 0, "errors": []}
+    try:
+        from scripts.migrate_supabase import get_schema_summary
+        from scripts.migrate_neo4j import get_neo4j_summary
+        sb = get_schema_summary()
+        assert sb["table_count"] == 11 and sb["index_count"] == 7
+        results["passed"] += 1
+        for t in ["pipeline_states", "state_snapshots", "operator_whitelist", "decision_queue", "audit_log", "temp_artifacts"]:
+            assert t in sb["tables"], f"Missing: {t}"
+        results["passed"] += 1
+        n4j = get_neo4j_summary()
+        assert n4j["index_count"] == 18 and n4j["constraint_count"] == 1
+        results["passed"] += 1
+        assert len(n4j["node_types"]) == 12
+        for nt in ["StackPattern", "Component", "DesignDNA", "HandoffDoc", "Project", "WarRoomEvent"]:
+            assert nt in n4j["node_types"]
+        results["passed"] += 1
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(str(e)[:200])
+    return results
+
+
+def phase_5_docs() -> dict:
+    """Phase 5: Verify documentation completeness."""
+    results: dict = {"passed": 0, "failed": 0, "errors": []}
+    doc_checks = [
+        ("README.md", ["AI Factory Pipeline v5.6", "Quick Start"]),
+        ("docs/ARCHITECTURE.md", ["Layer Map", "Pipeline DAG"]),
+        ("docs/OPERATOR_GUIDE.md", ["Telegram Commands", "Troubleshooting"]),
+        ("docs/ADR_INDEX.md", ["ADR-044", "ADR-051", "FIX Index"]),
+    ]
+    for filepath, required_strings in doc_checks:
+        if os.path.exists(filepath):
+            with open(filepath) as f:
+                content = f.read()
+            missing = [s for s in required_strings if s not in content]
+            if not missing:
+                results["passed"] += 1
+            else:
+                results["failed"] += 1
+                results["errors"].append(f"{filepath}: missing {missing}")
+        else:
+            results["failed"] += 1
+            results["errors"].append(f"{filepath}: not found")
+    return results
+
+
+def phase_6_integration() -> dict:
+    """Phase 6: Cross-module integration checks."""
+    results: dict = {"passed": 0, "failed": 0, "errors": []}
+    try:
+        from factory.main import app
+        routes = [r.path for r in app.routes]
+        for route in ["/health", "/health-deep", "/webhook", "/run", "/status"]:
+            assert route in routes, f"Missing: {route}"
+        results["passed"] += 1
+        from factory.design import (
+            check_wcag_aa, grid_enforcer_validate,
+            vibe_check, generate_visual_mocks, MOCK_VARIATIONS,
+        )
+        assert len(MOCK_VARIATIONS) == 3
+        results["passed"] += 1
+        from factory.legal.regulatory import REGULATORY_BODY_MAPPING, resolve_regulatory_body
+        canonical_bodies = set(REGULATORY_BODY_MAPPING.values())
+        assert len(canonical_bodies) == 6
+        results["passed"] += 1
+        from scripts.janitor import JANITOR_SCHEDULE, SNAPSHOT_RETENTION_COUNT
+        assert len(JANITOR_SCHEDULE) == 4 and SNAPSHOT_RETENTION_COUNT == 50
+        results["passed"] += 1
+        from factory.config import MODELS
+        from factory.orchestrator import STAGE_SEQUENCE
+        assert MODELS.strategist == "claude-opus-4-6"
+        assert len(STAGE_SEQUENCE) == 9
+        results["passed"] += 1
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(str(e)[:200])
+    return results
+
+
+def run_validation() -> dict:
+    """Run all 6 validation phases.
+
+    Returns:
+        {"phases": {...}, "total_passed": int, "total_failed": int, "all_passed": bool}
+    """
+    phases = [
+        ("Phase 1: Module Imports", phase_1_imports),
+        ("Phase 2: Configuration", phase_2_config),
+        ("Phase 3: Pipeline DAG", phase_3_pipeline),
+        ("Phase 4: Database Schemas", phase_4_schemas),
+        ("Phase 5: Documentation", phase_5_docs),
+        ("Phase 6: Integration", phase_6_integration),
+    ]
+    all_results: dict = {}
+    total_passed = 0
+    total_failed = 0
+    for name, fn in phases:
+        result = fn()
+        all_results[name] = result
+        total_passed += result["passed"]
+        total_failed += result["failed"]
+    return {
+        "phases": all_results,
+        "total_passed": total_passed,
+        "total_failed": total_failed,
+        "all_passed": total_failed == 0,
+    }
+
+
 if __name__ == "__main__":
     sys.exit(main())

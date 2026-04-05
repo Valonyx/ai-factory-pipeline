@@ -85,10 +85,32 @@ class Neo4jClient:
         """Execute a Cypher query.
 
         Spec: §2.10 (all Mother Memory operations)
-        Stub: logs query and returns empty results.
+        Production: uses neo4j AsyncGraphDatabase driver.
+        Offline dev: logs query and returns empty results.
         """
-        logger.debug(f"Neo4j query: {query[:100]}... params={params}")
-        return []
+        if not self._connected:
+            logger.debug(f"[Neo4j offline] Query: {query[:100]}... params={params}")
+            return []
+
+        try:
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.uri, auth=("neo4j", self.password)
+            )
+            try:
+                async with driver.session() as session:
+                    result = await session.run(query, parameters=params or {})
+                    records = await result.data()
+                    return records
+            finally:
+                await driver.close()
+        except ImportError:
+            logger.warning("neo4j driver not installed — running offline")
+            self._connected = False
+            return []
+        except Exception as e:
+            logger.warning(f"[Neo4j] Query failed: {e}")
+            raise
 
     async def create_node(
         self, label: str, properties: dict,

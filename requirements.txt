@@ -104,47 +104,5 @@ websockets==15.0.1
 xxhash==3.6.0
 yarl==1.23.0
 zstandard==0.25.0
-# AI Factory Pipeline v5.6 — Production Dependencies
-# ──────────────────────────────────────────────────
-
-# Web framework
-fastapi>=0.109.0,<1.0
-uvicorn[standard]>=0.27.0,<1.0
-
-# Pydantic (core models)
-pydantic>=2.5.0,<3.0
-
-# HTTP client
-httpx>=0.27.0,<1.0
-
-# Anthropic SDK
-anthropic>=0.40.0,<1.0
-
-# Telegram Bot
-python-telegram-bot>=20.7,<21.0
-
-# Supabase
-supabase>=2.3.0,<3.0
-
-# Neo4j
-neo4j>=5.15.0,<6.0
-
-# GitHub
-PyGithub>=2.1.0,<3.0
-
-# GCP Secret Manager
-google-cloud-secret-manager>=2.18.0,<3.0
-
-# LangGraph (DAG orchestration)
-langgraph>=0.0.40,<1.0
-
-# Perplexity (Scout) — uses openai-compatible SDK
-openai>=1.12.0,<2.0
-
 # Image processing (design engine)
 Pillow>=10.2.0,<11.0
-
-# Utilities
-python-dotenv>=1.0.0,<2.0
-
-tenacity>=8.2.0,<9.0

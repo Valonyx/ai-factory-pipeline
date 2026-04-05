@@ -184,6 +184,61 @@ async def pipeline_status():
     }
 
 
+@app.post("/janitor")
+async def janitor_run():
+    """Janitor Agent — purge expired temp artifacts and TTL-expired graph nodes.
+
+    Spec: §2.10.2 — Janitor 6-hour cycle triggered via Cloud Scheduler.
+    """
+    results: dict = {
+        "artifacts_purged": 0,
+        "neo4j_nodes_purged": 0,
+        "errors": [],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # ── Purge expired temp_artifacts from Supabase ──────────────────
+    try:
+        from factory.integrations.supabase import get_supabase_client
+        sb = get_supabase_client()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        resp = (
+            sb.table("temp_artifacts")
+            .delete()
+            .lt("expires_at", now_iso)
+            .execute()
+        )
+        count = len(resp.data) if hasattr(resp, "data") and resp.data else 0
+        results["artifacts_purged"] = count
+        logger.info(f"[Janitor] Purged {count} expired temp_artifacts")
+    except Exception as e:
+        results["errors"].append(f"supabase_purge: {e}")
+        logger.warning(f"[Janitor] Supabase purge failed: {e}")
+
+    # ── Purge TTL-expired Neo4j nodes (§2.10.2) ─────────────────────
+    try:
+        from factory.integrations.neo4j import neo4j_run, JANITOR_EXEMPT
+        from datetime import timedelta
+        ttl_cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=168)  # 7-day TTL
+        ).isoformat()
+        exempt_labels = "|".join(JANITOR_EXEMPT)
+        query = (
+            f"MATCH (n) WHERE NOT n:({exempt_labels}) "
+            f"AND n.created_at < $cutoff "
+            f"DETACH DELETE n RETURN count(n) AS deleted"
+        )
+        rows = await neo4j_run(query, {"cutoff": ttl_cutoff})
+        deleted = rows[0].get("deleted", 0) if rows else 0
+        results["neo4j_nodes_purged"] = deleted
+        logger.info(f"[Janitor] Purged {deleted} Neo4j nodes")
+    except Exception as e:
+        results["errors"].append(f"neo4j_purge: {e}")
+        logger.debug(f"[Janitor] Neo4j purge skipped: {e}")
+
+    return results
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Cloud Run Entry
 # ═══════════════════════════════════════════════════════════════════

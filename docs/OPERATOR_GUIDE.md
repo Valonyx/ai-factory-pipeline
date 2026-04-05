@@ -17,11 +17,12 @@ Example first message:
 
 ---
 
-## Bot Commands
+## Telegram Commands
 
 | Command | What it does |
 |---------|-------------|
 | `/start` | Begin a new project |
+| `/build <description>` | Start building a new app |
 | `/status` | Check current project progress |
 | `/budget` | View remaining budget |
 | `/cancel` | Cancel the current project |
@@ -71,11 +72,14 @@ To switch modes, tell the bot: "Switch to copilot mode" or "Switch to autopilot.
 
 Your monthly budget is **$300 USD (~1,125 SAR)** by default.
 
-The budget has 4 levels:
-- 🟢 **Green** (0–80%) — Everything works normally
-- 🟡 **Amber** (80–95%) — Research features limited, you'll get alerts
-- 🔴 **Red** (95–100%) — No new projects, existing ones continue
-- ⚫ **Black** (100%+) — Pipeline stops, contact admin
+The budget has 4 tiers:
+
+| Tier | Usage | Effect |
+|------|-------|--------|
+| GREEN | 0-79% | Full capability |
+| AMBER | 80-94% | Uses cheaper AI models |
+| RED | 95-99% | Blocks new projects |
+| BLACK | 100% | Everything stops |
 
 A typical app costs **$15–$35** to build. Check your budget anytime with `/budget`.
 
@@ -100,6 +104,16 @@ When the pipeline finishes, you'll receive:
 - The pipeline tries to upload automatically
 - If automatic upload fails, you'll receive step-by-step instructions for manual upload via Apple Transporter (iOS) or Google Play Console (Android)
 - Important: Manual upload does not bypass Apple/Google review
+
+---
+
+## Troubleshooting
+
+**Pipeline seems stuck:** Send `/status` to check the current stage. If stale for more than 30 minutes, the system auto-recovers. You can also try `/continue`.
+
+**Budget warning received:** The pipeline will automatically use cheaper AI models. Your app quality may be slightly affected. Check `/budget` for details.
+
+**Legal halt:** The pipeline found a compliance issue. Send `/legal` to see what's wrong. Use `/force_continue` only if you understand and accept the risk.
 
 ---
 

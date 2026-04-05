@@ -6,7 +6,7 @@ Layer-by-layer technical reference. All section references (§) point to the v5.
 
 ---
 
-## Layer Overview
+## Layer Map
 
 | Layer | Package | Files | Lines | Spec Sections |
 |-------|---------|-------|-------|---------------|
@@ -19,12 +19,23 @@ Layer-by-layer technical reference. All section references (§) point to the v5.
 | P6 War Room | `factory.war_room` | 5 | ~970 | §2.2.4–§2.2.8 |
 | P7 Legal | `factory.legal` | 5 | ~1,080 | §2.7.3, §4.1.1, §7.6 |
 | P8 Delivery | `factory.delivery` | 5 | ~970 | §7.5, §7.6, FIX-21, FIX-27 |
-| P9 Entry Points | root `factory/` | 4 | ~670 | §2.7.1, §7.4.1 |
+| P9 Entry Points | `orchestrator.py`, `app.py`, `cli.py` | 4 | ~670 | §2.7.1, §7.4.1 |
 | P10 Config | root | 6 | ~420 | §8.9 |
 | P11 Tests | `tests/` | 10 | ~680 | — |
 | P12 Ops | `scripts/` | 6 | ~870 | §6.5, §7.7.1, §8.3 |
 
 **Total: ~16,110 lines across 80+ files**
+
+---
+
+## AI Role Architecture (§2.4)
+
+| Role | Model | Provider | Input $/M | Output $/M | Budget Cap |
+|------|-------|----------|-----------|------------|------------|
+| Scout | sonar-pro | Perplexity | $1.00/M | $1.00/M | Per-context tier |
+| Strategist | claude-opus-4-6 | Anthropic | $15.00/M | $75.00/M | Amber degrades |
+| Engineer | claude-sonnet-4-5 | Anthropic | $3.00/M | $15.00/M | Amber degrades |
+| Quick Fix | claude-haiku-4-5 | Anthropic | $0.80/M | $4.00/M | Fallback target |
 
 ---
 

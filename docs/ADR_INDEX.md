@@ -4,7 +4,7 @@ Index of all ADRs referenced in the specification. ADRs document significant tec
 
 ---
 
-## ADR Index
+## Core Architecture ADRs
 
 | ADR | Title | Status | Spec Section |
 |-----|-------|--------|-------------|
@@ -23,8 +23,25 @@ Index of all ADRs referenced in the specification. ADRs document significant tec
 | ADR-030 | Continuous Legal Thread (pre/post hooks) | Accepted | §2.7.3 |
 | ADR-035 | Triple-write state persistence | Accepted | §6.7 |
 | ADR-040 | Autopilot/Copilot autonomy modes | Accepted | §3.7 |
+| ADR-006 | GCP Secret Manager for all credentials | Accepted | §2.11 |
+| ADR-044 | Graduated Budget Degradation (4-tier) | Accepted | §2.14 |
 | ADR-046 | Pre-deploy gate inside router | Accepted | §2.7.1 |
 | ADR-049 | Scout context tier (small/medium/large) | Accepted | §2.6 |
+| ADR-051 | Operator Handoff Intelligence Pack | Accepted | §4.9 |
+
+## Audit-Derived ADRs
+
+| ADR | Title | Fix | Spec Section |
+|-----|-------|-----|-------------|
+| ADR-043 | Runtime Model Override for Emergency Downgrade | FIX-03 | §2.6 |
+| ADR-044 | Graduated Budget Degradation (4-tier) | FIX-05 | §2.14 |
+| ADR-045 | Strict Compliance Enforcement with Operator Override | FIX-06 | §7.6 |
+| ADR-046 | Pre-Deploy Operator Acknowledgment Gate | FIX-08 | §4.6 |
+| ADR-047 | Version Hygiene Enforcement | FIX-16 | §8.11 |
+| ADR-048 | Budget Buffer Segmentation | FIX-17 | §1.4 |
+| ADR-049 | Scout Context-Tier Ceiling | FIX-19 | §3.1 |
+| ADR-050 | Telegram-Native Operator Recovery | FIX-20 | §7.3 |
+| ADR-051 | Operator Handoff Intelligence Pack | FIX-27 | §4.9 |
 
 ---
 
@@ -34,7 +51,9 @@ Targeted fixes applied across specification versions:
 
 | FIX | Title | Version | Spec Section |
 |-----|-------|---------|-------------|
+| FIX-03 | Model override chain | v5.4 | §2.6 |
 | FIX-04 | Function Contract Reference table | v5.4 | §8.10 |
+| FIX-05 | Budget Degradation Governor 4-tier | v5.5 | §2.14 |
 | FIX-06 | Advisory vs Strict store compliance toggle | v5.5 | §7.6 |
 | FIX-07 | Compliance Artifact Generator at S2 | v5.5 | §4.3.1 |
 | FIX-13 | Vector search backend configuration | v5.5 | §6.7.1 |

@@ -418,10 +418,12 @@ async def run_pipeline(
         else:
             result = graph.invoke(state)
 
+        # LangGraph returns a dict; normalize back to PipelineState
+        if isinstance(result, dict):
+            result = PipelineState.model_validate(result)
+
         if isinstance(result, PipelineState):
             final_stage = result.current_stage.value
-        elif isinstance(result, dict):
-            final_stage = result.get("current_stage", "unknown")
         else:
             final_stage = "unknown"
 

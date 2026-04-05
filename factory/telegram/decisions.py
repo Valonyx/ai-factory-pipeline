@@ -4,6 +4,7 @@ AI Factory Pipeline v5.6 — Decision Queue (4-Way Copilot Menus)
 Implements:
   - §3.7 4-Way Decision Matrix (Copilot mode)
   - §5.3 Callback handler for inline keyboard decisions
+  - §7.1.2 Free-text reply mechanism (Setup Wizard)
   - Decision polling with 1-hour timeout (DR Scenario #10)
 
 In Copilot mode, the pipeline presents 4 options at key decision
@@ -93,25 +94,37 @@ async def get_decision_result(decision_id: str) -> Optional[str]:
 # Deploy Decision Store (FIX-08)
 # ═══════════════════════════════════════════════════════════════════
 
-_deploy_decisions: dict[str, str] = {}
+_deploy_decisions: dict[str, dict] = {}
 
 
 async def record_deploy_decision(
-    project_id: str, decision: str,
+    project_id: str,
+    operator_id: str = "",
+    confirmed: bool = True,
 ) -> None:
     """Record deploy confirm/cancel decision.
 
-    Spec: §4.6.3 (FIX-08)
+    Spec: §4.6.1 — Pre-Deploy Operator Acknowledgment Gate (FIX-08).
     """
-    _deploy_decisions[project_id] = decision
+    _deploy_decisions[project_id] = {
+        "confirmed": confirmed,
+        "operator_id": operator_id,
+    }
+    logger.info(
+        f"Deploy decision for {project_id}: "
+        f"{'CONFIRMED' if confirmed else 'CANCELLED'} by {operator_id}"
+    )
 
 
-async def check_deploy_decision(project_id: str) -> Optional[str]:
-    """Check if operator has made a deploy decision.
+async def check_deploy_decision(project_id: str) -> Optional[bool]:
+    """Check if a deploy decision exists.
 
-    Returns 'confirm', 'cancel', or None.
+    Returns: True (confirmed), False (cancelled), None (pending).
     """
-    return _deploy_decisions.get(project_id)
+    decision = _deploy_decisions.get(project_id)
+    if decision is None:
+        return None
+    return decision["confirmed"]
 
 
 async def clear_deploy_decision(project_id: str) -> None:
@@ -312,3 +325,83 @@ async def store_operator_decision(
                 f"Decision {decision_id} resolved: {value} "
                 f"by operator {operator_id}"
             )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §7.1.2 Free-Text Reply Mechanism (Setup Wizard)
+# ═══════════════════════════════════════════════════════════════════
+
+# Pending free-text replies: {operator_id: asyncio.Future}
+_pending_replies: dict[str, asyncio.Future] = {}
+
+
+async def wait_for_operator_reply(
+    operator_id: str,
+    timeout: int = 300,
+    default: str = "SKIP",
+) -> str:
+    """Wait for a free-text reply from an operator.
+
+    Spec: §7.1.2 — Each key has a 300-second entry timeout with SKIP default.
+
+    Used by the setup wizard to collect API keys and other free-text
+    input from the operator via Telegram.
+
+    Args:
+        operator_id: Telegram user ID string.
+        timeout: Seconds to wait before returning default.
+        default: Value returned on timeout.
+
+    Returns:
+        The operator's text reply, or default on timeout.
+    """
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future = loop.create_future()
+    _pending_replies[operator_id] = future
+
+    try:
+        result = await asyncio.wait_for(future, timeout=timeout)
+        logger.info(
+            f"[Reply] Operator {operator_id} replied ({len(result)} chars)"
+        )
+        return result
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"[Reply] Timeout ({timeout}s) for operator {operator_id}, "
+            f"using default: {default}"
+        )
+        return default
+    finally:
+        _pending_replies.pop(operator_id, None)
+
+
+async def resolve_reply(operator_id: str, text: str) -> bool:
+    """Resolve a pending free-text reply with the operator's message.
+
+    Called by handle_message() when it detects a pending reply
+    for the current operator.
+
+    Args:
+        operator_id: Telegram user ID string.
+        text: The operator's message text.
+
+    Returns:
+        True if a pending reply was resolved, False otherwise.
+    """
+    future = _pending_replies.get(operator_id)
+    if future is None or future.done():
+        return False
+
+    future.set_result(text)
+    logger.debug(f"[Reply] Resolved pending reply for {operator_id}")
+    return True
+
+
+def has_pending_reply(operator_id: str) -> bool:
+    """Check if an operator has a pending reply future.
+
+    Used by handle_message() to decide whether to intercept free-text
+    input for the wizard vs. normal handling.
+    """
+    future = _pending_replies.get(operator_id)
+    return future is not None and not future.done()

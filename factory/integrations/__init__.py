@@ -23,6 +23,7 @@ from factory.integrations.supabase import (
     track_monthly_cost,
     get_monthly_costs,
     audit_log,
+    supabase_execute_sql,
     SupabaseFallback,
     reset_clients,
 )
@@ -67,7 +68,7 @@ __all__ = [
     "add_operator_to_whitelist", "set_operator_state_db",
     "get_operator_state_db", "track_monthly_cost",
     "get_monthly_costs", "audit_log",
-    "SupabaseFallback", "reset_clients",
+    "supabase_execute_sql", "SupabaseFallback", "reset_clients",
     # GitHub
     "GitHubClient", "get_github",
     "github_commit_file", "github_commit_binary", "github_reset_to_commit",

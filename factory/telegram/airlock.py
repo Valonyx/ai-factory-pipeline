@@ -88,7 +88,8 @@ async def upload_to_temp_storage(
     object_key = f"{project_id}/{Path(file_path).name}"
 
     try:
-        from factory.infra.supabase import supabase_client
+        from factory.integrations.supabase import get_supabase_client
+        supabase_client = get_supabase_client()
 
         with open(file_path, "rb") as f:
             await supabase_client.storage.from_(bucket).upload(

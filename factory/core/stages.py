@@ -42,7 +42,7 @@ async def acquire_stage_lock(project_id: str, stage: Stage) -> bool:
     In dry-run / local mode, always returns True.
     """
     try:
-        from factory.infra.supabase import supabase_execute_sql
+        from factory.integrations.supabase import supabase_execute_sql
         lock_key = hash(f"{project_id}:{stage.value}") % (2**31)
         result = await supabase_execute_sql(
             "SELECT pg_try_advisory_lock($1)", [lock_key]
@@ -62,7 +62,7 @@ async def release_stage_lock(project_id: str, stage: Stage) -> None:
     Spec: §2.1.6 [C6]
     """
     try:
-        from factory.infra.supabase import supabase_execute_sql
+        from factory.integrations.supabase import supabase_execute_sql
         lock_key = hash(f"{project_id}:{stage.value}") % (2**31)
         await supabase_execute_sql(
             "SELECT pg_advisory_unlock($1)", [lock_key]

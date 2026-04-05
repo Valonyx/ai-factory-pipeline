@@ -598,6 +598,26 @@ async def audit_log(
         return False
 
 
+async def supabase_execute_sql(query: str, params: Optional[list] = None) -> Any:
+    """Execute raw SQL via Supabase RPC endpoint.
+
+    Used for advisory locks (pg_try_advisory_lock, pg_advisory_unlock).
+    Falls back gracefully when Supabase is unavailable.
+
+    Spec: §2.1.6 [C6]
+    """
+    client = get_supabase_client()
+    if isinstance(client, SupabaseFallback):
+        raise ImportError("Supabase not configured")
+    # Call via PostgREST RPC — wraps arbitrary SQL in a named function
+    # For advisory locks, use execute_sql RPC if available, else raise
+    try:
+        result = client.rpc("execute_sql", {"query": query, "params": params or []}).execute()
+        return result.data
+    except Exception as e:
+        raise RuntimeError(f"supabase_execute_sql failed: {e}") from e
+
+
 # ═══════════════════════════════════════════════════════════════════
 # In-Memory Fallback (for offline/local development)
 # ═══════════════════════════════════════════════════════════════════

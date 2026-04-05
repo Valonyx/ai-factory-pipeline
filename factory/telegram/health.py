@@ -53,15 +53,16 @@ async def readiness_check() -> dict:
 
     # 1. Supabase
     try:
-        from factory.infra.supabase import supabase_client
-        await supabase_client.table("operator_whitelist").select("count").limit(1).execute()
+        from factory.integrations.supabase import get_supabase_client
+        sb = get_supabase_client()
+        sb.table("operator_whitelist").select("count").limit(1).execute()
         checks["supabase"] = "ok"
     except Exception:
         checks["supabase"] = "error"
 
     # 2. Neo4j
     try:
-        from factory.infra.neo4j import neo4j_run
+        from factory.integrations.neo4j import neo4j_run
         await neo4j_run("RETURN 1 AS ok")
         checks["neo4j"] = "ok"
     except Exception:
@@ -117,15 +118,16 @@ async def startup_health_checks() -> dict[str, bool]:
 
     # 1. Supabase (CRITICAL)
     try:
-        from factory.infra.supabase import supabase_client
-        await supabase_client.table("active_projects").select("count").limit(1).execute()
+        from factory.integrations.supabase import get_supabase_client
+        sb = get_supabase_client()
+        sb.table("active_projects").select("count").limit(1).execute()
         checks["supabase"] = True
     except Exception:
         checks["supabase"] = False
 
     # 2. Neo4j (WARNING)
     try:
-        from factory.infra.neo4j import neo4j_run
+        from factory.integrations.neo4j import neo4j_run
         await neo4j_run("RETURN 1 AS ok")
         checks["neo4j"] = True
     except Exception:

@@ -317,20 +317,13 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
         state, blueprint_data,
     )
 
-    # ── Step 3: Store in GitHub (stub) ──
-    repo = f"factory/{state.project_id}"
-    logger.info(
-        f"[{state.project_id}] S8: Would commit to {repo}: "
-        f"{len(legal_docs)} legal docs, "
-        f"{len([k for k in handoff_docs if not k.startswith('_')])} "
-        f"handoff docs"
-    )
+    # ── Step 3: Push to GitHub ──
+    repo = state.project_id
+    github_result = await _push_to_github(state, legal_docs, handoff_docs)
+    state.project_metadata["github_push"] = github_result
 
-    # ── Step 4: Store patterns in Mother Memory (stub) ──
-    logger.info(
-        f"[{state.project_id}] S8: Would store project patterns + "
-        f"handoff docs in Mother Memory"
-    )
+    # ── Step 4: Store patterns in Mother Memory ──
+    await _store_in_mother_memory(state, summary, handoff_docs)
 
     # ── Step 5: Deliver via Telegram ──
     handoff_doc_names = [
@@ -396,6 +389,94 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
         f"handoff={len(handoff_doc_names)}"
     )
     return state
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.9 Step 3: GitHub Push
+# ═══════════════════════════════════════════════════════════════════
+
+async def _push_to_github(
+    state: PipelineState,
+    legal_docs: dict[str, str],
+    handoff_docs: dict[str, str],
+) -> dict:
+    """Push legal and handoff docs to the project GitHub repo.
+
+    Spec: §4.9
+    Gracefully degrades if GitHub is not configured (DRY_RUN or no token).
+    """
+    try:
+        from factory.integrations.github import github_commit_file
+        repo = state.project_id
+        committed = 0
+        for name, content in legal_docs.items():
+            await github_commit_file(
+                repo, f"legal/{name}.md", content,
+                f"S8 Handoff: legal/{name}",
+            )
+            committed += 1
+        for name, content in handoff_docs.items():
+            if not name.startswith("_"):
+                await github_commit_file(
+                    repo, f"docs/{name}", content,
+                    f"S8 Handoff: docs/{name}",
+                )
+                committed += 1
+        logger.info(
+            f"[{state.project_id}] S8: Pushed {committed} files to GitHub/{repo}"
+        )
+        return {"pushed": True, "files": committed}
+    except Exception as e:
+        logger.debug(f"[{state.project_id}] GitHub push skipped: {e}")
+        return {"pushed": False, "reason": str(e)[:200]}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.9 Step 4 + FIX-27: Mother Memory Storage
+# ═══════════════════════════════════════════════════════════════════
+
+async def _store_in_mother_memory(
+    state: PipelineState,
+    summary: str,
+    handoff_docs: dict[str, str],
+) -> None:
+    """Store project patterns + handoff docs in Mother Memory.
+
+    Spec: §4.9, FIX-27 — HandoffDoc nodes are permanent (Janitor-exempt).
+    """
+    try:
+        from factory.integrations.neo4j import get_neo4j
+        client = get_neo4j()
+
+        blueprint = state.s2_output or {}
+        screens = blueprint.get("architecture", {}).get("screens", [])
+
+        await client.store_project_patterns(
+            project_id=state.project_id,
+            stack=(
+                state.selected_stack.value if state.selected_stack else "unknown"
+            ),
+            screens=screens,
+            success=state.project_metadata.get("tests_passed", False),
+            war_room_count=state.retry_count,
+        )
+
+        await client.store_handoff_docs(
+            project_id=state.project_id,
+            program_id=state.project_metadata.get("program_id"),
+            stack=(
+                state.selected_stack.value if state.selected_stack else "unknown"
+            ),
+            app_category=blueprint.get("app_category", "general"),
+            docs={k: v for k, v in handoff_docs.items() if not k.startswith("_")},
+        )
+
+        logger.info(
+            f"[{state.project_id}] S8: Stored patterns + "
+            f"{len(handoff_docs)} handoff docs in Mother Memory"
+        )
+    except Exception as e:
+        logger.debug(f"[{state.project_id}] Mother Memory store skipped: {e}")
 
 
 # Register with DAG (replaces stub)

@@ -696,11 +696,14 @@ class _FallbackTable:
                         self._store[i] = {**row, **data}
                 return _FallbackResponse([])
             elif op == "delete":
-                self._store = [
+                # Mutate in-place so SupabaseFallback._tables keeps the reference
+                to_remove = [
                     r for r in self._store
-                    if not (self._filter_col and
-                            r.get(self._filter_col) == self._filter_val)
+                    if (self._filter_col and
+                        r.get(self._filter_col) == self._filter_val)
                 ]
+                for r in to_remove:
+                    self._store.remove(r)
                 return _FallbackResponse([])
         else:
             # Select query

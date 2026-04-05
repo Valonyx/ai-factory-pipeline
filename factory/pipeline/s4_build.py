@@ -306,3 +306,38 @@ async def _attempt_build_fix(
 
 # Register with DAG (replaces stub)
 register_stage_node("s4_build", s4_build_node)
+
+def _get_target_stores(stack: TechStack, platforms: list[str] = None) -> list[str]:
+    """Return the app stores targeted for a given stack and platforms.
+
+    Spec: §4.5 Build output routing
+    """
+    # Default platforms based on stack
+    if platforms is None:
+        if stack == TechStack.SWIFT:
+            platforms = ["ios"]
+        elif stack == TechStack.KOTLIN:
+            platforms = ["android"]
+        elif stack == TechStack.PYTHON_BACKEND:
+            platforms = ["web"]
+        elif stack == TechStack.FLUTTERFLOW:
+            platforms = ["ios", "android"]
+        elif stack == TechStack.REACT_NATIVE:
+            platforms = ["ios", "android"]
+        else:
+            platforms = []
+
+    stores = []
+    if "ios" in platforms or stack == TechStack.SWIFT:
+        stores.append("App Store")
+    if "android" in platforms or stack == TechStack.KOTLIN:
+        stores.append("Google Play")
+    if stack == TechStack.PYTHON_BACKEND or "web" in platforms:
+        stores.append("Cloud Run")
+    # FlutterFlow always targets both
+    if stack == TechStack.FLUTTERFLOW:
+        if "App Store" not in stores:
+            stores.append("App Store")
+        if "Google Play" not in stores:
+            stores.append("Google Play")
+    return list(dict.fromkeys(stores))  # deduplicate preserving order

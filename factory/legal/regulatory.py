@@ -144,13 +144,22 @@ DEPLOY_WINDOW_START_HOUR = int(os.getenv("DEPLOY_WINDOW_START", "6"))
 DEPLOY_WINDOW_END_HOUR = int(os.getenv("DEPLOY_WINDOW_END", "23"))
 
 
-def is_within_deploy_window(hour_ast: int) -> bool:
+def is_within_deploy_window(hour_ast) -> bool:
     """Check if current AST hour is within allowed deploy window.
 
     Spec: §2.7.3 — cst_time_of_day_restrictions
     Default: 06:00–23:00 AST
+
+    Args:
+        hour_ast: Either an int (hour in 0-23) or a datetime object.
+                  If datetime, the hour is extracted directly.
     """
-    return DEPLOY_WINDOW_START_HOUR <= hour_ast < DEPLOY_WINDOW_END_HOUR
+    import datetime as _dt
+    if isinstance(hour_ast, (_dt.datetime,)):
+        hour = hour_ast.hour
+    else:
+        hour = int(hour_ast)
+    return DEPLOY_WINDOW_START_HOUR <= hour < DEPLOY_WINDOW_END_HOUR
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -162,6 +171,7 @@ PROHIBITED_SDKS = [
     "kaspersky-sdk",         # Sanctioned entity concerns
     "tiktok-sdk",            # Data sovereignty concerns
     "telegram-unofficial",   # Unofficial forks
+    "facebook-analytics",    # Data sovereignty concerns
 ]
 
 
@@ -178,3 +188,11 @@ def check_prohibited_sdks(dependencies: list[str]) -> list[str]:
             if prohibited in dep_lower:
                 found.append(dep)
     return found
+
+# KSA timezone (§2.7.3 deploy window checks)
+try:
+    from zoneinfo import ZoneInfo
+    KSA_TIMEZONE = ZoneInfo("Asia/Riyadh")
+except Exception:
+    import datetime as _dt
+    KSA_TIMEZONE = _dt.timezone(_dt.timedelta(hours=3))  # UTC+3 fallback

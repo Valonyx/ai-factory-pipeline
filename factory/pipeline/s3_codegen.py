@@ -46,7 +46,14 @@ async def s3_codegen_node(state: PipelineState) -> PipelineState:
     Cost target: <$3.00
     """
     blueprint_data = state.s2_output or {}
-    is_retry = state.previous_stage == Stage.S5_TEST
+    # Retry when: retry_count > 0 with prior failures, or previous_stage was S5_TEST
+    s5_has_failures = bool(
+        state.s5_output and not state.s5_output.get("passed", True)
+        and state.s5_output.get("failures")
+    )
+    is_retry = (
+        state.retry_count > 0 and s5_has_failures
+    ) or state.previous_stage == Stage.S5_TEST
 
     if is_retry:
         state = await _codegen_retry_fix(state)
@@ -180,7 +187,7 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
 
         # War Room escalation
         fix_result = await _war_room_fix(
-            state, error, file_path,
+            state, file_path, error,
             existing_files.get(file_path, ""),
             existing_files,
         )
@@ -216,10 +223,10 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
 
 async def _war_room_fix(
     state: PipelineState,
-    error: str,
     file_path: str,
+    error: str,
     file_content: str,
-    all_files: dict,
+    all_files: Optional[dict] = None,
 ) -> dict:
     """War Room escalation for a single failure.
 
@@ -243,14 +250,14 @@ async def _war_room_fix(
     )
 
     if l1_result and "CANNOT_FIX" not in l1_result:
-        state.war_room_activations.append({
-            "level": "L1",
+        state.war_room_history.append({
+            "level": 1,
             "error": error[:200],
             "file": file_path,
             "resolved": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        return {"resolved": True, "fixed_content": l1_result, "level": "L1"}
+        return {"resolved": True, "fixed_content": l1_result, "level": 1}
 
     # ── L2: Engineer analysis ──
     l2_result = await call_ai(
@@ -286,18 +293,18 @@ async def _war_room_fix(
         except json.JSONDecodeError:
             fixed_content = l2_result
 
-        state.war_room_activations.append({
-            "level": "L2",
+        state.war_room_history.append({
+            "level": 2,
             "error": error[:200],
             "file": file_path,
             "resolved": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        return {"resolved": True, "fixed_content": fixed_content, "level": "L2"}
+        return {"resolved": True, "fixed_content": fixed_content, "level": 2}
 
     # ── L3: Unresolved — log for operator ──
-    state.war_room_activations.append({
-        "level": "L3",
+    state.war_room_history.append({
+        "level": 3,
         "error": error[:200],
         "file": file_path,
         "resolved": False,
@@ -307,7 +314,7 @@ async def _war_room_fix(
         f"[{state.project_id}] War Room L3 unresolved: "
         f"{file_path} — {error[:100]}"
     )
-    return {"resolved": False, "level": "L3"}
+    return {"resolved": False, "level": 3}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -496,3 +503,42 @@ def _create_minimal_scaffold(
 
 # Register with DAG (replaces stub)
 register_stage_node("s3_codegen", s3_codegen_node)
+
+def _parse_files_response(text: str) -> dict[str, str]:
+    """Parse AI-generated files response into a filename→content dict.
+
+    Spec: §4.4 — CodeGen output parsing
+    Handles: markdown fenced blocks with filename headers, plain JSON.
+    """
+    import re
+    files: dict[str, str] = {}
+    # Pattern: ## filename.ext or **filename.ext** followed by ```lang ... ```
+    pattern = re.compile(
+        r"(?:##\s*|[*]{2})([^\n*`]+?)(?:[*]{2})?\s*\n```[^\n]*\n(.*?)```",
+        re.DOTALL,
+    )
+    for match in pattern.finditer(text):
+        filename = match.group(1).strip()
+        content = match.group(2)
+        if filename and content:
+            files[filename] = content
+
+    # Fallback: try to extract JSON from plain ``` blocks or raw JSON
+    if not files:
+        # Try JSON inside a code fence (```json ... ``` or ``` ... ```)
+        fence_match = re.search(r"```(?:\w*)\n(.*?)```", text, re.DOTALL)
+        if fence_match:
+            try:
+                files = json.loads(fence_match.group(1).strip())
+                return files
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Try raw JSON
+        try:
+            files = json.loads(text.strip())
+            if isinstance(files, dict):
+                return files
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return files

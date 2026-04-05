@@ -77,6 +77,7 @@ def _transition_to(state: PipelineState, stage: Stage) -> None:
     prev = state.current_stage
     state.current_stage = stage
     state.stage_history.append({
+        "stage": stage.value,
         "from": prev.value,
         "to": stage.value,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -102,6 +103,7 @@ from factory.pipeline.s8_handoff import s8_handoff_node
 
 
 async def halt_handler_node(state: PipelineState) -> PipelineState:
+    _transition_to(state, Stage.HALTED)
     reason = (
         state.legal_halt_reason
         or state.project_metadata.get("halt_reason", "unknown")
@@ -123,7 +125,9 @@ async def halt_handler_node(state: PipelineState) -> PipelineState:
 def route_after_test(state: PipelineState) -> str:
     if state.current_stage == Stage.HALTED:
         return "halt"
-    test_passed = state.project_metadata.get("tests_passed", False)
+    # Check s5_output first (direct stage output), then project_metadata fallback
+    s5 = state.s5_output or {}
+    test_passed = s5.get("all_passed", state.project_metadata.get("tests_passed", False))
     if test_passed:
         return "s6_deploy"
     if should_retry(state):
@@ -137,12 +141,14 @@ def route_after_test(state: PipelineState) -> str:
 def route_after_verify(state: PipelineState) -> str:
     if state.current_stage == Stage.HALTED:
         return "halt"
-    verify_passed = state.project_metadata.get("verify_passed", False)
+    # Check s7_output first, then project_metadata fallback
+    s7 = state.s7_output or {}
+    verify_passed = s7.get("verified", state.project_metadata.get("verify_passed", False))
     if verify_passed:
         return "s8_handoff"
-    deploy_retries = state.project_metadata.get("deploy_retries", 0)
+    deploy_retries = state.retry_count
     if deploy_retries < 2:
-        state.project_metadata["deploy_retries"] = deploy_retries + 1
+        increment_retry(state)
         return "s6_deploy"
     return "halt"
 
@@ -229,3 +235,12 @@ async def run_pipeline_from_description(
     state.autonomy_mode = AutonomyMode(autonomy_mode)
     state.project_metadata["raw_input"] = description
     return await run_pipeline(state)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# STAGE_NODES dict — maps stage name to node function (test export)
+# ═══════════════════════════════════════════════════════════════════
+
+from factory.pipeline.graph import _stage_nodes as _graph_stage_nodes
+
+STAGE_NODES: dict = _graph_stage_nodes

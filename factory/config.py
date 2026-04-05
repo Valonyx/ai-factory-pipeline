@@ -104,6 +104,9 @@ class BudgetConfig:
     # Circuit breaker per-phase limit
     circuit_breaker_usd: float = 2.0
 
+    # Per-project cap (USD)
+    project_cap_usd: float = 25.0
+
     # SAR conversion rate
     sar_rate: float = 3.75
 
@@ -157,6 +160,14 @@ class ComplianceConfig:
     deploy_window_end_hour: int = int(
         os.getenv("DEPLOY_WINDOW_END_HOUR", "23"),
     )
+
+    @property
+    def deploy_window_start(self) -> int:
+        return self.deploy_window_start_hour
+
+    @property
+    def deploy_window_end(self) -> int:
+        return self.deploy_window_end_hour
 
 
 COMPLIANCE = ComplianceConfig()

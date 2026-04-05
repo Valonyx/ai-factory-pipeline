@@ -74,15 +74,27 @@ async def store_decision_request(
     }
 
 
-async def resolve_decision(decision_id: str, selected_value: str) -> None:
+async def resolve_decision(decision_id: str, selected_value: str) -> bool:
     """Record operator's decision choice.
 
     Called from callback handler when operator taps an option.
+    Returns True if decision existed, False otherwise.
     """
-    if decision_id in _pending_decisions:
-        _pending_decisions[decision_id]["resolved"] = True
-        _pending_decisions[decision_id]["selected"] = selected_value
+    if decision_id not in _pending_decisions:
+        _resolved_decisions.pop(decision_id, None)
+        return False
+
+    entry = _pending_decisions[decision_id]
+    # Support both dict entries and asyncio.Future entries
+    if hasattr(entry, "set_result"):
+        # It's a Future
+        if not entry.done():
+            entry.set_result(selected_value)
+    else:
+        entry["resolved"] = True
+        entry["selected"] = selected_value
     _resolved_decisions[decision_id] = selected_value
+    return True
 
 
 async def get_decision_result(decision_id: str) -> Optional[str]:
@@ -136,19 +148,21 @@ async def clear_deploy_decision(project_id: str) -> None:
 # Operator State Tracking
 # ═══════════════════════════════════════════════════════════════════
 
-_operator_states: dict[str, str] = {}
+_operator_states: dict[str, dict] = {}
 
 
-async def set_operator_state(operator_id: str, state: str) -> None:
+async def set_operator_state(
+    operator_id: str, state: str, context: Optional[dict] = None,
+) -> None:
     """Set conversational state for operator.
 
     Spec: §5.3 (awaiting_project_description, etc.)
     """
-    _operator_states[operator_id] = state
+    _operator_states[operator_id] = {"state": state, "context": context or {}}
 
 
-async def get_operator_state(operator_id: str) -> Optional[str]:
-    """Get current conversational state."""
+async def get_operator_state(operator_id: str) -> Optional[dict]:
+    """Get current conversational state. Returns dict with 'state' and 'context'."""
     return _operator_states.get(operator_id)
 
 
@@ -164,8 +178,8 @@ async def clear_operator_state(operator_id: str) -> None:
 _operator_prefs: dict[str, dict] = {}
 
 
-async def get_operator_preferences(operator_id: str) -> dict:
-    """Get operator's stored preferences.
+def get_operator_preferences(operator_id: str) -> dict:
+    """Get operator's stored preferences (sync).
 
     Defaults: autopilot mode, cloud execution.
     """
@@ -195,10 +209,11 @@ async def set_operator_preference(
 async def present_decision(
     state: PipelineState,
     decision_type: str,
-    question: str,
-    options: list[dict[str, str]],
+    question: str = "",
+    options: list[dict[str, str]] = None,
     recommended: int = 0,
     timeout_seconds: int = 3600,
+    message: str = "",  # alias for question
 ) -> str:
     """Present a 4-way decision menu to the operator.
 
@@ -218,6 +233,9 @@ async def present_decision(
     Returns:
         The 'value' of the selected option.
     """
+    if options is None:
+        options = []
+    question = question or message  # accept either kwarg
     # Autopilot: auto-select recommendation
     if state.autonomy_mode == AutonomyMode.AUTOPILOT:
         selected = options[recommended]["value"]

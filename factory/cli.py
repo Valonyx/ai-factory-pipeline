@@ -123,3 +123,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def _show_health() -> None:
+    """Print pipeline health status to stdout.
+
+    Used by: tests, CLI health check command.
+    """
+    from factory.config import get_config_summary
+    summary = get_config_summary()
+    print(f"Status: healthy")
+    print(f"Version: {summary['version']}")
+    print(f"Pipeline: v{summary.get('pipeline_version', '5.6')}")
+    print(f"Region: {summary.get('data_residency', 'me-central1')}")

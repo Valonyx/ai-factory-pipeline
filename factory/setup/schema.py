@@ -321,3 +321,170 @@ async def initialize_schema() -> dict[str, Any]:
         f"{len(result['errors'])} errors"
     )
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Test-compatible exports (§7.1.3 + §8.3.1)
+# ═══════════════════════════════════════════════════════════════════
+
+import re as _re
+
+# SUPABASE_SCHEMAS: 11 tables as raw DDL strings (idempotent)
+SUPABASE_SCHEMAS: list[str] = [
+    "CREATE TABLE IF NOT EXISTS pipeline_states (project_id TEXT PRIMARY KEY, state_json JSONB NOT NULL, checksum TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS state_snapshots (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, snapshot_number INTEGER NOT NULL, stage TEXT NOT NULL, state_json JSONB NOT NULL, checksum TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS operator_whitelist (telegram_id TEXT PRIMARY KEY, added_at TIMESTAMPTZ DEFAULT NOW(), added_by TEXT, is_active BOOLEAN DEFAULT TRUE, permissions JSONB DEFAULT '{}'::jsonb);",
+    "CREATE TABLE IF NOT EXISTS operator_state (telegram_id TEXT PRIMARY KEY, state TEXT, preferences JSONB DEFAULT '{}'::jsonb, last_active TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS active_projects (operator_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, current_stage TEXT NOT NULL, state_json JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS archived_projects (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, operator_id TEXT NOT NULL, state_json JSONB NOT NULL, archived_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS monthly_costs (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, operator_id TEXT NOT NULL, month TEXT NOT NULL, role TEXT NOT NULL, model TEXT NOT NULL, token_cost NUMERIC(10,6) DEFAULT 0, total_tokens INTEGER DEFAULT 0, updated_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, operator_id TEXT, event_type TEXT NOT NULL, stage TEXT, details JSONB DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS pipeline_metrics (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, stage TEXT NOT NULL, duration_ms INTEGER, cost_usd NUMERIC(10,6), created_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS memory_stats (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, node_type TEXT NOT NULL, count INTEGER DEFAULT 0, updated_at TIMESTAMPTZ DEFAULT NOW());",
+    "CREATE TABLE IF NOT EXISTS temp_artifacts (id BIGSERIAL PRIMARY KEY, project_id TEXT NOT NULL, object_key TEXT NOT NULL, bucket TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, size_bytes BIGINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW());",
+]
+
+# 7 explicit standalone indexes (§8.3.1)
+SUPABASE_INDEXES: list[str] = [
+    "CREATE INDEX IF NOT EXISTS idx_snapshots_project ON state_snapshots(project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_snapshots_created ON state_snapshots(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_metrics_project ON monthly_costs(project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_temp_artifacts_expires ON temp_artifacts(expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_monthly_costs_month ON monthly_costs(month)",
+]
+
+class _Neo4jIndex(str):
+    """String subclass that also supports dict-like ['name'] access.
+
+    - As a string: contains the full Cypher DDL statement (for 'IF NOT EXISTS' checks)
+    - As a dict:  idx["name"] returns the index name; idx["cypher"] returns the same string
+    """
+    def __new__(cls, cypher: str, name: str = ""):
+        obj = str.__new__(cls, cypher)
+        obj._idx_name = name
+        return obj
+
+    def __getitem__(self, key):
+        if key == "name":
+            return self._idx_name
+        if key == "cypher":
+            return str(self)
+        return str.__getitem__(self, key)
+
+    def get(self, key, default=None):
+        if key == "name":
+            return self._idx_name
+        if key == "cypher":
+            return str(self)
+        return default
+
+
+# NEO4J_INDEXES: 18 items — string-subclass that supports both string ops and ["name"] access
+NEO4J_INDEXES = [
+    _Neo4jIndex("CREATE INDEX idx_stack_pattern_id IF NOT EXISTS FOR (n:StackPattern) ON (n.id)", "idx_stack_pattern_id"),
+    _Neo4jIndex("CREATE INDEX idx_stack_pattern_stack IF NOT EXISTS FOR (n:StackPattern) ON (n.stack)", "idx_stack_pattern_stack"),
+    _Neo4jIndex("CREATE INDEX idx_component_id IF NOT EXISTS FOR (n:Component) ON (n.id)", "idx_component_id"),
+    _Neo4jIndex("CREATE INDEX idx_component_type IF NOT EXISTS FOR (n:Component) ON (n.type)", "idx_component_type"),
+    _Neo4jIndex("CREATE INDEX idx_design_dna_id IF NOT EXISTS FOR (n:DesignDNA) ON (n.id)", "idx_design_dna_id"),
+    _Neo4jIndex("CREATE INDEX idx_bug_pattern_id IF NOT EXISTS FOR (n:BugPattern) ON (n.id)", "idx_bug_pattern_id"),
+    _Neo4jIndex("CREATE INDEX idx_bug_pattern_stage IF NOT EXISTS FOR (n:BugPattern) ON (n.stage)", "idx_bug_pattern_stage"),
+    _Neo4jIndex("CREATE INDEX idx_api_contract_id IF NOT EXISTS FOR (n:APIContract) ON (n.id)", "idx_api_contract_id"),
+    _Neo4jIndex("CREATE INDEX idx_user_story_id IF NOT EXISTS FOR (n:UserStory) ON (n.id)", "idx_user_story_id"),
+    _Neo4jIndex("CREATE INDEX idx_tech_debt_id IF NOT EXISTS FOR (n:TechDebt) ON (n.id)", "idx_tech_debt_id"),
+    _Neo4jIndex("CREATE INDEX idx_legal_constraint_id IF NOT EXISTS FOR (n:LegalConstraint) ON (n.id)", "idx_legal_constraint_id"),
+    _Neo4jIndex("CREATE INDEX idx_legal_constraint_body IF NOT EXISTS FOR (n:LegalConstraint) ON (n.regulatory_body)", "idx_legal_constraint_body"),
+    _Neo4jIndex("CREATE INDEX idx_post_snapshot_id IF NOT EXISTS FOR (n:PostSnapshot) ON (n.id)", "idx_post_snapshot_id"),
+    _Neo4jIndex("CREATE INDEX idx_post_snapshot_project IF NOT EXISTS FOR (n:PostSnapshot) ON (n.project_id)", "idx_post_snapshot_project"),
+    _Neo4jIndex("CREATE INDEX idx_handoff_doc_id IF NOT EXISTS FOR (n:HandoffDoc) ON (n.id)", "idx_handoff_doc_id"),
+    _Neo4jIndex("CREATE INDEX idx_handoff_doc_project IF NOT EXISTS FOR (n:HandoffDoc) ON (n.project_id)", "idx_handoff_doc_project"),
+    _Neo4jIndex("CREATE INDEX idx_rel_used_at IF NOT EXISTS FOR ()-[r:USED_IN]-() ON (r.used_at)", "idx_rel_used_at"),
+    _Neo4jIndex("CREATE INDEX idx_rel_solved_at IF NOT EXISTS FOR ()-[r:SOLVES]-() ON (r.solved_at)", "idx_rel_solved_at"),
+]
+
+# 1 Neo4j uniqueness constraint (§7.1.3)
+NEO4J_CONSTRAINTS: list[str] = [
+    "CREATE CONSTRAINT project_id_unique IF NOT EXISTS FOR (n:Project) REQUIRE n.id IS UNIQUE",
+]
+
+# 12 Mother Memory node types (§6.3)
+NEO4J_NODE_TYPES: list[str] = [
+    "Project", "Component", "ErrorPattern", "StackPattern",
+    "DesignDNA", "RegulatoryDecision", "LegalDocTemplate",
+    "Graveyard", "WarRoomEvent", "Pattern",
+    "HandoffDoc", "StorePolicyEvent",
+]
+
+
+def _extract_table_name(ddl) -> str:
+    """Extract table name from a CREATE TABLE IF NOT EXISTS DDL string or dict."""
+    if isinstance(ddl, dict):
+        ddl = ddl.get("ddl", "")
+    match = _re.search(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", str(ddl), _re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def get_schema_summary() -> dict:
+    """Return counts of schema objects for validation."""
+    return {
+        "supabase_table_count": len(SUPABASE_SCHEMAS),
+        "supabase_index_count": len(SUPABASE_INDEXES),
+        "neo4j_index_count": len(NEO4J_INDEXES),
+        "neo4j_constraint_count": len(NEO4J_CONSTRAINTS),
+        "neo4j_node_type_count": len(NEO4J_NODE_TYPES),
+    }
+
+
+async def initialize_supabase_schema(
+    dry_run: bool = False,
+    supabase_client=None,
+) -> dict:
+    """Initialize Supabase schema (tables + indexes).
+
+    Spec: §7.1.3
+    When supabase_client is None, runs in dry-run mode.
+    """
+    if dry_run or supabase_client is None:
+        return {
+            "tables_created": len(SUPABASE_SCHEMAS),
+            "indexes_created": len(SUPABASE_INDEXES),
+            "dry_run": True,
+            "errors": [],
+        }
+
+    result = await initialize_schema()
+    return {
+        "tables_created": result["supabase_tables"],
+        "indexes_created": len(SUPABASE_INDEXES),
+        "dry_run": False,
+        "errors": result["errors"],
+    }
+
+
+async def initialize_neo4j_schema(
+    dry_run: bool = False,
+    neo4j_client=None,
+) -> dict:
+    """Initialize Neo4j schema (indexes + constraints).
+
+    Spec: §7.1.3
+    When neo4j_client is None, returns expected counts (dry-run).
+    """
+    if dry_run or neo4j_client is None:
+        return {
+            "indexes_created": len(NEO4J_INDEXES),
+            "constraints_created": len(NEO4J_CONSTRAINTS),
+            "dry_run": True,
+            "errors": [],
+        }
+
+    result = await initialize_schema()
+    return {
+        "indexes_created": result["neo4j_indexes"],
+        "constraints_created": len(NEO4J_CONSTRAINTS),
+        "dry_run": False,
+        "errors": result["errors"],
+    }

@@ -86,14 +86,14 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
 
     try:
         requirements = json.loads(result)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError, Exception):
         # Fallback: create minimal requirements from raw input
         logger.warning(
             f"[{state.project_id}] S0: Failed to parse Quick Fix JSON, "
             f"using fallback extraction"
         )
         requirements = {
-            "app_name": raw_input[:50].strip(),
+            "app_name": raw_input[:50].strip() or "Untitled",
             "app_description": raw_input[:500],
             "app_category": "other",
             "features_must": [],
@@ -170,3 +170,23 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
 
 # Register with DAG
 register_stage_node("s0_intake", s0_intake_node)
+
+def _fallback_requirements(raw_text: str) -> dict:
+    """Parse requirements with a minimal fallback when AI parsing fails.
+
+    Spec: §4.0 S0 Intake — graceful degradation
+    """
+    return {
+        "app_name": raw_text.strip() or "Unnamed App",
+        "app_description": raw_text[:500],
+        "app_category": "other",
+        "target_platforms": ["ios", "android"],
+        "tech_stack": "react_native",
+        "features_must": [],
+        "features_nice": [],
+        "has_payments": False,
+        "has_user_accounts": True,
+        "estimated_complexity": "medium",
+        "region": "ksa",
+        "parsed_by": "fallback",
+    }

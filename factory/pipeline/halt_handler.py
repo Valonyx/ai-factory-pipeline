@@ -14,7 +14,7 @@ import logging
 from factory.core.state import PipelineState, Stage
 from factory.telegram.messages import format_halt_message
 from factory.telegram.notifications import send_telegram_message
-from factory.pipeline.graph import register_stage_node
+from factory.pipeline.graph import register_stage_node, transition_to
 
 logger = logging.getLogger("factory.pipeline.halt_handler")
 
@@ -24,6 +24,7 @@ async def halt_handler_node(state: PipelineState) -> PipelineState:
 
     Spec: §4.10
     """
+    transition_to(state, Stage.HALTED)
     message = format_halt_message(state)
     await send_telegram_message(state.operator_id, message)
 

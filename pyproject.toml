@@ -1,8 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
 [project]
 name = "ai-factory-pipeline"
 version = "5.6.0"
 description = "AI Factory Pipeline v5.6 — Autonomous App Factory"
 requires-python = ">=3.11"
+
+[project.scripts]
+factory-cli = "factory.cli:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"

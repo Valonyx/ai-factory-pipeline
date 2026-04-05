@@ -139,7 +139,7 @@ async def _scout_extract_dna(state: PipelineState, trend_research: str) -> str:
     )
 
 
-def _parse_design_json(raw: str, fallback_category: str) -> dict:
+def _parse_design_json(raw: str, fallback_category: str = "general") -> dict:
     """Parse Design DNA JSON from Scout response.
 
     Falls back to category defaults if parsing fails.

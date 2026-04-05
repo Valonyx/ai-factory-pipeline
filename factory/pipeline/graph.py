@@ -398,13 +398,14 @@ class SimpleExecutor:
 
 
 async def run_pipeline(
-    graph: Any, state: PipelineState,
+    graph_or_state: Any, state: Optional[PipelineState] = None,
 ) -> PipelineState:
-    """Execute the pipeline graph with a given initial state.
-
-    Spec: §2.7.1
-    Called from Telegram bot after project creation.
-    """
+    """Overloaded: run_pipeline(state) or run_pipeline(graph, state)."""
+    if state is None:
+        # Called as run_pipeline(state)
+        state = graph_or_state
+        graph_or_state = build_pipeline_graph()
+    graph = graph_or_state
     logger.info(
         f"[{state.project_id}] 🚀 Pipeline starting "
         f"(mode={state.execution_mode.value}, "
@@ -445,3 +446,6 @@ async def run_pipeline(
             f"Use /restore to recover.",
         )
         return state
+
+# Alias for test compatibility
+_transition_to = transition_to

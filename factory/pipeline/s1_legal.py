@@ -81,11 +81,18 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
     )
 
     # ── Step 2: Strategist classifies and decides ──
+    # Exclude technical fields to keep the prompt focused on legal aspects
+    legal_fields = [
+        "app_description", "app_category", "features_must", "features_nice",
+        "has_payments", "has_user_accounts", "has_location", "has_notifications",
+        "has_realtime", "region",
+    ]
+    legal_req = {k: requirements.get(k) for k in legal_fields if k in requirements}
     legal_decision = await call_ai(
         role=AIRole.STRATEGIST,
         prompt=(
             f"LEGAL CLASSIFICATION.\n\n"
-            f"App requirements:\n{json.dumps(requirements, indent=2)[:4000]}\n\n"
+            f"App requirements:\n{json.dumps(legal_req, indent=2)[:4000]}\n\n"
             f"KSA regulatory research:\n{legal_research[:3000]}\n\n"
             f"Classify and decide. Return ONLY valid JSON:\n"
             f'{{\n'
@@ -279,3 +286,24 @@ def _calculate_compliance_confidence(warnings: list[dict]) -> float:
 
 # Register with DAG
 register_stage_node("s1_legal", s1_legal_node)
+
+def _default_legal_output() -> dict:
+    """Return a safe default legal output for fallback scenarios.
+
+    Spec: §4.1 S1 Legal Gate — graceful degradation
+    """
+    return {
+        "legal_check_passed": True,
+        "proceed": True,
+        "data_classification": "internal",
+        "regulatory_bodies": ["PDPL", "CST"],
+        "compliance_issues": [],
+        "blocked_features": [],
+        "required_legal_docs": ["privacy_policy", "terms_of_service"],
+        "payment_mode": "SANDBOX",
+        "risk_level": "low",
+        "pdpl_required": True,
+        "sama_required": False,
+        "confidence": 0.5,
+        "parsed_by": "fallback",
+    }

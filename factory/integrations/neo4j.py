@@ -190,22 +190,27 @@ class Neo4jClient:
 
     async def query_mother_memory(
         self, stack: str, screens: list[str],
-        auth_method: str,
+        category: str = "",
     ) -> list[dict]:
         """Query Mother Memory for reusable patterns.
 
         Spec: §3.3 (Engineer queries before code generation)
         """
         patterns = await self.find_nodes("StackPattern", {"stack": stack})
-        return [
-            {
+        results = []
+        for p in patterns:
+            if not p.get("success"):
+                continue
+            if category and p.get("category") and p.get("category") != category:
+                continue
+            results.append({
                 "project_id": p.get("project_id"),
+                "stack": p.get("stack"),
                 "screen_count": p.get("screen_count"),
                 "success": p.get("success"),
-            }
-            for p in patterns
-            if p.get("success")
-        ]
+                "category": p.get("category"),
+            })
+        return results
 
     # ═══════════════════════════════════════════════════════════════
     # FIX-27 Handoff Doc Persistence
@@ -227,7 +232,7 @@ class Neo4jClient:
                 continue
             doc_type = doc_name.replace(".md", "").lower()
             await self.create_node("HandoffDoc", {
-                "id": f"hd_{project_id}_{doc_type}",
+                "id": f"hd_{project_id}_{doc_name}",
                 "project_id": project_id,
                 "program_id": program_id,
                 "stack": stack,
@@ -348,3 +353,40 @@ def get_neo4j() -> Neo4jClient:
 async def neo4j_run(query: str, params: Optional[dict] = None) -> list[dict]:
     """Convenience: execute Cypher query."""
     return await get_neo4j().run(query, params)
+
+# Relationship types used in Mother Memory (§6.3)
+RELATIONSHIP_TYPES: list[str] = [
+    "USED_IN", "SOLVES", "SIMILAR_TO", "DEPENDS_ON",
+    "TRIGGERS", "GENERATED_BY", "BELONGS_TO",
+]
+
+
+async def store_handoff_docs_in_memory(
+    project_id: str, docs: list[dict],
+) -> int:
+    """Store handoff docs in Mother Memory.
+
+    Alias for store_handoff_docs with simplified interface.
+    Spec: FIX-27 (Handoff Intelligence Pack)
+    """
+    client = get_neo4j()
+    stored = 0
+    for doc in docs:
+        try:
+            await client.store_handoff_docs(project_id, doc)
+            stored += 1
+        except Exception:
+            pass
+    return stored
+
+
+async def store_project_patterns(project_id: str, patterns: dict) -> int:
+    """Module-level convenience for storing project patterns in Mother Memory.
+
+    Spec: §6.3 Mother Memory
+    """
+    client = get_neo4j()
+    try:
+        return await client.store_project_patterns(project_id, patterns)
+    except Exception:
+        return 0

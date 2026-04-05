@@ -481,3 +481,21 @@ async def _store_in_mother_memory(
 
 # Register with DAG (replaces stub)
 register_stage_node("s8_handoff", s8_handoff_node)
+
+def _compile_project_summary(state) -> dict:
+    """Compile a project summary dict from pipeline state.
+
+    Spec: §4.9 S8 Handoff — summary for handoff intelligence pack.
+    """
+    from datetime import datetime, timezone as _tz
+    blueprint = state.s2_output or {}
+    return {
+        "project_id": state.project_id,
+        "app_name": blueprint.get("app_name", state.idea_name),
+        "stack": blueprint.get("selected_stack", "unknown"),
+        "platforms": blueprint.get("target_platforms", []),
+        "total_cost_usd": state.total_cost_usd,
+        "stages_completed": len(state.stage_history),
+        "handoff_docs": HANDOFF_DOCS,
+        "completed_at": datetime.now(_tz.utc).isoformat(),
+    }

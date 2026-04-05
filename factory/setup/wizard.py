@@ -104,20 +104,25 @@ _VERIFIERS = {
 
 async def run_setup_wizard(
     operator_id: str,
-    send_message,   # Callable[str] → sends Telegram message to operator
+    send_message=None,   # Optional: if provided, runs 5-step mode; else 8-secret mode
 ) -> dict[str, Any]:
-    """Run the 5-step setup wizard for an operator.
+    """Run the setup wizard for an operator.
 
     Spec: §7.1.2
 
+    Two modes:
+    - 5-step mode (send_message provided): interactive with given send callback.
+      Returns {step_key: {"stored": bool, "verified": bool, "skipped": bool, "detail": str}}
+    - 8-secret mode (no send_message): uses internal Telegram send/reply functions.
+      Returns {"passed": [...], "failed": [...], "skipped": [...], "supabase_schema": ..., "neo4j_schema": ...}
+
     Args:
         operator_id: Telegram user ID string.
-        send_message: Async callable that sends a message to the operator.
-                      Signature: async def send_message(text: str) -> None
-
-    Returns:
-        {step_key: {"stored": bool, "verified": bool, "detail": str}}
+        send_message: Optional async callable. If None, uses internal Telegram functions.
     """
+    if send_message is None:
+        return await _run_setup_wizard_8secret(operator_id)
+
     results: dict[str, Any] = {}
 
     await send_message(
@@ -325,3 +330,131 @@ async def _collect_neo4j(operator_id: str, send_message) -> dict:
         detail = str(e)[:120]
         await send_message(f"⚠️ Neo4j verification failed: {detail}")
         return {"stored": True, "verified": False, "skipped": False, "detail": detail}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Test-compatible exports
+# ═══════════════════════════════════════════════════════════════════
+
+SECRET_TIMEOUT_SECONDS: int = 300
+SECRET_SKIP_VALUE: str = "SKIP"
+
+# WIZARD_SECRETS: 8 tuples of (secret_name, description)
+# Format: (name, description) — matches Appendix B
+WIZARD_SECRETS: list[tuple] = [
+    ("ANTHROPIC_API_KEY",    "Anthropic API key (sk-ant-...)"),
+    ("PERPLEXITY_API_KEY",   "Perplexity API key (pplx-...)"),
+    ("TELEGRAM_BOT_TOKEN",   "Telegram Bot Token (from @BotFather)"),
+    ("GITHUB_TOKEN",         "GitHub Personal Access Token (ghp_...)"),
+    ("SUPABASE_URL",         "Supabase project URL (https://xxx.supabase.co)"),
+    ("SUPABASE_SERVICE_KEY", "Supabase service role key"),
+    ("NEO4J_URI",            "Neo4j URI (neo4j+s://...)"),
+    ("NEO4J_PASSWORD",       "Neo4j password"),
+]
+
+
+def check_secret_exists(secret_name: str) -> bool:
+    """Check if a secret is already configured in the environment.
+
+    Spec: §7.1.2
+    Returns True if the secret is set and non-empty.
+    """
+    import os
+    return bool(os.getenv(secret_name))
+
+
+def _get_send_function():
+    """Return the send_message function for wizard prompts.
+
+    Returns the Telegram send_message function, or a no-op stub.
+    Spec: §7.1.2
+    """
+    try:
+        from factory.telegram.notifications import send_telegram_message
+        return send_telegram_message
+    except ImportError:
+        async def _noop(operator_id, text, **kwargs):
+            pass
+        return _noop
+
+
+def _get_reply_function():
+    """Return the wait_for_operator_reply function for wizard.
+
+    Spec: §7.1.2
+    """
+    from factory.telegram.decisions import wait_for_operator_reply
+    return wait_for_operator_reply
+
+
+async def _run_setup_wizard_8secret(operator_id: str) -> dict:
+    """Run the 8-secret setup wizard for an operator (internal variant).
+
+    Spec: §7.1.2
+    Collects all 8 secrets via Telegram, stores them, then initializes schemas.
+
+    Returns:
+        {"passed": [...], "failed": [...], "skipped": [...],
+         "supabase_schema": dict, "neo4j_schema": dict}
+    """
+    send_fn = _get_send_function()
+    reply_fn = _get_reply_function()
+
+    results: dict = {"passed": [], "failed": [], "skipped": []}
+
+    for secret_name, description in WIZARD_SECRETS:
+        # If already configured, skip prompt
+        if check_secret_exists(secret_name):
+            results["passed"].append(secret_name)
+            continue
+
+        # Prompt operator
+        await send_fn(
+            operator_id,
+            f"🔑 *{secret_name}*\n{description}\n\nSend the value or `SKIP`:",
+        )
+
+        # Wait for reply
+        value = await reply_fn(
+            operator_id,
+            timeout=SECRET_TIMEOUT_SECONDS,
+            default=SECRET_SKIP_VALUE,
+        )
+
+        if value == SECRET_SKIP_VALUE or not value:
+            results["skipped"].append(secret_name)
+        else:
+            try:
+                from factory.core.secrets import store_secret as _store
+                await _store(secret_name, value)
+                results["passed"].append(secret_name)
+            except Exception as e:
+                logger.error(f"[Wizard] Failed to store {secret_name}: {e}")
+                results["failed"].append(secret_name)
+
+    # Initialize schemas
+    from factory.setup.schema import (
+        initialize_supabase_schema, initialize_neo4j_schema,
+    )
+    results["supabase_schema"] = await initialize_supabase_schema(
+        supabase_client=None,
+    )
+    results["neo4j_schema"] = await initialize_neo4j_schema(
+        neo4j_client=None,
+    )
+
+    # Send summary
+    total = len(WIZARD_SECRETS)
+    passed = len(results["passed"])
+    skipped = len(results["skipped"])
+    failed = len(results["failed"])
+    await send_fn(
+        operator_id,
+        f"📊 Setup Complete\n\n"
+        f"✅ Configured: {passed}/{total}\n"
+        f"⏭️ Skipped: {skipped}\n"
+        f"❌ Failed: {failed}\n\n"
+        f"Run /status to verify your configuration.",
+    )
+
+    return results

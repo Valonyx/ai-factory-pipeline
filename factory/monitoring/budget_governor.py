@@ -109,6 +109,8 @@ class BudgetGovernor:
     def __init__(self, ceiling_usd: float = HARD_CEILING_USD):
         # Integer cents for all calculations
         self.ceiling_cents = int(ceiling_usd * 100)
+        # SAR ceiling (for determine_tier with SAR values)
+        self.ceiling_sar = ceiling_usd * 3.75
         self._last_tier = BudgetTier.GREEN
         self._last_alert_tier: Optional[BudgetTier] = None
         self._override_active = False
@@ -133,17 +135,28 @@ class BudgetGovernor:
     # ───────────────────────────────────────────────────────────
 
     def determine_tier(
-        self, spend_cents: Optional[int] = None,
+        self, spend_sar: Optional[float] = None,
     ) -> BudgetTier:
-        """Determine budget tier from current spend.
+        """Determine budget tier from current spend in SAR.
 
         Spec: §2.14.3
-        """
-        spend = spend_cents if spend_cents is not None else self._cached_spend_cents
-        if self.ceiling_cents <= 0:
-            return BudgetTier.GREEN
 
-        pct = (spend * 100) // self.ceiling_cents
+        Args:
+            spend_sar: Current spend in SAR. If None, uses cached spend
+                       (converted from USD cents to SAR).
+        """
+        if spend_sar is not None:
+            # Explicit SAR value (e.g. from tests or SAR-denominated tracking)
+            ceiling = self.ceiling_sar
+            if ceiling <= 0:
+                return BudgetTier.GREEN
+            pct = int((spend_sar * 100) / ceiling)
+        else:
+            # Fall back to cached USD cents
+            if self.ceiling_cents <= 0:
+                return BudgetTier.GREEN
+            pct = (self._cached_spend_cents * 100) // self.ceiling_cents
+
         if pct >= BUDGET_TIER_THRESHOLDS[BudgetTier.BLACK]:
             return BudgetTier.BLACK
         elif pct >= BUDGET_TIER_THRESHOLDS[BudgetTier.RED]:
@@ -151,6 +164,21 @@ class BudgetGovernor:
         elif pct >= BUDGET_TIER_THRESHOLDS[BudgetTier.AMBER]:
             return BudgetTier.AMBER
         return BudgetTier.GREEN
+
+    def get_degraded_role(
+        self, role: "AIRole", tier: BudgetTier,
+    ) -> "AIRole":
+        """Return degraded role for given tier.
+
+        Spec: §2.14.3 Graduated Degradation
+        AMBER: STRATEGIST → ENGINEER
+        GREEN: no degradation
+        """
+        if tier == BudgetTier.GREEN:
+            return role
+        if role.value == "strategist":
+            return role.__class__("engineer")
+        return role
 
     def spend_percentage(self) -> int:
         """Current spend as percentage of ceiling."""

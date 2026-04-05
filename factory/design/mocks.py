@@ -41,12 +41,12 @@ MOCK_VARIATIONS = [
         "hint": "Max whitespace, thin borders, subtle shadows",
     },
     {
-        "name": "Bold Modern",
-        "hint": "Vivid colors, rounded corners, card-heavy",
+        "name": "Card-Heavy",
+        "hint": "Vivid colors, rounded corners, card-heavy layouts",
     },
     {
-        "name": "Professional",
-        "hint": "Structured grid, muted tones, data-dense",
+        "name": "Dashboard",
+        "hint": "Structured grid, muted tones, data-dense dashboard style",
     },
 ]
 
@@ -226,3 +226,35 @@ def get_variation_name(index: int) -> str:
 def get_variation_count() -> int:
     """Get total number of mock variations."""
     return len(MOCK_VARIATIONS)
+
+async def select_mock(state, mocks: list) -> dict:
+    """Select a specific mock variation from a list.
+
+    Spec: §3.4.3 — Operator mock selection
+    Autopilot: auto-selects first (index 0).
+    Copilot: would await operator selection (stub: returns first).
+    """
+    if not mocks:
+        return {}
+    return mocks[0]
+
+
+def _placeholder_html(design: dict, variation: dict, screens: list) -> str:
+    """Generate a placeholder HTML screen mock.
+
+    Spec: §3.4.3 — Fallback when AI-generated mocks fail
+
+    Args:
+        design: Design spec dict (color_palette, typography, etc.)
+        variation: Mock variation dict with name and hint
+        screens: List of screen names to render
+    """
+    app_name = design.get("app_name", "App") if isinstance(design, dict) else str(design)
+    variation_name = variation.get("name", "") if isinstance(variation, dict) else str(variation)
+    screens_html = "".join(f"<p>{s}</p>" for s in (screens or []))
+    primary = design.get("color_palette", {}).get("primary", "#3B82F6") if isinstance(design, dict) else "#3B82F6"
+    return f"""<!DOCTYPE html>
+<html><head><title>{app_name} - {variation_name}</title>
+<meta name="viewport" content="width=375px">
+<style>body{{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f5;max-width:375px}}.mock{{text-align:center;padding:20px;color:{primary}}}</style>
+</head><body><div class="mock"><h1>{app_name}</h1><h2>{variation_name}</h2>{screens_html}</div></body></html>"""

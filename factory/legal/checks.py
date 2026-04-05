@@ -272,11 +272,15 @@ async def check_data_residency(state: PipelineState) -> dict:
 
     Spec: §2.7.3 — S3 post
     """
-    region = state.project_metadata.get("deploy_region", PRIMARY_DATA_REGION)
+    region = (
+        (state.s2_output or {}).get("deploy_region")
+        or state.project_metadata.get("deploy_region", PRIMARY_DATA_REGION)
+    )
 
     if not is_ksa_compliant_region(region):
         return {
             "passed": False,
+            "severity": "critical",
             "details": (
                 f"Deploy region '{region}' is not KSA-compliant. "
                 f"Must use me-central1 (Dammam) or approved Gulf regions."

@@ -797,6 +797,8 @@ class PipelineState(BaseModel):
     # ── Identity ──
     project_id: str
     operator_id: str
+    intake_message: Optional[str] = None  # Raw Telegram message from operator
+    idea_name: Optional[str] = None       # Short name derived from intake
     snapshot_id: Optional[int] = None
     snapshot_count: int = 0  # alias counter for orchestrator decorator
     program_id: Optional[str] = None
@@ -850,6 +852,7 @@ class PipelineState(BaseModel):
     # ── Budget Tracking ──
     phase_costs: dict[str, float] = Field(default_factory=dict)
     total_cost_usd: float = 0.0
+    stage_cost_usd: float = 0.0
     circuit_breaker_triggered: bool = False
 
     # ── Warnings & Errors ──

@@ -20,6 +20,7 @@ from factory.core.state import (
     AutonomyMode,
     ExecutionMode,
     NotificationType,
+    PHASE_BUDGET_LIMITS,
     PipelineState,
     Stage,
 )
@@ -177,11 +178,14 @@ def format_cost_message(state: PipelineState) -> str:
     """
     msg = f"💰 {state.project_id}\n\n"
 
-    for phase, cost in sorted(state.phase_costs.items()):
-        bar_filled = min(10, int(cost / 0.20))
+    # Show all phase budget categories (even if $0)
+    all_phases = {**{k: 0.0 for k in PHASE_BUDGET_LIMITS}, **state.phase_costs}
+    for phase, cost in sorted(all_phases.items()):
+        limit = PHASE_BUDGET_LIMITS.get(phase, 2.00)
+        bar_filled = min(10, int(cost / (limit / 10)))
         bar_empty = max(0, 10 - bar_filled)
         bar = "█" * bar_filled + "░" * bar_empty
-        msg += f"  {phase}: ${cost:.3f} [{bar}] $2.00\n"
+        msg += f"  {phase}: ${cost:.3f} [{bar}] ${limit:.2f}\n"
 
     msg += (
         f"\nTotal: ${state.total_cost_usd:.2f} "
@@ -194,12 +198,12 @@ def format_cost_message(state: PipelineState) -> str:
     return truncate_message(msg)
 
 
-def format_halt_message(state: PipelineState) -> str:
+def format_halt_message(state: PipelineState, reason: str = "") -> str:
     """Format the halt notification.
 
     Spec: §4.10 (Halt Handler)
     """
-    reason = state.legal_halt_reason or "Unknown (check errors)"
+    reason = reason or state.legal_halt_reason or "Unknown (check errors)"
     errors = state.errors[-5:] if state.errors else []
     war_room = state.war_room_history[-3:] if state.war_room_history else []
 

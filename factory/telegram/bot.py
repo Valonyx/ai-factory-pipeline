@@ -144,8 +144,19 @@ async def archive_project(project_id: str) -> None:
             await _sb_archive(project_id, state)
             _active_projects_fallback.pop(op_id, None)
             return
-    # If not in fallback, archive via Supabase directly
-    logger.info(f"Project {project_id} archive requested (Supabase)")
+    # If not in fallback, find via Supabase and archive there
+    try:
+        from factory.integrations.supabase import get_supabase_client
+        client = get_supabase_client()
+        resp = client.table("active_projects").select("*").eq("project_id", project_id).execute()
+        if resp.data:
+            row = resp.data[0]
+            state = PipelineState.model_validate(row.get("state_json", {"project_id": project_id, "operator_id": row.get("operator_id", "")}))
+            await _sb_archive(project_id, state)
+        else:
+            logger.info(f"Project {project_id} archive requested (Supabase)")
+    except Exception as e:
+        logger.warning(f"archive_project fallback failed: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

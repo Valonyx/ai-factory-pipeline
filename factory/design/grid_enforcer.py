@@ -225,3 +225,18 @@ def create_default_design(
     }
 
     return grid_enforcer_validate(design)
+
+# ═══════════════════════════════════════════════════════════════════
+# Category palettes and default palette (test exports)
+# ═══════════════════════════════════════════════════════════════════
+
+CATEGORY_PALETTES: dict[str, dict[str, str]] = {
+    "e-commerce": {"primary": "#ff6b35", "secondary": "#10B981", "background": "#F8FAFC", "text": "#1E293B"},
+    "fintech":    {"primary": "#1565c0", "secondary": "#6366F1", "background": "#F0F9FF", "text": "#0F172A"},
+    "health":     {"primary": "#10B981", "secondary": "#34D399", "background": "#F0FDF4", "text": "#064E3B"},
+    "social":     {"primary": "#8B5CF6", "secondary": "#EC4899", "background": "#FAF5FF", "text": "#1E1B4B"},
+    "enterprise": {"primary": "#1E40AF", "secondary": "#3B82F6", "background": "#EFF6FF", "text": "#1E3A5F"},
+    "default":    {"primary": "#3B82F6", "secondary": "#10B981", "background": "#FFFFFF", "text": "#111827"},
+}
+
+DEFAULT_PALETTE = CATEGORY_PALETTES["default"]

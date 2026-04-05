@@ -185,6 +185,33 @@ class GitHubClient:
         commits = self._commits.get(repo, [])
         return commits[-limit:]
 
+    async def commit_files(
+        self, repo: str, files: dict[str, str], message: str,
+    ) -> dict:
+        """Commit multiple files in a single operation.
+
+        Spec: §2.9.1 (Write 3 — batch file commits)
+        Returns: {"files": count, "shas": [...]}
+        """
+        shas = []
+        for path, content in files.items():
+            result = await self.commit_file(repo, path, content, message)
+            shas.append(result["sha"])
+        return {"files": len(files), "shas": shas}
+
+    async def create_tag(
+        self, repo: str, tag: str, message: str,
+    ) -> dict:
+        """Create a release tag on the latest commit.
+
+        Spec: §4.9 S8 Handoff (release tagging)
+        Returns: {"tag": tag, "target_sha": sha}
+        """
+        commits = self._commits.get(repo, [])
+        target_sha = commits[-1]["sha"] if commits else f"sha-{self._commit_counter:06d}"
+        logger.info(f"[{repo}] Created tag {tag} → {target_sha}")
+        return {"tag": tag, "target_sha": target_sha, "message": message}
+
     # ═══════════════════════════════════════════════════════════════
     # §4.5.1 GitHub Actions CI/CD (NB4-01)
     # ═══════════════════════════════════════════════════════════════
@@ -384,3 +411,30 @@ async def github_commit_binary(
 async def github_reset_to_commit(repo: str, commit_sha: str) -> dict:
     """Convenience: reset repo to commit."""
     return await get_github().reset_to_commit(repo, commit_sha)
+
+async def commit_files(
+    repo: str, files: dict[str, str], message: str,
+) -> list[dict]:
+    """Commit multiple files to a repository.
+
+    Spec: §2.9.1 (Write 3 — batch file commits)
+    Returns list of commit results.
+    """
+    client = get_github()
+    results = []
+    for path, content in files.items():
+        result = await client.commit_file(repo, path, content, message)
+        results.append(result)
+    return results
+
+
+async def create_release_tag(
+    repo: str, tag: str, message: str, commit_sha: Optional[str] = None,
+) -> dict:
+    """Create a release tag on a repository.
+
+    Spec: §4.9 S8 Handoff (release tagging)
+    """
+    client = get_github()
+    client._commit_counter += 1
+    return {"tag": tag, "repo": repo, "message": message, "sha": commit_sha or f"tag-{client._commit_counter:06d}"}

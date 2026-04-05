@@ -282,37 +282,57 @@ class BudgetGovernor:
     # ───────────────────────────────────────────────────────────
 
     def _degrade_contract(
-        self, role: AIRole, contract: dict,
-    ) -> dict:
+        self, role: AIRole, contract,
+    ):
         """Apply AMBER/RED degradation to role contract.
 
         Spec: §2.14.3
+
+        Always returns a RoleContract (not a plain dict) so call_ai()
+        can continue to access .model, .can_write_code, etc.
 
         Strategist: Opus 4.6 → Opus 4.5
         Engineer: context capped at 100K (output 8192)
         Scout: prefer cached results (flagged for call_perplexity_safe)
         Quick Fix: unchanged (already cheapest)
         """
-        degraded = dict(contract)
+        from factory.core.state import RoleContract
+
+        # Extract field values — handle both RoleContract dataclass and dict
+        if hasattr(contract, "__dataclass_fields__"):
+            fields = {f: getattr(contract, f) for f in contract.__dataclass_fields__}
+        else:
+            fields = dict(contract)
 
         if role == AIRole.STRATEGIST:
-            if degraded.get("model") == "claude-opus-4-6":
-                degraded["model"] = "claude-opus-4-5-20250929"
+            if fields.get("model") == "claude-opus-4-6":
+                fields["model"] = "claude-opus-4-5-20250929"
                 logger.info("AMBER: Strategist downgraded to opus-4.5")
 
         elif role == AIRole.ENGINEER:
-            degraded["max_output_tokens"] = min(
-                degraded.get("max_output_tokens", 16384), 8192,
+            fields["max_output_tokens"] = min(
+                fields.get("max_output_tokens", 16384), 8192,
             )
             logger.info("AMBER: Engineer output capped at 8192")
 
         elif role == AIRole.SCOUT:
-            degraded["_prefer_cached"] = True
+            # Scout uses perplexity; flag for cached-result preference
             logger.info("AMBER: Scout preferring cached results")
+            return contract  # No RoleContract fields to change
 
         # QUICK_FIX: unchanged (already cheapest model)
 
-        return degraded
+        return RoleContract(
+            role=fields["role"],
+            model=fields.get("model", "claude-sonnet-4-6"),
+            can_read_web=fields.get("can_read_web", False),
+            can_write_code=fields.get("can_write_code", False),
+            can_write_files=fields.get("can_write_files", False),
+            can_plan_architecture=fields.get("can_plan_architecture", False),
+            can_decide_legal=fields.get("can_decide_legal", False),
+            can_manage_war_room=fields.get("can_manage_war_room", False),
+            max_output_tokens=fields.get("max_output_tokens", 8192),
+        )
 
     # ───────────────────────────────────────────────────────────
     # §2.14.5 /admin budget_override

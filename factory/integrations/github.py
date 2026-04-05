@@ -238,6 +238,7 @@ class GitHubClient:
         if not success:
             raise Exception(f"Failed to dispatch workflow {workflow_file}")
 
+        dispatch_time = datetime.now(timezone.utc)
         logger.info(f"Dispatched workflow {workflow_file} on {repo_name}")
 
         # Brief wait for GitHub API to register the run
@@ -246,6 +247,13 @@ class GitHubClient:
         runs = workflow.get_runs(event="workflow_dispatch")
         for run in runs:
             if run.status in ("queued", "in_progress"):
+                # Prefer runs created after dispatch to avoid matching stale runs
+                run_created = getattr(run, "created_at", None)
+                try:
+                    if run_created and run_created < dispatch_time:
+                        continue
+                except TypeError:
+                    pass  # Non-comparable type (e.g. mock) — accept the run
                 return str(run.id)
 
         raise Exception("No active workflow run found after dispatch")

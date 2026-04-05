@@ -171,7 +171,7 @@ async def upsert_pipeline_state(
             "current_stage": state.current_stage.value,
             "state_json": state_dict,
             "snapshot_id": state.snapshot_count,
-            "selected_stack": state.selected_stack or "flutterflow",
+            "selected_stack": (state.selected_stack.value if state.selected_stack else "flutterflow"),
             "execution_mode": state.execution_mode.value,
             "updated_at": now,
         }).execute()
@@ -426,7 +426,8 @@ async def check_operator_whitelist(telegram_id: str) -> bool:
         return bool(resp.data)
     except Exception as e:
         logger.error(f"Whitelist check failed for {telegram_id}: {e}")
-        return True  # Fail-open in dev mode
+        fail_open = os.getenv("WHITELIST_FAIL_OPEN", "true").lower() == "true"
+        return fail_open
 
 
 async def add_operator_to_whitelist(
@@ -625,7 +626,8 @@ async def supabase_execute_sql(query: str, params: Optional[list] = None) -> Any
 class _FallbackTable:
     """In-memory table simulator for offline development."""
 
-    def __init__(self):
+    def __init__(self, table_name: str = ""):
+        self._table_name = table_name
         self._store: list[dict] = []
         self._filter_col: Optional[str] = None
         self._filter_val: Any = None
@@ -679,10 +681,10 @@ class _FallbackTable:
                 self._store.append(data)
                 return _FallbackResponse([data])
             elif op == "upsert":
-                pk = self._get_primary_key(data)
+                pk = self._get_primary_key(data, self._table_name)
                 found = False
                 for i, row in enumerate(self._store):
-                    if pk and row.get(pk[0]) == data.get(pk[0]):
+                    if pk and all(row.get(k) == data.get(k) for k in pk):
                         self._store[i] = {**row, **data}
                         found = True
                         break
@@ -720,8 +722,21 @@ class _FallbackTable:
                 rows = rows[:self._limit_n]
             return _FallbackResponse(rows)
 
-    def _get_primary_key(self, data: dict) -> list[str]:
-        """Guess the primary key from common patterns."""
+    # Known composite PKs for tables that need more than one key to identify rows
+    _COMPOSITE_PKS: dict[str, list[str]] = {
+        "state_snapshots": ["project_id", "snapshot_id"],
+        "workflow_runs": ["project_id", "run_id"],
+    }
+
+    def _get_primary_key(self, data: dict, table_name: str = "") -> list[str]:
+        """Guess the primary key from common patterns.
+
+        Uses known composite PKs for tables that require them.
+        """
+        if table_name in self._COMPOSITE_PKS:
+            cols = self._COMPOSITE_PKS[table_name]
+            if all(c in data for c in cols):
+                return cols
         for pk in ["project_id", "telegram_id", "operator_id", "id"]:
             if pk in data:
                 return [pk]
@@ -749,6 +764,6 @@ class SupabaseFallback:
     def table(self, name: str) -> _FallbackTable:
         if name not in self._tables:
             self._tables[name] = []
-        tbl = _FallbackTable()
+        tbl = _FallbackTable(table_name=name)
         tbl._store = self._tables[name]
         return tbl

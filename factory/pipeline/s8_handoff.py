@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -318,8 +319,9 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
     )
 
     # ── Step 3: Push to GitHub ──
-    repo = state.project_id
-    github_result = await _push_to_github(state, legal_docs, handoff_docs)
+    github_owner = os.getenv("GITHUB_OWNER", "")
+    repo = f"{github_owner}/{state.project_id}" if github_owner else state.project_id
+    github_result = await _push_to_github(state, legal_docs, handoff_docs, repo=repo)
     state.project_metadata["github_push"] = github_result
 
     # ── Step 4: Store patterns in Mother Memory ──
@@ -348,18 +350,21 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
             elif info.get("success"):
                 delivery_message += f"✓ {platform}: Submitted for review\n"
 
+    github_url = (
+        f"https://github.com/{repo}" if github_result.get("pushed") else repo
+    )
     delivery_message += (
         f"\n📋 Legal docs: {', '.join(legal_docs.keys())}\n"
         f"💰 Total AI cost: ${state.total_cost_usd:.2f} "
         f"({state.total_cost_usd * 3.75:.2f} SAR)\n"
         f"⏪ Time-travel: /restore State_#{state.snapshot_id}\n"
-        f"📂 GitHub: {repo}\n"
+        f"📂 GitHub: {github_url}\n"
     )
 
     if handoff_doc_names:
         delivery_message += (
             f"📖 Operator docs: {', '.join(handoff_doc_names)}\n"
-            f"   → All docs in GitHub: {repo}/docs/\n"
+            f"   → All docs in GitHub: {github_url}/docs/\n"
         )
 
     await send_telegram_message(state.operator_id, delivery_message)
@@ -399,6 +404,7 @@ async def _push_to_github(
     state: PipelineState,
     legal_docs: dict[str, str],
     handoff_docs: dict[str, str],
+    repo: Optional[str] = None,
 ) -> dict:
     """Push legal and handoff docs to the project GitHub repo.
 
@@ -407,7 +413,8 @@ async def _push_to_github(
     """
     try:
         from factory.integrations.github import github_commit_file
-        repo = state.project_id
+        if repo is None:
+            repo = state.project_id
         committed = 0
         for name, content in legal_docs.items():
             await github_commit_file(
@@ -449,7 +456,7 @@ async def _store_in_mother_memory(
         client = get_neo4j()
 
         blueprint = state.s2_output or {}
-        screens = blueprint.get("architecture", {}).get("screens", [])
+        screens = blueprint.get("screens", [])
 
         await client.store_project_patterns(
             project_id=state.project_id,

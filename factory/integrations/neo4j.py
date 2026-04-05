@@ -49,12 +49,20 @@ JANITOR_EXEMPT = {"HandoffDoc"}
 # ═══════════════════════════════════════════════════════════════════
 
 
+# Check driver availability once at import time (not per-query)
+try:
+    import neo4j as _neo4j_mod
+    _NEO4J_AVAILABLE = True
+except ImportError:
+    _NEO4J_AVAILABLE = False
+
+
 class Neo4jClient:
     """Neo4j client for Mother Memory knowledge graph.
 
     Spec: §2.10
-    In production: uses neo4j Python driver with async sessions.
-    Current implementation: in-memory graph stub for offline dev.
+    In production: uses neo4j Python driver with async sessions (pooled).
+    Offline dev: in-memory graph stub.
     """
 
     def __init__(
@@ -64,7 +72,10 @@ class Neo4jClient:
     ):
         self.uri = uri or os.getenv("NEO4J_URI", "")
         self.password = password or os.getenv("NEO4J_PASSWORD", "")
-        self._connected = bool(self.uri and self.password)
+        self._connected = bool(self.uri and self.password and _NEO4J_AVAILABLE)
+
+        # Lazy driver singleton — created once, reused across queries
+        self._driver = None
 
         # In-memory graph for offline dev
         self._nodes: dict[str, dict] = {}  # id -> node data
@@ -74,6 +85,15 @@ class Neo4jClient:
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    async def _get_driver(self):
+        """Return the shared async driver, creating it on first use."""
+        if self._driver is None:
+            from neo4j import AsyncGraphDatabase
+            self._driver = AsyncGraphDatabase.driver(
+                self.uri, auth=("neo4j", self.password)
+            )
+        return self._driver
 
     # ═══════════════════════════════════════════════════════════════
     # Core Operations
@@ -93,21 +113,11 @@ class Neo4jClient:
             return []
 
         try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.uri, auth=("neo4j", self.password)
-            )
-            try:
-                async with driver.session() as session:
-                    result = await session.run(query, parameters=params or {})
-                    records = await result.data()
-                    return records
-            finally:
-                await driver.close()
-        except ImportError:
-            logger.warning("neo4j driver not installed — running offline")
-            self._connected = False
-            return []
+            driver = await self._get_driver()
+            async with driver.session() as session:
+                result = await session.run(query, parameters=params or {})
+                records = await result.data()
+                return records
         except Exception as e:
             logger.warning(f"[Neo4j] Query failed: {e}")
             raise
@@ -362,31 +372,52 @@ RELATIONSHIP_TYPES: list[str] = [
 
 
 async def store_handoff_docs_in_memory(
-    project_id: str, docs: list[dict],
+    project_id: str,
+    program_id: Optional[str],
+    stack: str,
+    app_category: str,
+    docs: dict[str, str],
 ) -> int:
     """Store handoff docs in Mother Memory.
 
-    Alias for store_handoff_docs with simplified interface.
+    Thin wrapper over Neo4jClient.store_handoff_docs with matching signature.
     Spec: FIX-27 (Handoff Intelligence Pack)
     """
     client = get_neo4j()
-    stored = 0
-    for doc in docs:
-        try:
-            await client.store_handoff_docs(project_id, doc)
-            stored += 1
-        except Exception:
-            pass
-    return stored
+    try:
+        return await client.store_handoff_docs(
+            project_id=project_id,
+            program_id=program_id,
+            stack=stack,
+            app_category=app_category,
+            docs=docs,
+        )
+    except Exception as e:
+        logger.warning(f"store_handoff_docs_in_memory failed: {e}")
+        return 0
 
 
-async def store_project_patterns(project_id: str, patterns: dict) -> int:
+async def store_project_patterns(
+    project_id: str,
+    stack: str,
+    screens: list,
+    success: bool,
+    war_room_count: int,
+) -> int:
     """Module-level convenience for storing project patterns in Mother Memory.
 
     Spec: §6.3 Mother Memory
     """
     client = get_neo4j()
     try:
-        return await client.store_project_patterns(project_id, patterns)
-    except Exception:
+        await client.store_project_patterns(
+            project_id=project_id,
+            stack=stack,
+            screens=screens,
+            success=success,
+            war_room_count=war_room_count,
+        )
+        return 1
+    except Exception as e:
+        logger.warning(f"store_project_patterns failed: {e}")
         return 0

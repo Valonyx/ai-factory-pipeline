@@ -424,11 +424,10 @@ async def _generate_compliance_artifacts(
             await write_file(full_path, content, state.project_id)
             files.append(rel_path)
     except Exception as e:
-        # Graceful degradation — return file list even if write fails
+        # Graceful degradation — return only files actually written
         logger.warning(
             f"[{state.project_id}] FIX-07: Could not write compliance files: {e}"
         )
-        files = list(templates.keys())
 
     logger.info(
         f"[{state.project_id}] FIX-07: Generated {len(files)} compliance artifacts"

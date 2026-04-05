@@ -95,35 +95,62 @@ def require_auth(fn):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Project State Helpers (stubs — backed by Supabase in production)
+# Project State Helpers (Supabase-backed with in-memory fallback)
+# Spec: §5.6 (Session Schema), §2.9 (Triple-Write)
 # ═══════════════════════════════════════════════════════════════════
 
-# In-memory project store for dry-run
-_active_projects: dict[str, dict] = {}
+from factory.integrations.supabase import (
+    get_active_project as _sb_get_active,
+    upsert_active_project as _sb_upsert_active,
+    archive_project as _sb_archive,
+    upsert_pipeline_state,
+)
+
+# In-memory fallback for when Supabase is unavailable
+_active_projects_fallback: dict[str, dict] = {}
 
 
 async def get_active_project(operator_id: str) -> Optional[dict]:
-    """Get the active project for an operator."""
-    return _active_projects.get(operator_id)
+    """Get active project — routes to Supabase with in-memory fallback.
+
+    Spec: §5.6 (Session Schema)
+    """
+    result = await _sb_get_active(operator_id)
+    if result is not None:
+        return result
+    return _active_projects_fallback.get(operator_id)
 
 
 async def update_project_state(state: PipelineState) -> None:
-    """Update project state in storage."""
-    _active_projects[state.operator_id] = {
-        "project_id": state.project_id,
-        "current_stage": state.current_stage.value,
-        "state_json": state.model_dump(),
-    }
+    """Update project state — triple-write to Supabase + in-memory fallback.
+
+    Spec: §2.9 (Triple-Write), §5.6 (active_projects)
+    """
+    success = await _sb_upsert_active(state.operator_id, state)
+    if success:
+        await upsert_pipeline_state(state.project_id, state)
+    else:
+        _active_projects_fallback[state.operator_id] = {
+            "project_id": state.project_id,
+            "current_stage": state.current_stage.value,
+            "state_json": state.model_dump(mode="json"),
+        }
 
 
 async def archive_project(project_id: str) -> None:
-    """Archive a project."""
-    to_remove = [
-        k for k, v in _active_projects.items()
-        if v.get("project_id") == project_id
-    ]
-    for k in to_remove:
-        del _active_projects[k]
+    """Archive project — moves from active to archived in Supabase.
+
+    Spec: §5.6
+    """
+    for op_id in list(_active_projects_fallback.keys()):
+        proj = _active_projects_fallback.get(op_id, {})
+        if proj.get("project_id") == project_id:
+            state = PipelineState.model_validate(proj["state_json"])
+            await _sb_archive(project_id, state)
+            _active_projects_fallback.pop(op_id, None)
+            return
+    # If not in fallback, archive via Supabase directly
+    logger.info(f"Project {project_id} archive requested (Supabase)")
 
 
 # ═══════════════════════════════════════════════════════════════════

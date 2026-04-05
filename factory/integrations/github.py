@@ -12,12 +12,24 @@ Spec Authority: v5.6 §2.9, §4.7.3
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import io
 import json
 import logging
 import os
+import time
+import zipfile
 from datetime import datetime, timezone
-from typing import Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+try:
+    import aiohttp
+    from github import Github, GithubException
+    _PYGITHUB_AVAILABLE = True
+except ImportError:
+    _PYGITHUB_AVAILABLE = False
 
 logger = logging.getLogger("factory.integrations.github")
 
@@ -44,6 +56,13 @@ class GitHubClient:
         self._repos: dict[str, dict[str, str]] = {}
         self._commits: dict[str, list[dict]] = {}
         self._commit_counter: int = 0
+        # PyGitHub client (None in offline/stub mode)
+        self.client = None
+        if _PYGITHUB_AVAILABLE and self.token:
+            try:
+                self.client = Github(self.token)
+            except Exception:
+                pass
 
     @property
     def is_connected(self) -> bool:
@@ -165,6 +184,174 @@ class GitHubClient:
         """Get recent commits for a repository."""
         commits = self._commits.get(repo, [])
         return commits[-limit:]
+
+    # ═══════════════════════════════════════════════════════════════
+    # §4.5.1 GitHub Actions CI/CD (NB4-01)
+    # ═══════════════════════════════════════════════════════════════
+
+    async def dispatch_workflow(
+        self,
+        repo_name: str,
+        workflow_file: str,
+        inputs: Dict[str, str],
+        ref: str = "main",
+    ) -> str:
+        """Dispatch a GitHub Actions workflow and return the run ID.
+
+        Spec: §4.5.1 CLI Build Paths
+        Returns: workflow run ID string (for status polling)
+        """
+        if not self.client:
+            raise RuntimeError("PyGitHub client not initialized — GITHUB_TOKEN required")
+
+        repo = self.client.get_repo(repo_name)
+        workflow = repo.get_workflow(workflow_file)
+
+        success = workflow.create_dispatch(ref=ref, inputs=inputs)
+        if not success:
+            raise Exception(f"Failed to dispatch workflow {workflow_file}")
+
+        logger.info(f"Dispatched workflow {workflow_file} on {repo_name}")
+
+        # Brief wait for GitHub API to register the run
+        await asyncio.sleep(3)
+
+        runs = workflow.get_runs(event="workflow_dispatch")
+        for run in runs:
+            if run.status in ("queued", "in_progress"):
+                return str(run.id)
+
+        raise Exception("No active workflow run found after dispatch")
+
+    async def poll_workflow_status(
+        self,
+        repo_name: str,
+        run_id: str,
+        timeout_minutes: int = 30,
+        poll_interval: int = 10,
+    ) -> Dict[str, Any]:
+        """Poll workflow run status until completion or timeout.
+
+        Spec: §4.5.1 CLI Build Paths
+        Returns: dict with status, conclusion, html_url
+        """
+        if not self.client:
+            raise RuntimeError("PyGitHub client not initialized — GITHUB_TOKEN required")
+
+        repo = self.client.get_repo(repo_name)
+        start_time = time.time()
+        timeout_seconds = timeout_minutes * 60
+
+        while True:
+            if time.time() - start_time > timeout_seconds:
+                raise TimeoutError(
+                    f"Workflow run {run_id} did not complete within {timeout_minutes} minutes"
+                )
+
+            run = repo.get_workflow_run(int(run_id))
+            logger.debug(f"Workflow run {run_id}: status={run.status}, conclusion={run.conclusion}")
+
+            if run.status == "completed":
+                return {
+                    "run_id": run.id,
+                    "status": run.status,
+                    "conclusion": run.conclusion,
+                    "html_url": run.html_url,
+                    "created_at": run.created_at.isoformat(),
+                    "updated_at": run.updated_at.isoformat(),
+                }
+
+            await asyncio.sleep(poll_interval)
+
+    async def download_artifact(
+        self,
+        repo_name: str,
+        artifact_name: str,
+        destination_dir: Path,
+        run_id: Optional[str] = None,
+    ) -> List[Path]:
+        """Download and extract a GitHub Actions artifact.
+
+        Spec: §4.5.1 CLI Build Paths, Appendix D #6
+        Returns: list of extracted file paths
+        """
+        if not self.client:
+            raise RuntimeError("PyGitHub client not initialized — GITHUB_TOKEN required")
+
+        repo = self.client.get_repo(repo_name)
+        destination_dir = Path(destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        if run_id:
+            run = repo.get_workflow_run(int(run_id))
+            artifacts = run.get_artifacts()
+        else:
+            artifacts = repo.get_artifacts()
+
+        target_artifact = None
+        for artifact in artifacts:
+            if artifact.name == artifact_name:
+                target_artifact = artifact
+                break
+
+        if not target_artifact:
+            raise Exception(f"Artifact '{artifact_name}' not found")
+
+        logger.info(
+            f"Downloading artifact {artifact_name} "
+            f"({target_artifact.size_in_bytes / 1_000_000:.1f} MB)"
+        )
+
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"token {self.token}"}
+            async with session.get(
+                target_artifact.archive_download_url, headers=headers
+            ) as resp:
+                if resp.status != 200:
+                    raise Exception(f"Artifact download failed: HTTP {resp.status}")
+                zip_data = await resp.read()
+
+        extracted_files: List[Path] = []
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            for member in zf.namelist():
+                zf.extract(member, destination_dir)
+                extracted_files.append(destination_dir / member)
+
+        logger.info(f"Extracted {len(extracted_files)} files to {destination_dir}")
+        return extracted_files
+
+    async def commit_workflow_template(
+        self,
+        repo_name: str,
+        workflow_name: str,
+        workflow_content: str,
+    ) -> None:
+        """Commit a GitHub Actions workflow file to .github/workflows/.
+
+        Spec: §4.5.1 CLI Build Paths
+        """
+        if not self.client:
+            raise RuntimeError("PyGitHub client not initialized — GITHUB_TOKEN required")
+
+        workflow_path = f".github/workflows/{workflow_name}"
+        repo = self.client.get_repo(repo_name)
+
+        try:
+            contents = repo.get_contents(workflow_path)
+            repo.update_file(
+                path=workflow_path,
+                message=f"Update workflow {workflow_name}",
+                content=workflow_content,
+                sha=contents.sha,
+            )
+            logger.info(f"Updated workflow {workflow_path}")
+        except Exception:
+            repo.create_file(
+                path=workflow_path,
+                message=f"Add workflow {workflow_name}",
+                content=workflow_content,
+            )
+            logger.info(f"Created workflow {workflow_path}")
 
 
 # Convenience functions (module-level)

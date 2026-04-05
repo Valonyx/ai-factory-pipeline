@@ -1,0 +1,68 @@
+# AI Factory Pipeline v5.6 - Next.js Web Build Workflow
+# Referenced by: §4.5.1 CLI Build Paths, §4.7.3 Web/Firebase Deploy
+
+name: Next.js Web Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: 'Pipeline build identifier'
+        required: true
+      environment:
+        description: 'Build environment (development/production)'
+        required: false
+        default: 'production'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js app
+        env:
+          NODE_ENV: ${{ inputs.environment }}
+        run: |
+          npm run build
+          npm run export
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build-${{ inputs.build_id }}
+          path: |
+            out/
+            .next/
+          retention-days: 90
+
+      - name: Generate deployment manifest
+        run: |
+          cat > deployment-manifest.json <<EOF
+          {
+            "build_id": "${{ inputs.build_id }}",
+            "environment": "${{ inputs.environment }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit_sha": "${{ github.sha }}",
+            "artifact_paths": ["out/", ".next/"]
+          }
+          EOF
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ inputs.build_id }}
+          path: deployment-manifest.json
+          retention-days: 90

@@ -176,10 +176,21 @@ async def run_supabase_migration(supabase_client=None) -> dict:
             result["indexes_created"] += 1
         return result
 
+    import inspect as _inspect
+
+    def _exec(sql: str) -> None:
+        """Execute DDL via exec_sql RPC — handles both sync and async clients."""
+        rpc_call = supabase_client.rpc("exec_sql", {"query": sql})
+        response = rpc_call.execute()
+        # Sync supabase-py returns SingleAPIResponse directly (not awaitable)
+        if _inspect.isawaitable(response):
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(response)
+
     # Create tables
     for sql in SUPABASE_SCHEMAS:
         try:
-            await supabase_client.rpc("exec_sql", {"query": sql}).execute()
+            _exec(sql)
             result["tables_created"] += 1
         except Exception as e:
             result["errors"].append(str(e)[:200])
@@ -188,7 +199,7 @@ async def run_supabase_migration(supabase_client=None) -> dict:
     # Create indexes
     for sql in SUPABASE_INDEXES:
         try:
-            await supabase_client.rpc("exec_sql", {"query": sql}).execute()
+            _exec(sql)
             result["indexes_created"] += 1
         except Exception as e:
             result["errors"].append(str(e)[:200])

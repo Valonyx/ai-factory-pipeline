@@ -687,3 +687,34 @@ async def setup_bot() -> Any:
     except ImportError as e:
         logger.warning(f"python-telegram-bot not available: {e}")
         return None
+
+
+async def run_bot_polling() -> None:
+    """Run the Telegram bot in polling mode (local dev, no webhook required).
+
+    Spec: §5.1.1 — polling is the local-dev alternative to the production webhook.
+    Use when Cloud Run is not yet deployed.
+
+    Run: python scripts/run_bot.py
+    """
+    app = await setup_bot()
+    if app is None:
+        logger.error(
+            "Bot not configured — set TELEGRAM_BOT_TOKEN and try again."
+        )
+        return
+    logger.info("Starting Telegram bot in polling mode (Ctrl+C to stop)…")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+    # Block until Ctrl+C
+    import asyncio
+    try:
+        await asyncio.Event().wait()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+        logger.info("Bot stopped.")

@@ -232,13 +232,21 @@ _MODEL_COSTS: dict[str, tuple[float, float]] = {
 async def _call_anthropic(
     prompt: str, contract: RoleContract,
 ) -> tuple[str, float]:
-    """Call Anthropic Claude API via AsyncAnthropic SDK.
+    """Call AI provider for non-Scout roles.
 
     Spec: §2.2.2
-    Falls back to mock when ANTHROPIC_API_KEY is absent (dry-run).
-    Streams when max_output_tokens > 8192 to prevent HTTP timeouts.
-    Returns (response_text, cost_usd) using actual token counts.
+    Routes to Gemini (free-tier dev) or Anthropic (production) based on
+    AI_PROVIDER env var. Set AI_PROVIDER=gemini for development without
+    Anthropic credits; set AI_PROVIDER=anthropic (default) for production.
+
+    Dev note (NB3-DEV-001): Gemini routing added 2026-04 while Anthropic
+    API credits were unavailable. Switch back with AI_PROVIDER=anthropic.
     """
+    provider = os.getenv("AI_PROVIDER", "anthropic").lower()
+    if provider == "gemini":
+        from factory.integrations.gemini import call_gemini
+        return await call_gemini(prompt, contract)
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
     if not api_key:
@@ -295,11 +303,22 @@ async def _call_anthropic(
 async def _call_perplexity_safe(
     prompt: str, contract: RoleContract, state: PipelineState,
 ) -> tuple[str, float]:
-    """Safe Perplexity call with degradation policy.
+    """Safe Scout call with provider routing and degradation policy.
 
     Spec: §2.2.3 [C5], §3.1, ADR-049, FIX-19
-    Delegates to factory.integrations.perplexity for real implementation.
+
+    Routes to Tavily (free-tier dev) or Perplexity (production) based on
+    SCOUT_PROVIDER env var. Set SCOUT_PROVIDER=tavily for development without
+    Perplexity funds; set SCOUT_PROVIDER=perplexity (default) for production.
+
+    Dev note (NB3-DEV-002): Tavily routing added 2026-04 while Perplexity
+    required a $50 minimum balance. Switch back with SCOUT_PROVIDER=perplexity.
     """
+    scout_provider = os.getenv("SCOUT_PROVIDER", "perplexity").lower()
+    if scout_provider == "tavily":
+        from factory.integrations.tavily_scout import call_tavily_scout
+        return await call_tavily_scout(prompt, contract, state)
+
     from factory.integrations.perplexity import call_perplexity_safe
     return await call_perplexity_safe(
         prompt=prompt,

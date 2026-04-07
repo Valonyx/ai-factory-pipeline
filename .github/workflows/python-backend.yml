@@ -1,0 +1,87 @@
+name: Python Backend — Build & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (staging/production)'
+        required: false
+        default: 'staging'
+      version:
+        description: 'App version (semver)'
+        required: false
+        default: '1.0.0'
+      project_id:
+        description: 'Pipeline project ID'
+        required: false
+        default: ''
+      gcp_project:
+        description: 'GCP project ID'
+        required: false
+        default: ''
+      service_name:
+        description: 'Cloud Run service name'
+        required: false
+        default: 'app'
+
+jobs:
+  build-and-push:
+    name: Build Docker Image & Push to GCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker gcr.io
+
+      - name: Build Docker image
+        run: |
+          IMAGE="gcr.io/${{ inputs.gcp_project || vars.GCP_PROJECT_ID }}/${{ inputs.service_name }}:${{ inputs.version }}-${{ github.run_number }}"
+          docker build -t $IMAGE .
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Push to GCR
+        run: docker push $IMAGE
+
+      - name: Upload image tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-tag
+          path: |
+            echo "${{ env.IMAGE }}" > image-tag.txt
+            image-tag.txt
+          retention-days: 7
+
+  deploy-cloud-run:
+    name: Deploy to Cloud Run
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: inputs.environment == 'production' || inputs.environment == 'staging'
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ inputs.service_name }}
+          image: gcr.io/${{ inputs.gcp_project || vars.GCP_PROJECT_ID }}/${{ inputs.service_name }}:${{ inputs.version }}-${{ github.run_number }}
+          region: me-central1
+          flags: '--allow-unauthenticated --memory=512Mi --cpu=1'
+
+      - name: Get service URL
+        run: |
+          URL=$(gcloud run services describe ${{ inputs.service_name }} \
+            --region=me-central1 --format='value(status.url)')
+          echo "Deployed to: $URL"
+          echo "DEPLOY_URL=$URL" >> $GITHUB_OUTPUT

@@ -1,0 +1,76 @@
+# AI Factory Pipeline v5.6 — Continuous Integration
+# Spec: §2.7, §4.5.1, ADR-029
+#
+# Runs on every push and pull request.
+# Uses mock providers in CI (no live AI API calls, no Telegram polling).
+
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Test (Python 3.11)
+    runs-on: ubuntu-latest
+
+    env:
+      # Mock providers — no live AI/Scout calls in CI
+      AI_PROVIDER: mock
+      SCOUT_PROVIDER: mock
+      PIPELINE_ENV: ci
+      DRY_RUN: "true"
+      LOG_LEVEL: WARNING
+      TELEGRAM_POLLING: "false"
+      # Placeholder values so env-var validation passes on import
+      ANTHROPIC_API_KEY: sk-ant-ci-placeholder
+      GOOGLE_AI_API_KEY: ci-placeholder
+      GROQ_API_KEY: ci-placeholder
+      TAVILY_API_KEY: ci-placeholder
+      TELEGRAM_BOT_TOKEN: "0:ci-placeholder"
+      TELEGRAM_OPERATOR_ID: "634992850"
+      GITHUB_TOKEN: ci-placeholder
+      GITHUB_USERNAME: Valonyx
+      SUPABASE_URL: https://ci-placeholder.supabase.co
+      SUPABASE_SERVICE_KEY: ci-placeholder
+      NEO4J_URI: neo4j+s://ci-placeholder.databases.neo4j.io
+      NEO4J_PASSWORD: ci-placeholder
+      GCP_PROJECT_ID: ai-factory-pipeline
+      GCP_REGION: me-central1
+      MONTHLY_BUDGET_USD: "300"
+      PER_PROJECT_BUDGET_USD: "25"
+      STRATEGIST_MODEL: claude-opus-4-6
+      ENGINEER_MODEL: claude-sonnet-4-5-20250929
+      QUICKFIX_MODEL: claude-haiku-4-5-20251001
+      SCOUT_MODEL: sonar-pro
+      BUDGET_GOVERNOR_ENABLED: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests (skip live-connection tests)
+        run: |
+          python -m pytest tests/ \
+            --ignore=tests/test_prod_03_telegram.py \
+            --ignore=tests/test_prod_05_secrets.py \
+            --tb=short -q
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: .pytest_cache/
+          retention-days: 7

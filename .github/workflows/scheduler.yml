@@ -1,0 +1,83 @@
+# AI Factory Pipeline v5.6 — Scheduled Tasks
+# Replaces GCP Cloud Scheduler — works with any hosting platform.
+#
+# SERVICE_URL GitHub secret drives both jobs.
+# Set it once in: github.com/Valonyx/ai-factory-pipeline/settings/secrets/actions
+#   Name:  SERVICE_URL
+#   Value: https://your-service-url (Render / Koyeb / Cloud Run / etc.)
+#
+# Jobs:
+#   janitor  — every 6 hours  → POST /janitor  (purge expired artifacts)
+#   health   — every 5 minutes → GET /health   (keep-alive + uptime probe)
+
+name: Scheduler
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'     # janitor every 6 hours
+    - cron: '*/5 * * * *'     # health probe every 5 minutes (keep-alive)
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Job to run manually'
+        required: false
+        default: 'both'
+        type: choice
+        options: [janitor, health, both]
+
+jobs:
+  janitor:
+    name: Janitor Agent (every 6h)
+    runs-on: ubuntu-latest
+    # Run on the 6-hour cron OR manual with job=janitor/both
+    if: >
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'janitor' || github.event.inputs.job == 'both') ||
+      github.event_name == 'schedule' && contains(github.event.schedule, '0 */6')
+
+    steps:
+      - name: Trigger Janitor Agent
+        env:
+          APP_URL: ${{ secrets.SERVICE_URL }}
+        run: |
+          if [[ -z "${APP_URL}" ]]; then
+            echo "SERVICE_URL secret not set — skipping janitor"
+            echo "Set it at: github.com/Valonyx/ai-factory-pipeline/settings/secrets/actions"
+            exit 0
+          fi
+          echo "Calling ${APP_URL}/janitor"
+          response=$(curl -s -o /tmp/janitor_response.json -w "%{http_code}" \
+            -X POST "${APP_URL}/janitor" \
+            -H "Content-Type: application/json" \
+            --max-time 120 \
+            --retry 2 \
+            --retry-delay 10)
+          echo "HTTP status: ${response}"
+          cat /tmp/janitor_response.json || true
+          if [ "${response}" != "200" ]; then
+            echo "Janitor returned HTTP ${response} — non-fatal, continuing"
+          fi
+
+  health:
+    name: Health Probe (every 5min)
+    runs-on: ubuntu-latest
+    # Run on the 5-minute cron OR manual with job=health/both
+    if: >
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'health' || github.event.inputs.job == 'both') ||
+      github.event_name == 'schedule' && contains(github.event.schedule, '*/5')
+
+    steps:
+      - name: Health check
+        env:
+          APP_URL: ${{ secrets.SERVICE_URL }}
+        run: |
+          if [[ -z "${APP_URL}" ]]; then
+            echo "SERVICE_URL secret not set — skipping health probe"
+            exit 0
+          fi
+          response=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
+            "${APP_URL}/health" --max-time 15)
+          echo "Health HTTP ${response}: $(cat /tmp/health_response.json 2>/dev/null || echo '')"
+          if [ "${response}" != "200" ]; then
+            echo "Service unhealthy (HTTP ${response})"
+            exit 1
+          fi

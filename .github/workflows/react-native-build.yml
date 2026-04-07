@@ -1,0 +1,129 @@
+name: React Native Build (EAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Platforms to build (ios,android,web)'
+        required: true
+        default: 'android'
+      version:
+        description: 'App version (semver)'
+        required: false
+        default: '1.0.0'
+      eas_profile:
+        description: 'EAS build profile'
+        required: false
+        default: 'preview'
+      project_id:
+        description: 'Pipeline project ID (for callback)'
+        required: false
+        default: ''
+
+env:
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+jobs:
+  build-android:
+    name: Build Android (EAS)
+    if: contains(inputs.platforms, 'android')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build Android
+        run: |
+          eas build \
+            --platform android \
+            --profile ${{ inputs.eas_profile }} \
+            --non-interactive \
+            --output ./build/android.aab
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: build/android.aab
+          retention-days: 7
+
+  build-ios:
+    name: Build iOS (EAS)
+    if: contains(inputs.platforms, 'ios')
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build iOS
+        run: |
+          eas build \
+            --platform ios \
+            --profile ${{ inputs.eas_profile }} \
+            --non-interactive \
+            --output ./build/app.ipa
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: build/app.ipa
+          retention-days: 7
+
+  build-web:
+    name: Build Web (Expo)
+    if: contains(inputs.platforms, 'web')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web
+        run: npx expo export --platform web --output-dir ./build/web
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web/
+          retention-days: 7

@@ -1,0 +1,63 @@
+name: Pipeline Self-CI — Tests & Docker
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short --timeout=30
+        env:
+          SCOUT_PROVIDER: mock
+          AI_PROVIDER: mock
+          TELEGRAM_BOT_TOKEN: mock
+          SUPABASE_URL: mock
+          SUPABASE_SERVICE_KEY: mock
+          NEO4J_URI: mock
+          NEO4J_PASSWORD: mock
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: .pytest_cache/
+          retention-days: 3
+
+  docker-build:
+    name: Build Docker Image (Validation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t ai-factory-pipeline:test .
+
+      - name: Smoke test container
+        run: |
+          docker run --rm \
+            -e SCOUT_PROVIDER=mock \
+            -e AI_PROVIDER=mock \
+            ai-factory-pipeline:test python -c "import factory; print('Import OK')"

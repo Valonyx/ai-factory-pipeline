@@ -1,0 +1,50 @@
+# AI Factory Pipeline v5.6 — Docker Build & Push (GHCR)
+# Spec: §7.4.1, §4.5.1, ADR-029
+#
+# Builds the pipeline Docker image on every push to main and pushes to
+# GitHub Container Registry (ghcr.io). Cloud Run deploy happens separately
+# via cloudbuild.yaml once GCP billing is active.
+
+name: Docker Build
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Push (GHCR)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/valonyx/ai-factory-pipeline
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=true
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

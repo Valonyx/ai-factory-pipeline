@@ -1,0 +1,126 @@
+name: Flutter / FlutterFlow Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Platforms (ios,android,web)'
+        required: true
+        default: 'android'
+      version:
+        description: 'App version (semver)'
+        required: false
+        default: '1.0.0'
+      project_id:
+        description: 'Pipeline project ID'
+        required: false
+        default: ''
+
+jobs:
+  build-android:
+    name: Flutter Android Build
+    if: contains(inputs.platforms, 'android')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Set version
+        run: |
+          sed -i "s/^version:.*/version: ${{ inputs.version }}+${{ github.run_number }}/" pubspec.yaml
+
+      - name: Build Android AAB
+        run: flutter build appbundle --release
+
+      - name: Build Android APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-android-aab
+          path: build/app/outputs/bundle/release/*.aab
+          retention-days: 7
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-android-apk
+          path: build/app/outputs/apk/release/*.apk
+          retention-days: 7
+
+  build-ios:
+    name: Flutter iOS Build
+    if: contains(inputs.platforms, 'ios')
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no signing)
+        run: flutter build ios --release --no-codesign
+
+      - name: Archive IPA
+        run: |
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -r App.ipa Payload/
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-ios-ipa
+          path: build/ios/iphoneos/App.ipa
+          retention-days: 7
+
+  build-web:
+    name: Flutter Web Build
+    if: contains(inputs.platforms, 'web')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build web
+        run: flutter build web --release
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web
+          path: build/web/
+          retention-days: 7

@@ -77,7 +77,7 @@ def main():
     )
 
     if args.health:
-        result = health_check()
+        result = asyncio.run(health_check())
         print(f"Health: {result['status']}")
         print(f"Version: {result['version']}")
         print(f"Timestamp: {result['timestamp']}")

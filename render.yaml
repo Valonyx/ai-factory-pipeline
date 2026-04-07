@@ -1,0 +1,118 @@
+# AI Factory Pipeline v5.6 — Render.com Blueprint
+#
+# Free tier: 750 instance-hours/month (~always-on), 512MB RAM, no CC needed.
+# Sign up with GitHub at render.com — no credit card required.
+#
+# Deploy:
+#   1. Push this file to GitHub (it's already committed)
+#   2. Go to dashboard.render.com → New → Blueprint
+#   3. Connect github.com/Valonyx/ai-factory-pipeline
+#   4. Render reads this file and creates the service automatically
+#   5. Add environment variables in the Render dashboard
+#
+# Or use: ./scripts/deploy_render.sh (API-based, automated)
+
+services:
+  - type: web
+    name: ai-factory-pipeline
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt   # closest to KSA among Render free regions
+    branch: main
+    autoDeploy: true    # redeploy automatically on push to main
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PIPELINE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DRY_RUN
+        value: "false"
+      # Webhook mode — Render has a stable public URL, no polling needed
+      - key: TELEGRAM_POLLING
+        value: "false"
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: SCOUT_PROVIDER
+        value: tavily
+      - key: AI_PROVIDER_CHAIN
+        value: anthropic,gemini,groq,openrouter,cerebras,together,mistral,mock
+      - key: SCOUT_PROVIDER_CHAIN
+        value: tavily,exa,searxng,duckduckgo,wikipedia,hackernews,reddit,stackoverflow,github_search,ai_scout
+      - key: MEMORY_BACKEND_CHAIN
+        value: neo4j,supabase,upstash,turso
+      - key: MONTHLY_BUDGET_USD
+        value: "300"
+      - key: PER_PROJECT_BUDGET_USD
+        value: "25"
+      - key: STRATEGIST_MODEL
+        value: claude-opus-4-6
+      - key: ENGINEER_MODEL
+        value: claude-sonnet-4-5-20250929
+      - key: QUICKFIX_MODEL
+        value: claude-haiku-4-5-20251001
+      - key: BUDGET_GOVERNOR_ENABLED
+        value: "true"
+      - key: GITHUB_USERNAME
+        value: Valonyx
+      - key: GCP_PROJECT_ID
+        value: ai-factory-pipeline
+      - key: GCP_REGION
+        value: me-central1
+
+      # Secrets — add these in the Render dashboard Environment tab
+      # (or deploy_render.sh sets them via API)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_AI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: TOGETHER_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: EXA_API_KEY
+        sync: false
+      - key: STACKEXCHANGE_APP_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_OPERATOR_ID
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

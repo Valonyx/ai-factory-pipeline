@@ -545,6 +545,82 @@ async def cmd_help(update: Any, context: Any):
     await update.message.reply_text(format_help_message())
 
 
+# ── Mode switching (local ↔ online) ──────────────────────────────
+
+@require_auth
+async def cmd_online(update: Any, context: Any):
+    """Switch bot to Render webhook mode for up to 12 hours."""
+    # Signal run_bot.py runner if it's active
+    runner = _get_runner()
+    if runner is not None:
+        go_online, _ = runner.get_mode_events()
+        await update.message.reply_text(
+            "🌐 Switching to ONLINE mode (Render webhook).\n"
+            "Auto-reverts in 12 hours or send /local to revert now."
+        )
+        go_online.set()
+    else:
+        # Called from Render (already online) or runner not attached
+        await update.message.reply_text(
+            "ℹ️  Already running online (Render webhook mode).\n"
+            "Send /local to switch back to local polling."
+        )
+
+
+@require_auth
+async def cmd_local(update: Any, context: Any):
+    """Switch bot back to local polling mode (removes webhook)."""
+    import urllib.request as _ur, json as _json, os as _os
+    token = _os.getenv("TELEGRAM_BOT_TOKEN", "")
+    # Remove webhook directly — works whether called from Render or locally
+    try:
+        req = _ur.Request(
+            f"https://api.telegram.org/bot{token}/deleteWebhook",
+            data=b"drop_pending_updates=true",
+            method="POST",
+        )
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        with _ur.urlopen(req, timeout=10) as r:
+            ok = _json.loads(r.read()).get("ok", False)
+    except Exception as e:
+        ok = False
+        logger.error(f"deleteWebhook error: {e}")
+
+    # Signal run_bot.py runner if active
+    runner = _get_runner()
+    if runner is not None:
+        _, go_local = runner.get_mode_events()
+        go_local.set()
+
+    if ok:
+        await update.message.reply_text(
+            "🏠 Switched to LOCAL polling mode.\n"
+            "Run `python scripts/run_bot.py` on your machine if not already running.\n"
+            "Send /online to go back online."
+        )
+    else:
+        await update.message.reply_text("⚠️  Could not remove webhook — check logs.")
+
+
+def _get_runner():
+    """Return the run_bot module if it attached itself (local runner only)."""
+    try:
+        import sys
+        mod = sys.modules.get("__main__")
+        if mod and hasattr(mod, "get_mode_events"):
+            return mod
+        # Also check if run_bot module registered itself
+        bot_mod = sys.modules.get(__name__)
+        runner_mod = getattr(bot_mod, "_runner_module", None)
+        return runner_mod
+    except Exception:
+        return None
+
+
+# Module-level slot for run_bot.py to attach itself
+_runner_module = None
+
+
 @require_auth
 async def cmd_modify(update: Any, context: Any):
     """§5.2: /modify <repo_url> <description> — Modify an existing codebase.
@@ -1013,6 +1089,10 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("providers", cmd_providers))
         app.add_handler(CommandHandler("help", cmd_help))
 
+        # ── Mode switching ──
+        app.add_handler(CommandHandler("online", cmd_online))
+        app.add_handler(CommandHandler("local", cmd_local))
+
         # ── Inline callbacks ──
         app.add_handler(CallbackQueryHandler(handle_callback))
 
@@ -1049,21 +1129,24 @@ async def run_bot_polling() -> None:
             "Bot not configured — set TELEGRAM_BOT_TOKEN and try again."
         )
         return
-    logger.info("Starting Telegram bot in polling mode (Ctrl+C to stop)…")
+    logger.info("Starting Telegram bot in polling mode (Ctrl+C or cancel task to stop)…")
     await app.initialize()
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
-    # Block until Ctrl+C
+    # Block until cancelled (asyncio.CancelledError) or Ctrl+C
     import asyncio
     try:
         await asyncio.Event().wait()
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
         pass
     finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
-        logger.info("Bot stopped.")
+        try:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except Exception:
+            pass
+        logger.info("Bot polling stopped.")
 
 
 # ═══════════════════════════════════════════════════════════════════

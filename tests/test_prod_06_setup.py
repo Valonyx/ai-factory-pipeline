@@ -180,12 +180,13 @@ class TestWizardSecrets:
         assert len(WIZARD_SECRETS) == 8
 
     def test_wizard_secret_names(self):
-        """All wizard secrets must be from Appendix B."""
-        from factory.core.secrets import REQUIRED_SECRETS
+        """All wizard secrets must be from Appendix B (required or deferrable)."""
+        from factory.core.secrets import REQUIRED_SECRETS, DEFERRABLE_SECRETS
+        all_known = set(REQUIRED_SECRETS) | DEFERRABLE_SECRETS
         wizard_names = [name for name, _ in WIZARD_SECRETS]
         for name in wizard_names:
-            assert name in REQUIRED_SECRETS, (
-                f"Wizard secret {name} not in Appendix B"
+            assert name in all_known, (
+                f"Wizard secret {name} not in Appendix B (required or deferrable)"
             )
 
     def test_timeout_is_300(self):

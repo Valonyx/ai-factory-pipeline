@@ -49,6 +49,7 @@ REQUIRED_SECRETS: list[str] = [
     "NEO4J_URI",                   # Mother Memory (free Aura instance)
     "NEO4J_PASSWORD",              # Mother Memory
     "TELEGRAM_OPERATOR_ID",        # Operator authentication
+    "PERPLEXITY_API_KEY",          # Perplexity scout (deferrable — free scouts available)
     "FLUTTERFLOW_API_TOKEN",       # FF stack only
     "UI_TARS_ENDPOINT",            # GUI automation
     "UI_TARS_API_KEY",             # GUI automation
@@ -74,6 +75,7 @@ CORE_SECRETS: list[str] = [
 # 6 secrets deferrable until specific feature use
 # Paid services: cascade to free alternatives automatically when missing
 DEFERRABLE_SECRETS: set[str] = {
+    "PERPLEXITY_API_KEY",          # Scout layer (free alternatives: Tavily, DDG, etc. — always available)
     "FLUTTERFLOW_API_TOKEN",       # FlutterFlow stack only
     "UI_TARS_ENDPOINT",            # GUI automation (falls back to build_chain)
     "UI_TARS_API_KEY",             # GUI automation
@@ -93,6 +95,7 @@ SECRET_ROTATION_DAYS: dict[str, int] = {
     "NEO4J_URI":               180,
     "NEO4J_PASSWORD":          180,
     "TELEGRAM_OPERATOR_ID":   3650,  # static operator ID, no rotation needed
+    "PERPLEXITY_API_KEY":       90,
     "FLUTTERFLOW_API_TOKEN":    90,
     "UI_TARS_API_KEY":          90,
     "APPLE_ID":                365,

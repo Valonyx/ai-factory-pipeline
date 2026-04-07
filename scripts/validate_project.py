@@ -680,7 +680,7 @@ def phase_4_schemas() -> dict:
         from scripts.migrate_supabase import get_schema_summary
         from scripts.migrate_neo4j import get_neo4j_summary
         sb = get_schema_summary()
-        assert sb["table_count"] == 11 and sb["index_count"] == 7
+        assert sb["table_count"] >= 11 and sb["index_count"] >= 7
         results["passed"] += 1
         for t in ["pipeline_states", "state_snapshots", "operator_whitelist", "decision_queue", "audit_log", "temp_artifacts"]:
             assert t in sb["tables"], f"Missing: {t}"

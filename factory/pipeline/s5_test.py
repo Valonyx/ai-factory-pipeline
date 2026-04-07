@@ -395,8 +395,26 @@ async def _log_deploy_consent(
         f"[FIX-08] DeploymentConsent: "
         f"project={state.project_id} method={method}"
     )
-    # Audit log stub — real implementation in Part 11
+    # Always append to in-memory audit log (fast, no I/O)
     state.project_metadata.setdefault("audit_log", []).append(consent_event)
+
+    # Persist to Supabase audit_log table (non-blocking)
+    try:
+        from factory.integrations.supabase import get_supabase_client
+        client = get_supabase_client()
+        if client:
+            client.table("audit_log").insert({
+                "operator_id": state.operator_id,
+                "project_id": state.project_id,
+                "action": "DeploymentConsent",
+                "details": {
+                    "method": method,
+                    "stack": state.selected_stack.value if state.selected_stack else "unknown",
+                    "stage": "s5_test",
+                },
+            }).execute()
+    except Exception as e:
+        logger.debug(f"[audit] Supabase write failed (non-fatal): {e}")
 
 
 # Register with DAG (replaces stub)

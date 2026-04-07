@@ -17,6 +17,13 @@ import asyncio
 import logging
 import sys
 
+# Load .env for local development before any factory imports read env vars
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from factory.core.state import PipelineState, Stage, AutonomyMode
 from factory.monitoring.health import health_check, PIPELINE_VERSION
 from factory.monitoring.budget_governor import budget_governor

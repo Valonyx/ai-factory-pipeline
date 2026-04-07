@@ -1,0 +1,65 @@
+# AI Factory Pipeline v5.6 — Fly.io Deployment Config
+# Temporary alternative to GCP Cloud Run (NB3-07)
+# Switch back: delete this file, activate cloudbuild.yaml when GCP billing is live.
+#
+# Region: bom (Mumbai) — closest free-tier Fly.io region to KSA
+# Mode: polling (TELEGRAM_POLLING=true) — no webhook URL needed
+
+app = "ai-factory-pipeline"
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Keep 1 machine always running (Telegram polling needs a persistent process)
+[vm]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "10s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/health"
+
+[env]
+  PORT = "8080"
+  PYTHONUNBUFFERED = "1"
+  PYTHONDONTWRITEBYTECODE = "1"
+  PIPELINE_ENV = "production"
+  LOG_LEVEL = "INFO"
+  DRY_RUN = "false"
+  TELEGRAM_POLLING = "true"
+  AI_PROVIDER = "anthropic"
+  SCOUT_PROVIDER = "tavily"
+  MONTHLY_BUDGET_USD = "300"
+  PER_PROJECT_BUDGET_USD = "25"
+  STRATEGIST_MODEL = "claude-opus-4-6"
+  ENGINEER_MODEL = "claude-sonnet-4-5-20250929"
+  QUICKFIX_MODEL = "claude-haiku-4-5-20251001"
+  SCOUT_MODEL = "sonar-pro"
+  BUDGET_GOVERNOR_ENABLED = "true"
+  GCP_PROJECT_ID = "ai-factory-pipeline"
+  GCP_REGION = "me-central1"
+  GITHUB_USERNAME = "Valonyx"

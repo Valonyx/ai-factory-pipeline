@@ -40,56 +40,59 @@ logger = logging.getLogger("factory.core.secrets")
 # ═══════════════════════════════════════════════════════════════════
 
 REQUIRED_SECRETS: list[str] = [
-    "ANTHROPIC_API_KEY",           # Strategist, Engineer, Quick Fix
-    "PERPLEXITY_API_KEY",          # Scout
+    "ANTHROPIC_API_KEY",           # Strategist, Engineer, Quick Fix (cascade → Gemini → Groq …)
+    "GOOGLE_AI_API_KEY",           # Free AI fallback (Gemini 2.5 Flash) — always free
     "TELEGRAM_BOT_TOKEN",          # Telegram bot
-    "GITHUB_TOKEN",                # State persistence, CI/CD
+    "GITHUB_TOKEN",                # State persistence, CI/CD, GHCR Docker registry
     "SUPABASE_URL",                # All persistence
     "SUPABASE_SERVICE_KEY",        # All persistence
-    "NEO4J_URI",                   # Mother Memory
+    "NEO4J_URI",                   # Mother Memory (free Aura instance)
     "NEO4J_PASSWORD",              # Mother Memory
-    "GCP_PROJECT_ID",              # Cloud Run (not a secret per se)
+    "TELEGRAM_OPERATOR_ID",        # Operator authentication
     "FLUTTERFLOW_API_TOKEN",       # FF stack only
     "UI_TARS_ENDPOINT",            # GUI automation
     "UI_TARS_API_KEY",             # GUI automation
-    "APPLE_ID",                    # iOS deploy
-    "APP_SPECIFIC_PASSWORD",       # iOS deploy
-    "FIREBASE_SERVICE_ACCOUNT",    # Web deploy
+    "APPLE_ID",                    # iOS deploy (cascades to Firebase → Airlock)
+    "APP_SPECIFIC_PASSWORD",       # iOS deploy (cascades to Firebase → Airlock)
+    "FIREBASE_SERVICE_ACCOUNT",    # Mobile distribution (cascades to Airlock)
 ]
 
 # 9 core secrets required for pipeline startup
+# Free-tier path: Anthropic (cascade) + Gemini + Telegram + Supabase + GitHub + Neo4j
 CORE_SECRETS: list[str] = [
-    "ANTHROPIC_API_KEY",
-    "PERPLEXITY_API_KEY",
+    "ANTHROPIC_API_KEY",      # primary AI (cascade to Gemini if no credits)
+    "GOOGLE_AI_API_KEY",      # free AI fallback — must be set for cascade to work
     "TELEGRAM_BOT_TOKEN",
     "GITHUB_TOKEN",
     "SUPABASE_URL",
     "SUPABASE_SERVICE_KEY",
     "NEO4J_URI",
     "NEO4J_PASSWORD",
-    "GCP_PROJECT_ID",
+    "TELEGRAM_OPERATOR_ID",
 ]
 
 # 6 secrets deferrable until specific feature use
+# Paid services: cascade to free alternatives automatically when missing
 DEFERRABLE_SECRETS: set[str] = {
-    "FLUTTERFLOW_API_TOKEN",
-    "UI_TARS_ENDPOINT",
-    "UI_TARS_API_KEY",
-    "APPLE_ID",
-    "APP_SPECIFIC_PASSWORD",
-    "FIREBASE_SERVICE_ACCOUNT",
+    "FLUTTERFLOW_API_TOKEN",       # FlutterFlow stack only
+    "UI_TARS_ENDPOINT",            # GUI automation (falls back to build_chain)
+    "UI_TARS_API_KEY",             # GUI automation
+    "APPLE_ID",                    # iOS App Store (cascade: Firebase → Airlock)
+    "APP_SPECIFIC_PASSWORD",       # iOS App Store
+    "FIREBASE_SERVICE_ACCOUNT",    # Firebase distribution (cascade: Airlock)
 }
 
 # Rotation schedule per Appendix B (days)
 SECRET_ROTATION_DAYS: dict[str, int] = {
     "ANTHROPIC_API_KEY":        90,
-    "PERPLEXITY_API_KEY":       90,
+    "GOOGLE_AI_API_KEY":        90,
     "TELEGRAM_BOT_TOKEN":      180,
     "GITHUB_TOKEN":             90,
     "SUPABASE_URL":            180,
     "SUPABASE_SERVICE_KEY":    180,
     "NEO4J_URI":               180,
     "NEO4J_PASSWORD":          180,
+    "TELEGRAM_OPERATOR_ID":   3650,  # static operator ID, no rotation needed
     "FLUTTERFLOW_API_TOKEN":    90,
     "UI_TARS_API_KEY":          90,
     "APPLE_ID":                365,

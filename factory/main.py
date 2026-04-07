@@ -41,7 +41,26 @@ logger = logging.getLogger("factory.main")
 async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
     logger.info(f"AI Factory Pipeline v{PIPELINE_VERSION} starting")
+
+    # Start Telegram bot in polling mode when TELEGRAM_POLLING=true
+    # (local dev and Fly.io — no webhook URL needed)
+    polling_task = None
+    if os.getenv("TELEGRAM_POLLING", "false").lower() == "true":
+        try:
+            from factory.telegram.bot import run_bot_polling
+            polling_task = asyncio.create_task(run_bot_polling())
+            logger.info("Telegram polling started as background task")
+        except Exception as e:
+            logger.warning(f"Telegram polling failed to start: {e}")
+
     yield
+
+    if polling_task and not polling_task.done():
+        polling_task.cancel()
+        try:
+            await polling_task
+        except asyncio.CancelledError:
+            pass
     logger.info("AI Factory Pipeline shutting down")
 
 

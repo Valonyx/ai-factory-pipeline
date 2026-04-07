@@ -254,6 +254,67 @@ async def notify_operator(
     return success
 
 
+async def notify_scout_confidence(
+    state: PipelineState,
+    provider: str,
+    domain: str,
+    confidence: float,
+    query_preview: str,
+    grounded: bool,
+    fused: bool,
+) -> None:
+    """Notify operator when Scout research confidence is low on a high-stakes query.
+
+    Called by ScoutOrchestrator when confidence < 0.55 for legal/compliance/
+    security queries. Gives the operator a chance to manually verify before
+    the Strategist acts on the research.
+
+    Not sent in CI/mock mode or when no bot is configured.
+    """
+    import os
+    if os.getenv("SCOUT_PROVIDER", "").lower() == "mock":
+        return
+
+    operator_id = state.operator_id
+    if not operator_id:
+        return
+
+    confidence_pct = int(confidence * 100)
+    grounded_str = "Exa-verified ✓" if grounded else "not Exa-verified"
+    fused_str = " | multi-source fused" if fused else ""
+
+    # Confidence tier emoji
+    if confidence_pct >= 70:
+        emoji = "🟡"
+        tier  = "moderate"
+    elif confidence_pct >= 50:
+        emoji = "🟠"
+        tier  = "low"
+    else:
+        emoji = "🔴"
+        tier  = "very low"
+
+    message = (
+        f"{emoji} Scout Research — {tier.upper()} CONFIDENCE\n\n"
+        f"Domain  : {domain.upper()}\n"
+        f"Provider: {provider}{fused_str}\n"
+        f"Ground  : {grounded_str}\n"
+        f"Score   : {confidence_pct}%\n\n"
+        f"Query: {query_preview}\n\n"
+        f"The Strategist will use this research. If the result seems uncertain, "
+        f"consider verifying the key claims manually before proceeding."
+    )
+
+    try:
+        await send_telegram_message(operator_id, message)
+        logger.info(
+            f"[scout-notify] confidence alert sent: "
+            f"{confidence_pct}% domain={domain} provider={provider}"
+        )
+    except Exception as e:
+        logger.debug(f"[scout-notify] send failed (non-fatal): {e}")
+
+
 async def send_telegram_budget_alert(
     operator_id: str,
     phase: str,

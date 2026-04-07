@@ -138,6 +138,62 @@ SUPABASE_SCHEMAS = [
         expires_at      TIMESTAMPTZ NOT NULL,
         created_at      TIMESTAMPTZ DEFAULT NOW()
     )""",
+
+    # ── §5.x Revenue tracking (/invoice, /revenue, /clients) ──
+    """CREATE TABLE IF NOT EXISTS revenue_invoices (
+        id              TEXT PRIMARY KEY,
+        operator_id     TEXT NOT NULL,
+        client_name     TEXT NOT NULL,
+        amount          NUMERIC(14, 2) NOT NULL,
+        currency        TEXT NOT NULL DEFAULT 'USD',
+        description     TEXT NOT NULL,
+        project_id      TEXT,
+        notes           TEXT NOT NULL DEFAULT '',
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS revenue_clients (
+        id              TEXT PRIMARY KEY,
+        operator_id     TEXT NOT NULL,
+        name            TEXT NOT NULL,
+        email           TEXT NOT NULL DEFAULT '',
+        phone           TEXT NOT NULL DEFAULT '',
+        company         TEXT NOT NULL DEFAULT '',
+        project_ids     TEXT[] NOT NULL DEFAULT '{}',
+        total_invoiced  NUMERIC(14, 2) NOT NULL DEFAULT 0,
+        notes           TEXT NOT NULL DEFAULT '',
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+    )""",
+
+    # ── War Room incidents ──
+    """CREATE TABLE IF NOT EXISTS war_room_incidents (
+        id              BIGSERIAL PRIMARY KEY,
+        project_id      TEXT NOT NULL,
+        operator_id     TEXT NOT NULL,
+        level           INT NOT NULL,
+        stage           TEXT NOT NULL,
+        error_summary   TEXT NOT NULL,
+        resolution      TEXT,
+        resolved        BOOLEAN NOT NULL DEFAULT FALSE,
+        duration_sec    INT,
+        created_at      TIMESTAMPTZ DEFAULT NOW(),
+        resolved_at     TIMESTAMPTZ
+    )""",
+
+    # ── Build results (S4 outputs) ──
+    """CREATE TABLE IF NOT EXISTS build_results (
+        id              BIGSERIAL PRIMARY KEY,
+        project_id      TEXT NOT NULL,
+        operator_id     TEXT NOT NULL,
+        stack           TEXT NOT NULL,
+        provider        TEXT NOT NULL,
+        platforms       TEXT[] NOT NULL DEFAULT '{}',
+        success         BOOLEAN NOT NULL,
+        artifacts       JSONB NOT NULL DEFAULT '{}',
+        duration_sec    INT,
+        error           TEXT,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+    )""",
 ]
 
 # Indexes for performance
@@ -149,6 +205,11 @@ SUPABASE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_metrics_project ON pipeline_metrics(project_id)",
     "CREATE INDEX IF NOT EXISTS idx_temp_artifacts_expires ON temp_artifacts(expires_at)",
     "CREATE INDEX IF NOT EXISTS idx_monthly_costs_month ON monthly_costs(month)",
+    "CREATE INDEX IF NOT EXISTS idx_invoices_operator ON revenue_invoices(operator_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_invoices_client ON revenue_invoices(operator_id, client_name)",
+    "CREATE INDEX IF NOT EXISTS idx_clients_operator ON revenue_clients(operator_id, total_invoiced DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_war_room_project ON war_room_incidents(project_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_build_results_project ON build_results(project_id, created_at DESC)",
 ]
 
 

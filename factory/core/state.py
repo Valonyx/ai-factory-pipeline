@@ -110,6 +110,17 @@ class AIRole(str, Enum):
     QUICK_FIX  = "quick_fix"
 
 
+class PipelineMode(str, Enum):
+    """Pipeline operation mode.
+
+    Spec: v5.6 §4.0 (NB4 Part 20)
+    CREATE = build a new app from scratch (default)
+    MODIFY = update an existing app (codebase ingestion + diff-based codegen)
+    """
+    CREATE = "create"
+    MODIFY = "modify"
+
+
 class WarRoomLevel(IntEnum):
     """War Room escalation levels.
 
@@ -813,6 +824,13 @@ class PipelineState(BaseModel):
     autonomy_mode: AutonomyMode = AutonomyMode.AUTOPILOT
     execution_mode: ExecutionMode = ExecutionMode.CLOUD
     local_heartbeat_alive: bool = False
+
+    # ── Pipeline Mode (CREATE vs MODIFY) ──
+    pipeline_mode: PipelineMode = PipelineMode.CREATE
+    source_repo_url: Optional[str] = None          # MODIFY: existing repo URL
+    source_repo_path: Optional[str] = None         # MODIFY: local clone path
+    codebase_context: Optional[dict] = None        # MODIFY: analyzed codebase structure
+    modification_description: Optional[str] = None # MODIFY: what to change
 
     # ── Stack Selection (set at S2) ──
     selected_stack: Optional[TechStack] = None

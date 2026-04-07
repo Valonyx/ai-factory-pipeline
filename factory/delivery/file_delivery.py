@@ -115,12 +115,65 @@ async def upload_to_temp_storage(
 
         return signed["signedURL"]
 
-    # Stub mode: return a placeholder URL
+    # No client passed — try to get one from the integration
+    try:
+        from factory.integrations.supabase import get_supabase_client
+        client = get_supabase_client()
+        if client:
+            # Try Supabase Storage
+            with open(file_path, "rb") as f:
+                client.storage.from_(STORAGE_BUCKET).upload(
+                    object_key, f,
+                    file_options={"content-type": "application/octet-stream"},
+                )
+            signed = client.storage.from_(STORAGE_BUCKET).create_signed_url(
+                object_key, expires_in=ttl_hours * 3600,
+            )
+            # Record for Janitor
+            try:
+                client.table("temp_artifacts").insert({
+                    "project_id": project_id,
+                    "object_key": object_key,
+                    "bucket": STORAGE_BUCKET,
+                    "expires_at": (
+                        datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+                    ).isoformat(),
+                    "size_bytes": os.path.getsize(file_path),
+                }).execute()
+            except Exception:
+                pass
+            url = signed.get("signedURL") or signed.get("data", {}).get("signedUrl", "")
+            if url:
+                logger.info(f"Uploaded {object_key} to Supabase Storage")
+                return url
+    except Exception as e:
+        logger.debug(f"Supabase Storage upload failed: {e}")
+
+    # GCS fallback (if ARTIFACT_BUCKET env var is set)
+    gcs_bucket = os.getenv("ARTIFACT_BUCKET", "")
+    if gcs_bucket:
+        try:
+            from google.cloud import storage as gcs
+            gcs_client = gcs.Client()
+            bucket = gcs_client.bucket(gcs_bucket)
+            blob = bucket.blob(object_key)
+            blob.upload_from_filename(file_path)
+            url = blob.generate_signed_url(
+                expiration=timedelta(hours=ttl_hours),
+                method="GET",
+                version="v4",
+            )
+            logger.info(f"Uploaded {object_key} to GCS bucket {gcs_bucket}")
+            return url
+        except Exception as e:
+            logger.debug(f"GCS upload failed: {e}")
+
+    # Final fallback: log size and return a descriptive marker
     size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-    logger.debug(
-        f"Stub upload: {file_path} ({size} bytes) → {object_key}"
+    logger.warning(
+        f"No storage backend available — {file_path} ({size} bytes) not uploaded"
     )
-    return f"https://storage.stub/{STORAGE_BUCKET}/{object_key}?ttl={ttl_hours}h"
+    return f"local://{file_path}"
 
 
 # ═══════════════════════════════════════════════════════════════════

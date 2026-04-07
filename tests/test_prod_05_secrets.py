@@ -109,13 +109,14 @@ class TestAppendixBConstants:
             assert name in REQUIRED_SECRETS
 
     def test_known_secrets_present(self):
-        """Specific secrets from spec must exist."""
+        """Core secrets from spec must exist in required list."""
         assert "ANTHROPIC_API_KEY" in REQUIRED_SECRETS
-        assert "PERPLEXITY_API_KEY" in REQUIRED_SECRETS
+        assert "GOOGLE_AI_API_KEY" in REQUIRED_SECRETS   # free AI fallback
         assert "TELEGRAM_BOT_TOKEN" in REQUIRED_SECRETS
+        assert "TELEGRAM_OPERATOR_ID" in REQUIRED_SECRETS
         assert "SUPABASE_URL" in REQUIRED_SECRETS
         assert "NEO4J_URI" in REQUIRED_SECRETS
-        assert "GCP_PROJECT_ID" in REQUIRED_SECRETS
+        assert "GITHUB_TOKEN" in REQUIRED_SECRETS
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -235,7 +236,10 @@ class TestCheckSecretExists:
 class TestValidateSecretsPreflight:
     def test_all_missing(self):
         """With no env vars set, all should be missing."""
-        result = validate_secrets_preflight(strict=False)
+        # Mock get_secret to return None for everything — simulates a fresh machine
+        # without fighting the cache, .env auto-load, or GCP fallback.
+        with patch("factory.core.secrets.get_secret", return_value=None):
+            result = validate_secrets_preflight(strict=False)
         assert result["all_present"] is False
         assert result["core_present"] == 0
         assert len(result["missing_critical"]) == len(CORE_SECRETS)

@@ -168,13 +168,17 @@ async def call_ai(
             f"Only STRATEGIST can make legal decisions."
         )
 
-    # ── Step 4: Route to provider ──
+    # ── Step 4: Inject unified context so any provider has full project memory ──
+    from factory.core.context_bridge import inject_context
+    prompt = inject_context(prompt, state)
+
+    # ── Step 5: Route to provider ──
     if role == AIRole.SCOUT:
         response, cost = await _call_perplexity_safe(prompt, contract, state)
     else:
         response, cost = await _call_anthropic(prompt, contract)
 
-    # ── Step 5: Track cost against circuit breaker (§3.6) ──
+    # ── Step 6: Track cost against circuit breaker (§3.6) ──
     phase = state.current_stage.value
     state.phase_costs[phase] = state.phase_costs.get(phase, 0.0) + cost
     state.total_cost_usd += cost
@@ -197,6 +201,22 @@ async def call_ai(
             f"[{state.project_id}] Phase budget exceeded for {role_key}: "
             f"${state.phase_costs[phase]:.2f} > ${role_limit:.2f}"
         )
+
+    # ── Step 7: Persist Strategist decisions to Mother Memory ──
+    # Key planning outputs are stored so any future provider has institutional memory.
+    if role == AIRole.STRATEGIST and len(response) > 50:
+        try:
+            from factory.memory.mother_memory import store_pipeline_decision
+            import asyncio
+            asyncio.create_task(store_pipeline_decision(
+                project_id=state.project_id,
+                stage=phase,
+                decision_type=f"strategist_{action}",
+                content=response[:1500],
+                operator_id=state.operator_id or "",
+            ))
+        except Exception:
+            pass  # never block pipeline over memory write
 
     return response
 
@@ -232,100 +252,198 @@ _MODEL_COSTS: dict[str, tuple[float, float]] = {
 async def _call_anthropic(
     prompt: str, contract: RoleContract,
 ) -> tuple[str, float]:
-    """Call AI provider for non-Scout roles.
+    """Call AI provider using the cascading provider chain.
 
     Spec: §2.2.2
-    Routes to Gemini (free-tier dev) or Anthropic (production) based on
-    AI_PROVIDER env var. Set AI_PROVIDER=gemini for development without
-    Anthropic credits; set AI_PROVIDER=anthropic (default) for production.
+    Tries each provider in priority order until one succeeds.
+    Chain (dev phase): anthropic → gemini → groq → openrouter → mock
+    Chain (production): anthropic first, falls back on quota/error.
 
-    Dev note (NB3-DEV-001): Gemini routing added 2026-04 while Anthropic
-    API credits were unavailable. Switch back with AI_PROVIDER=anthropic.
+    Provider chain auto-switches on 429/quota errors and auto-restores
+    when a higher-priority provider's quota resets.
     """
-    provider = os.getenv("AI_PROVIDER", "anthropic").lower()
+    from factory.integrations.provider_chain import (
+        ai_chain, is_quota_error, is_auth_error, parse_retry_delay,
+    )
+
+    # CI / test mock shortcut
+    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+        return (f"[MOCK:{contract.role.value}] {prompt[:80]}", 0.0001)
+
+    # Try providers in chain order until one succeeds
+    tried: list[str] = []
+    for _ in range(len(ai_chain.chain)):
+        provider = ai_chain.get_active()
+        if provider in tried:
+            break
+        tried.append(provider)
+
+        try:
+            result = await _call_single_ai_provider(provider, prompt, contract)
+            ai_chain.mark_success(provider)
+            if len(tried) > 1:
+                logger.info(f"AI call succeeded on fallback provider: {provider}")
+            return result
+
+        except Exception as e:
+            err = str(e)
+            if is_quota_error(err):
+                reset_in = parse_retry_delay(err)
+                ai_chain.mark_quota_exhausted(provider, reset_in)
+                logger.warning(
+                    f"[provider-chain] {provider} quota exhausted — "
+                    f"trying next provider"
+                )
+            elif is_auth_error(err):
+                ai_chain.mark_error(provider, f"auth error: {err[:80]}")
+                logger.error(f"[provider-chain] {provider} auth failed — skipping")
+            else:
+                ai_chain.mark_error(provider, err[:80])
+                logger.warning(f"[provider-chain] {provider} error: {err[:80]}")
+
+    # All providers exhausted
+    logger.error("[provider-chain] All AI providers exhausted — returning mock")
+    return (f"[ALL-PROVIDERS-EXHAUSTED] {prompt[:80]}", 0.0)
+
+
+async def _call_single_ai_provider(
+    provider: str,
+    prompt: str,
+    contract: "RoleContract",
+) -> tuple[str, float]:
+    """Dispatch to a specific AI provider implementation."""
+    if provider == "anthropic":
+        return await _call_anthropic_direct(prompt, contract)
     if provider == "gemini":
         from factory.integrations.gemini import call_gemini
         return await call_gemini(prompt, contract)
+    if provider == "groq":
+        from factory.integrations.groq_provider import call_groq
+        return await call_groq(prompt, contract)
+    if provider == "openrouter":
+        from factory.integrations.openrouter_provider import call_openrouter
+        return await call_openrouter(prompt, contract)
+    if provider == "cerebras":
+        from factory.integrations.cerebras_provider import call_cerebras
+        return await call_cerebras(prompt, contract)
+    if provider == "together":
+        from factory.integrations.together_provider import call_together
+        return await call_together(prompt, contract)
+    if provider == "mistral":
+        from factory.integrations.mistral_provider import call_mistral
+        return await call_mistral(prompt, contract)
+    if provider == "mock":
+        return (f"[MOCK:{contract.role.value}] {prompt[:80]}", 0.0001)
+    raise ValueError(f"Unknown AI provider: {provider}")
 
+
+async def _call_anthropic_direct(
+    prompt: str, contract: "RoleContract",
+) -> tuple[str, float]:
+    """Direct Anthropic API call (no fallback logic here)."""
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
-
     if not api_key:
-        logger.info(
-            f"[MOCK] Calling {contract.model} for {contract.role.value} "
-            f"(max_tokens={contract.max_output_tokens})"
-        )
-        return (
-            f"[MOCK {contract.model}] Response to: {prompt[:100]}...",
-            0.01,
-        )
+        raise ValueError("ANTHROPIC_API_KEY not configured")
 
     import anthropic as sdk
-
     max_tokens = contract.max_output_tokens
     client = sdk.AsyncAnthropic(api_key=api_key)
 
-    try:
-        if max_tokens > 8192:
-            async with client.messages.stream(
-                model=contract.model,
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
-                response = await stream.get_final_message()
-        else:
-            response = await client.messages.create(
-                model=contract.model,
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-        text = next(
-            (b.text for b in response.content if b.type == "text"), ""
+    if max_tokens > 8192:
+        async with client.messages.stream(
+            model=contract.model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            response = await stream.get_final_message()
+    else:
+        response = await client.messages.create(
+            model=contract.model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
         )
-        cost_in, cost_out = _MODEL_COSTS.get(contract.model, (3.00, 15.00))
-        cost = (
-            response.usage.input_tokens / 1_000_000 * cost_in
-            + response.usage.output_tokens / 1_000_000 * cost_out
-        )
-        return text, cost
 
-    except sdk.AuthenticationError:
-        logger.error("Anthropic auth failed — check ANTHROPIC_API_KEY")
-        raise
-    except sdk.RateLimitError as e:
-        logger.warning(f"Anthropic rate limit: {e}")
-        raise
-    except sdk.APIStatusError as e:
-        logger.error(f"Anthropic API error {e.status_code}: {e.message}")
-        raise
+    text = next((b.text for b in response.content if b.type == "text"), "")
+    cost_in, cost_out = _MODEL_COSTS.get(contract.model, (3.00, 15.00))
+    cost = (
+        response.usage.input_tokens / 1_000_000 * cost_in
+        + response.usage.output_tokens / 1_000_000 * cost_out
+    )
+    return text, cost
 
 
 async def _call_perplexity_safe(
     prompt: str, contract: RoleContract, state: PipelineState,
 ) -> tuple[str, float]:
-    """Safe Scout call with provider routing and degradation policy.
+    """Scout research via the ScoutOrchestrator.
 
     Spec: §2.2.3 [C5], §3.1, ADR-049, FIX-19
 
-    Routes to Tavily (free-tier dev) or Perplexity (production) based on
-    SCOUT_PROVIDER env var. Set SCOUT_PROVIDER=tavily for development without
-    Perplexity funds; set SCOUT_PROVIDER=perplexity (default) for production.
+    The ScoutOrchestrator handles everything:
+      • Query classification (domain, stakes, freshness, KSA flag)
+      • Domain-optimal provider routing (not a fixed waterfall)
+      • Parallel fusion for high-stakes queries (2 providers + AI synthesis)
+      • Shared Mother Memory cache (all providers, 4h TTL)
+      • Exa grounding for legal/compliance/security queries
+      • Per-provider confidence calibration
+      • Telegram alert when confidence is low on a high-stakes result
 
-    Dev note (NB3-DEV-002): Tavily routing added 2026-04 while Perplexity
-    required a $50 minimum balance. Switch back with SCOUT_PROVIDER=perplexity.
+    Dev note (NB3-DEV-004): Orchestrator added 2026-04 replacing manual chain loop.
     """
-    scout_provider = os.getenv("SCOUT_PROVIDER", "perplexity").lower()
-    if scout_provider == "tavily":
+    if os.getenv("SCOUT_PROVIDER", "").lower() == "mock":
+        return (f"[MOCK:scout] {prompt[:80]}", 0.0001)
+
+    from factory.integrations.scout_orchestrator import get_scout_orchestrator
+    return await get_scout_orchestrator().research(prompt, state, contract)
+
+
+async def _call_single_scout_provider(
+    provider: str,
+    prompt: str,
+    contract: "RoleContract",
+    state: "PipelineState",
+    domain: str = "general",
+) -> tuple[str, float]:
+    """Dispatch to a specific Scout provider implementation."""
+    if provider == "perplexity":
+        from factory.integrations.perplexity import call_perplexity_safe
+        return await call_perplexity_safe(
+            prompt=prompt, contract=contract, state=state, tier=SCOUT_MAX_CONTEXT_TIER,
+        )
+    if provider == "tavily":
         from factory.integrations.tavily_scout import call_tavily_scout
         return await call_tavily_scout(prompt, contract, state)
-
-    from factory.integrations.perplexity import call_perplexity_safe
-    return await call_perplexity_safe(
-        prompt=prompt,
-        contract=contract,
-        state=state,
-        tier=SCOUT_MAX_CONTEXT_TIER,
-    )
+    if provider == "brave":
+        from factory.integrations.brave_scout import call_brave
+        return await call_brave(prompt, contract, state)
+    if provider == "duckduckgo":
+        from factory.integrations.duckduckgo_search import call_duckduckgo_search
+        return await call_duckduckgo_search(prompt, contract, state)
+    if provider == "exa":
+        from factory.integrations.exa_scout import call_exa_scout
+        return await call_exa_scout(prompt, contract, state)
+    if provider == "wikipedia":
+        from factory.integrations.wikipedia_scout import call_wikipedia_scout
+        return await call_wikipedia_scout(prompt, contract, state)
+    if provider == "hackernews":
+        from factory.integrations.hackernews_scout import call_hackernews_scout
+        return await call_hackernews_scout(prompt, contract, state)
+    if provider == "searxng":
+        from factory.integrations.searxng_scout import call_searxng
+        return await call_searxng(prompt, contract, state, domain=domain)
+    if provider == "reddit":
+        from factory.integrations.reddit_scout import call_reddit
+        return await call_reddit(prompt, contract, state, domain=domain)
+    if provider == "stackoverflow":
+        from factory.integrations.stackoverflow_scout import call_stackoverflow
+        return await call_stackoverflow(prompt, contract, state, domain=domain)
+    if provider == "github_search":
+        from factory.integrations.github_search_scout import call_github_search
+        return await call_github_search(prompt, contract, state, domain=domain)
+    if provider == "ai_scout":
+        from factory.integrations.ai_scout import call_ai_scout
+        return await call_ai_scout(prompt, contract, state)
+    raise ValueError(f"Unknown Scout provider: {provider}")
 
 
 # ═══════════════════════════════════════════════════════════════════

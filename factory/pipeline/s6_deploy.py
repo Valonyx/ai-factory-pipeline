@@ -250,44 +250,58 @@ async def _deploy_android(
     stack: TechStack,
     exec_mgr: ExecutionModeManager,
 ) -> dict:
-    """Deploy Android via Google Play API (service account, no UI).
+    """Deploy Android via provider chain.
 
     Spec: §4.7.1
-    Fallback: Airlock binary delivery via Telegram.
+    Chain: Google Play API → Firebase App Distribution → Airlock (Telegram)
+    Force via: ANDROID_DELIVERY_PROVIDER=playstore|firebase|airlock
     """
-    package_name = state.project_metadata.get("package_name", "")
+    blueprint_data = state.s2_output or {}
+    artifacts = (state.s4_output or {}).get("artifacts", {})
+    package_name = state.project_metadata.get(
+        "package_name",
+        blueprint_data.get("package_name", ""),
+    )
+    release_notes = blueprint_data.get("release_notes", f"Version update — {state.project_id}")
 
-    # Step 1: Sign the AAB
-    sign_result = await exec_mgr.execute_task({
-        "name": "sign_android",
-        "type": "build",
-        "command": enforce_user_space(
-            "jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 "
-            "-keystore release.keystore app-release-unsigned.apk alias_name"
-        ),
-    }, requires_macincloud=False)
+    # Find artifact path
+    artifact_path = "app-release.aab"
+    artifact_type = "aab"
+    for platform_key in ("android", stack.value):
+        art = artifacts.get(platform_key, {})
+        if art.get("path"):
+            artifact_path = art["path"]
+            artifact_type = "apk" if artifact_path.endswith(".apk") else "aab"
+            break
 
-    # Step 2: Upload via Google Play API
-    upload_result = await exec_mgr.execute_task({
-        "name": "upload_play_store",
-        "type": "backend_deploy",
-        "command": enforce_user_space(
-            f"npx google-play-cli upload "
-            f"--package-name {package_name} "
-            f"--track internal --aab app-release.aab"
-        ),
-    }, requires_macincloud=False)
-
-    if upload_result.get("exit_code", 1) != 0:
-        # Airlock fallback: deliver binary via Telegram
-        logger.warning(
-            f"[{state.project_id}] Google Play upload failed, activating Airlock"
+    try:
+        from factory.delivery.android_delivery_chain import deliver_android
+        result = await deliver_android(
+            artifact_path=artifact_path,
+            state=state,
+            package_name=package_name,
+            release_notes=release_notes,
+            track="internal",
+            artifact_type=artifact_type,
         )
+        return {
+            "success": result.success,
+            "method": result.method,
+            "provider": result.provider,
+            "track": result.track,
+            "manual_upload": result.manual_upload_required,
+            "firebase_url": result.firebase_url,
+            "airlock_delivered": result.airlock_delivered,
+            "error": result.error,
+        }
+    except Exception as e:
+        logger.error(f"[{state.project_id}] Android delivery chain error: {e}")
+        # Hard fallback to Airlock
         airlock_result = await airlock_deliver(
             state=state,
             platform="android",
-            binary_path="app-release.aab",
-            error=upload_result.get("stderr", "")[:500],
+            binary_path=artifact_path,
+            error=str(e),
         )
         return {
             "success": True,
@@ -295,8 +309,6 @@ async def _deploy_android(
             "manual_upload": True,
             "airlock": airlock_result,
         }
-
-    return {"success": True, "method": "api", "track": "internal"}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -309,72 +321,62 @@ async def _deploy_ios(
     stack: TechStack,
     exec_mgr: ExecutionModeManager,
 ) -> dict:
-    """Deploy iOS via Transporter CLI (no App Store Connect UI).
+    """Deploy iOS via provider chain.
 
     Spec: §4.7.2, §4.7.4 (FIX-21)
-    Uses 5-step submission protocol with retry logic.
-    Fallback: Airlock binary delivery via Telegram.
+    Chain: App Store Connect API → Fastlane → Firebase App Distribution → Airlock
+    Force via: IOS_DELIVERY_PROVIDER=appstore|fastlane|firebase|airlock
     """
-    errors: list[str] = []
+    blueprint_data = state.s2_output or {}
+    artifacts = (state.s4_output or {}).get("artifacts", {})
+    bundle_id = state.project_metadata.get(
+        "bundle_id",
+        blueprint_data.get("bundle_id", ""),
+    )
+    release_notes = blueprint_data.get("release_notes", f"Version update — {state.project_id}")
 
-    # Execute iOS submission steps (FIX-21 protocol)
-    for step in IOS_SUBMISSION_STEPS:
-        import asyncio
+    # Find IPA path
+    ipa_path = "build/export/App.ipa"
+    for platform_key in ("ios", stack.value):
+        art = artifacts.get(platform_key, {})
+        if art.get("path") and art["path"].endswith(".ipa"):
+            ipa_path = art["path"]
+            break
 
-        for attempt in range(step["max_retries"]):
-            result = await exec_mgr.execute_task({
-                "name": f"ios_{step['name']}",
-                "type": "ios_build",
-                "command": enforce_user_space(step["command"]),
-                "timeout": step["timeout"],
-            }, requires_macincloud=True)
-
-            if result.get("exit_code", 1) == 0:
-                break
-
-            # Retry with backoff
-            if attempt < step["max_retries"] - 1:
-                backoff = step["backoff_base"] * (attempt + 1)
-                logger.info(
-                    f"[{state.project_id}] iOS {step['name']} retry "
-                    f"{attempt + 1}/{step['max_retries']}, backoff {backoff}s"
-                )
-                await asyncio.sleep(min(backoff, 5))  # Cap for dry-run
-        else:
-            # All retries exhausted
-            error_msg = (
-                f"iOS {step['name']} failed after "
-                f"{step['max_retries']} retries: "
-                f"{result.get('stderr', '')[:300]}"
-            )
-            errors.append(error_msg)
-
-            # For non-polling steps, halt and use Airlock
-            if step["name"] != "poll_processing":
-                logger.warning(
-                    f"[{state.project_id}] iOS deploy failed at "
-                    f"{step['name']}, activating Airlock"
-                )
-                airlock_result = await airlock_deliver(
-                    state=state,
-                    platform="ios",
-                    binary_path="build/export/App.ipa",
-                    error=error_msg,
-                )
-                return {
-                    "success": True,
-                    "method": "airlock_telegram",
-                    "manual_upload": True,
-                    "failed_step": step["name"],
-                    "airlock": airlock_result,
-                }
-
-    return {
-        "success": True,
-        "method": "api",
-        "status": "processing",
-        "steps_completed": len(IOS_SUBMISSION_STEPS),
-    }
+    try:
+        from factory.delivery.ios_delivery_chain import deliver_ios
+        result = await deliver_ios(
+            ipa_path=ipa_path,
+            state=state,
+            bundle_id=bundle_id,
+            release_notes=release_notes,
+            target="testflight",
+        )
+        return {
+            "success": result.success,
+            "method": result.method,
+            "provider": result.provider,
+            "manual_upload": result.manual_upload_required,
+            "testflight_url": result.testflight_url,
+            "firebase_url": result.firebase_url,
+            "airlock_delivered": result.airlock_delivered,
+            "error": result.error,
+        }
+    except Exception as e:
+        logger.error(f"[{state.project_id}] iOS delivery chain error: {e}")
+        # Hard fallback to Airlock
+        airlock_result = await airlock_deliver(
+            state=state,
+            platform="ios",
+            binary_path=ipa_path,
+            error=str(e),
+        )
+        return {
+            "success": True,
+            "method": "airlock_telegram",
+            "manual_upload": True,
+            "airlock": airlock_result,
+        }
 
 
 # Register with DAG (replaces stub)

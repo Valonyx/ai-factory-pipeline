@@ -45,3 +45,4 @@ service-account*.json
 *.aab
 *.apk
 .claude/
+google-cloud-sdk/

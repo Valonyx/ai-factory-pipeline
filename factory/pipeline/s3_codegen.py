@@ -46,6 +46,12 @@ async def s3_codegen_node(state: PipelineState) -> PipelineState:
     Cost target: <$3.00
     """
     blueprint_data = state.s2_output or {}
+
+    # ── MODIFY mode: generate targeted diffs instead of full files ──
+    from factory.core.state import PipelineMode
+    if state.pipeline_mode == PipelineMode.MODIFY:
+        return await _s3_modify_codegen(state, blueprint_data)
+
     # Retry when: retry_count > 0 with prior failures, or previous_stage was S5_TEST
     s5_has_failures = bool(
         state.s5_output and not state.s5_output.get("passed", True)
@@ -66,6 +72,149 @@ async def s3_codegen_node(state: PipelineState) -> PipelineState:
 # ═══════════════════════════════════════════════════════════════════
 # Full Generation Mode
 # ═══════════════════════════════════════════════════════════════════
+
+
+def _build_codegen_prompt(
+    stack: TechStack,
+    app_name: str,
+    screens: list,
+    data_model: list,
+    api_endpoints: list,
+    auth_method: str,
+    blueprint_data: dict,
+) -> str:
+    """Build a stack-specific, detailed codegen prompt for the Engineer.
+
+    Each stack gets targeted instructions for conventions, file structure,
+    and must-have patterns — reducing hallucinations and improving output quality.
+    """
+    screens_json = json.dumps(screens[:10], indent=2)[:2500]
+    model_json = json.dumps(data_model, indent=2)[:1800]
+    api_json = json.dumps(api_endpoints, indent=2)[:1200]
+    colors = json.dumps(blueprint_data.get("color_palette", {}))
+    typography = blueprint_data.get("typography", {})
+    features = blueprint_data.get("features_must", [])
+
+    base = (
+        f"App name: {app_name}\n"
+        f"Screens: {screens_json}\n"
+        f"Data model: {model_json}\n"
+        f"API endpoints: {api_json}\n"
+        f"Auth: {auth_method}\n"
+        f"Colors: {colors}\n"
+        f"Features: {features}\n\n"
+        f"Return ONLY valid JSON: {{\"file_path\": \"file_content\", ...}}\n"
+        f"Include ALL necessary files (entry point, screens, models, config, manifest).\n"
+    )
+
+    if stack == TechStack.FLUTTERFLOW:
+        return (
+            f"Generate complete Flutter/FlutterFlow Dart files.\n\n"
+            f"Conventions:\n"
+            f"- Entry: lib/main.dart with MaterialApp\n"
+            f"- Each screen: lib/screens/<name>_screen.dart as StatefulWidget\n"
+            f"- Models: lib/models/<name>.dart with fromJson/toJson\n"
+            f"- Services: lib/services/firestore_service.dart using cloud_firestore\n"
+            f"- Theme: lib/theme.dart with ThemeData matching color palette\n"
+            f"- pubspec.yaml: include flutter, firebase_core, cloud_firestore, firebase_auth\n"
+            f"- Use const constructors where possible. Follow Material Design 3.\n\n"
+            + base
+        )
+
+    elif stack == TechStack.REACT_NATIVE:
+        bundle_id = blueprint_data.get("bundle_id", "com.factory.app")
+        return (
+            f"Generate complete React Native + Expo TypeScript project.\n\n"
+            f"Conventions:\n"
+            f"- App.tsx: NavigationContainer with Stack/Tab navigators\n"
+            f"- src/screens/<Name>Screen.tsx per screen\n"
+            f"- src/components/ for reusable UI\n"
+            f"- src/services/firebase.ts for Firebase init\n"
+            f"- src/store/ using Zustand for state management\n"
+            f"- package.json: expo ~50, react-native ~0.74, @react-navigation/native\n"
+            f"- tsconfig.json with strict mode\n"
+            f"- app.json: bundleIdentifier={bundle_id}\n"
+            f"- Use StyleSheet.create for all styles. Avoid inline styles.\n\n"
+            + base
+        )
+
+    elif stack == TechStack.SWIFT:
+        bundle_id = blueprint_data.get("bundle_id", "com.factory.app")
+        return (
+            f"Generate complete SwiftUI iOS project files.\n\n"
+            f"Conventions:\n"
+            f"- <AppName>App.swift: @main App entry with WindowGroup\n"
+            f"- Views/<Name>View.swift per screen as SwiftUI View struct\n"
+            f"- Models/<Name>.swift: Codable structs\n"
+            f"- ViewModels/<Name>ViewModel.swift: @Observable class (Swift 5.9+)\n"
+            f"- Services/FirebaseService.swift: FirebaseFirestore calls\n"
+            f"- Services/AuthService.swift: FirebaseAuth calls\n"
+            f"- Package.swift or Podfile: FirebaseFirestore, FirebaseAuth\n"
+            f"- Info.plist: NSFaceIDUsageDescription, privacy keys\n"
+            f"- Use async/await throughout. Target iOS 17+.\n"
+            f"- Apply MVVM pattern strictly.\n\n"
+            + base
+        )
+
+    elif stack == TechStack.KOTLIN:
+        package = blueprint_data.get("package_name", "com.factory.app")
+        return (
+            f"Generate complete Android Kotlin project files.\n\n"
+            f"Package: {package}\n"
+            f"Conventions:\n"
+            f"- app/src/main/java/{package.replace('.', '/')}/MainActivity.kt\n"
+            f"- ui/<feature>/<Name>Fragment.kt and <Name>ViewModel.kt per screen\n"
+            f"- data/models/<Name>.kt: data classes\n"
+            f"- data/repository/<Name>Repository.kt: Firestore operations\n"
+            f"- di/AppModule.kt: Hilt dependency injection\n"
+            f"- app/build.gradle: compileSdk 34, Firebase BOM, Hilt, Navigation\n"
+            f"- AndroidManifest.xml: INTERNET permission, activities\n"
+            f"- res/values/colors.xml, strings.xml, themes.xml\n"
+            f"- Use Jetpack Compose for UI. Coroutines + Flow for async.\n"
+            f"- Apply MVVM + Repository pattern.\n\n"
+            + base
+        )
+
+    elif stack == TechStack.UNITY:
+        return (
+            f"Generate complete Unity C# project files.\n\n"
+            f"Conventions:\n"
+            f"- Assets/Scripts/GameManager.cs: MonoBehaviour singleton\n"
+            f"- Assets/Scripts/UI/<Name>UIController.cs per screen\n"
+            f"- Assets/Scripts/Data/<Name>Data.cs: [Serializable] data classes\n"
+            f"- Assets/Scripts/Services/FirebaseService.cs: Firebase Realtime DB\n"
+            f"- Assets/Scripts/Services/AuthService.cs: Firebase Authentication\n"
+            f"- ProjectSettings/ProjectVersion.txt\n"
+            f"- Packages/manifest.json: com.unity.firebase.app, analytics\n"
+            f"- Use UnityEngine.UIElements or TextMeshPro for UI.\n"
+            f"- Implement singleton GameManager with DontDestroyOnLoad.\n"
+            f"- All MonoBehaviours: null checks before API calls.\n\n"
+            + base
+        )
+
+    elif stack == TechStack.PYTHON_BACKEND:
+        return (
+            f"Generate complete Python FastAPI backend project.\n\n"
+            f"Conventions:\n"
+            f"- main.py: FastAPI app, CORS, health endpoint\n"
+            f"- routers/<name>.py: APIRouter per domain\n"
+            f"- models/<name>.py: Pydantic v2 BaseModel\n"
+            f"- services/<name>.py: business logic\n"
+            f"- db/firebase.py: Firestore client init\n"
+            f"- db/models.py: Firestore collection helpers\n"
+            f"- requirements.txt: fastapi, uvicorn, firebase-admin, pydantic>=2\n"
+            f"- Dockerfile: python:3.11-slim, non-root user, PORT env var\n"
+            f"- .env.example: FIREBASE_CREDENTIALS, PROJECT_ID\n"
+            f"- Use async def for all endpoints. Include OpenAPI docstrings.\n"
+            f"- Auth: Firebase ID token verification middleware.\n\n"
+            + base
+        )
+
+    # Fallback for unknown stacks
+    return (
+        f"Generate ALL code files for a {stack.value} project.\n\n"
+        + base
+    )
 
 
 async def _codegen_full_generation(
@@ -92,17 +241,14 @@ async def _codegen_full_generation(
     app_name = blueprint_data.get("app_name", state.project_id)
 
     # ── Step 1: Generate code files ──
-    code_prompt = (
-        f"Generate ALL code files for a {stack.value} project.\n\n"
-        f"App: {app_name}\n"
-        f"Screens: {json.dumps(screens[:10], indent=2)[:3000]}\n"
-        f"Data model: {json.dumps(data_model, indent=2)[:2000]}\n"
-        f"API endpoints: {json.dumps(api_endpoints, indent=2)[:1500]}\n"
-        f"Auth: {auth_method}\n"
-        f"Design: {json.dumps(blueprint_data.get('color_palette', {}))}\n\n"
-        f"Return ONLY valid JSON: {{\"file_path\": \"file_content\", ...}}\n"
-        f"Include all necessary files: entry point, screens, models, "
-        f"config, package manifest."
+    code_prompt = _build_codegen_prompt(
+        stack=stack,
+        app_name=app_name,
+        screens=screens,
+        data_model=data_model,
+        api_endpoints=api_endpoints,
+        auth_method=auth_method,
+        blueprint_data=blueprint_data,
     )
 
     result = await call_ai(
@@ -334,7 +480,8 @@ async def _quick_fix_validation(
     """
     # Prepare truncated file listing for validation
     file_summaries = {
-        k: v[:500] for k, v in files.items()
+        k: (v[:500] if isinstance(v, str) else str(v)[:500])
+        for k, v in files.items()
     }
 
     validation_result = await call_ai(
@@ -353,7 +500,11 @@ async def _quick_fix_validation(
 
     try:
         errors = json.loads(validation_result)
-    except json.JSONDecodeError:
+        if not isinstance(errors, list):
+            errors = []
+        # Ensure each item is a dict (guard against bare string lists)
+        errors = [e for e in errors if isinstance(e, dict)]
+    except (json.JSONDecodeError, TypeError):
         errors = []
 
     for error_item in errors:
@@ -503,6 +654,126 @@ def _create_minimal_scaffold(
 
 # Register with DAG (replaces stub)
 register_stage_node("s3_codegen", s3_codegen_node)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MODIFY Mode: Diff-Based CodeGen
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _s3_modify_codegen(
+    state: PipelineState,
+    blueprint_data: dict,
+) -> PipelineState:
+    """S3 MODIFY: generate targeted file changes instead of full files.
+
+    Steps:
+      1. For each file in the change plan → generate modified version
+      2. Generate new files from files_to_add list
+      3. Build a ChangeSet (unified diffs) using DiffGenerator
+      4. Store diffs in s3_output for operator review before applying
+    """
+    change_plan = blueprint_data.get("change_plan", {})
+    description = blueprint_data.get("modification_description", "")
+    context = state.codebase_context or {}
+    context_text = context.get("context_text", "")[:40000]
+
+    files_to_modify: list[dict] = change_plan.get("files_to_modify", [])
+    files_to_add: list[dict] = change_plan.get("files_to_add", [])
+    files_to_delete: list[str] = change_plan.get("files_to_delete", [])
+
+    logger.info(
+        f"[{state.project_id}] MODIFY S3: generating diffs for "
+        f"{len(files_to_modify)} modify + {len(files_to_add)} add"
+    )
+
+    original_files: dict[str, str] = context.get("file_contents", {})
+    generated_files: dict[str, str] = {}
+
+    # ── Modify existing files ──
+    for file_spec in files_to_modify[:20]:  # cap to keep costs controlled
+        file_path = file_spec.get("path", "")
+        change_summary = file_spec.get("change_summary", description)
+        original_content = original_files.get(file_path, "")
+
+        try:
+            modified = await call_ai(
+                role=AIRole.ENGINEER,
+                prompt=(
+                    f"Modify the following file to: {change_summary}\n\n"
+                    f"Overall request: {description}\n\n"
+                    f"FILE: {file_path}\n"
+                    f"ORIGINAL CONTENT:\n{original_content[:8000]}\n\n"
+                    f"CODEBASE CONTEXT (for references):\n{context_text[:4000]}\n\n"
+                    f"Return ONLY the complete modified file content. "
+                    f"Preserve style, indentation, and imports."
+                ),
+                state=state,
+                action="codegen",
+            )
+            generated_files[file_path] = modified
+        except Exception as e:
+            logger.warning(f"[{state.project_id}] MODIFY S3: failed {file_path}: {e}")
+
+    # ── Generate new files ──
+    for file_spec in files_to_add[:10]:
+        file_path = file_spec.get("path", "")
+        purpose = file_spec.get("purpose", description)
+
+        try:
+            new_content = await call_ai(
+                role=AIRole.ENGINEER,
+                prompt=(
+                    f"Create a new file: {file_path}\n"
+                    f"Purpose: {purpose}\n"
+                    f"Overall modification: {description}\n\n"
+                    f"CODEBASE CONTEXT:\n{context_text[:6000]}\n\n"
+                    f"Return ONLY the complete file content."
+                ),
+                state=state,
+                action="codegen",
+            )
+            generated_files[file_path] = new_content
+        except Exception as e:
+            logger.warning(f"[{state.project_id}] MODIFY S3: failed new {file_path}: {e}")
+
+    # ── Build ChangeSet with diffs ──
+    try:
+        from factory.pipeline.diff_generator import build_changeset
+        changeset = build_changeset(
+            original_files=original_files,
+            generated_files=generated_files,
+        )
+        diff_summary = changeset.to_review_text()
+        state.s3_output = {
+            "modify_mode": True,
+            "generated_files": generated_files,
+            "deleted_files": files_to_delete,
+            "diff_summary": diff_summary,
+            "lines_added": changeset.lines_added,
+            "lines_removed": changeset.lines_removed,
+            "files_changed": len(generated_files),
+            "changeset": {
+                "modified": [f.path for f in changeset.modified_files],
+                "new": [f.path for f in changeset.new_files],
+                "deleted": [f.path for f in changeset.deleted_files],
+            },
+        }
+    except Exception as e:
+        logger.warning(f"[{state.project_id}] MODIFY S3: diff build failed: {e}")
+        state.s3_output = {
+            "modify_mode": True,
+            "generated_files": generated_files,
+            "deleted_files": files_to_delete,
+            "files_changed": len(generated_files),
+        }
+
+    logger.info(
+        f"[{state.project_id}] MODIFY S3 complete: "
+        f"{len(generated_files)} files generated"
+    )
+    return state
+
 
 def _parse_files_response(text: str) -> dict[str, str]:
     """Parse AI-generated files response into a filename→content dict.

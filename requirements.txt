@@ -4,10 +4,15 @@ aiosignal==1.4.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anthropic==0.84.0
-# DEV alternatives (NB3-DEV-001/002): free-tier providers for development without paid credits
-# Switch back: AI_PROVIDER=anthropic, SCOUT_PROVIDER=perplexity
-google-generativeai==0.8.6
+# ── Free-tier provider chain (cascading fallback) ──────────────────────────
+# AI chain:    anthropic → gemini → groq → openrouter → cerebras → together → mistral → mock
+# Scout chain: perplexity → tavily → duckduckgo → exa → ai_scout
+# Switch to production: set billing + reorder chain
+google-genai==1.70.0
 tavily-python==0.7.23
+groq>=0.11.0
+duckduckgo-search>=6.0.0
+# Cerebras, Together AI, Mistral use httpx (already in requirements — no extra SDK needed)
 anyio==4.12.1
 attrs==25.4.0
 cachetools==6.2.6

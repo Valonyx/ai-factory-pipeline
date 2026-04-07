@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from factory.core.state import (
     AIRole,
     AutonomyMode,
+    PipelineMode,
     PipelineState,
     Stage,
 )
@@ -44,6 +45,10 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
 
     Cost target: <$0.15
     """
+    # ── MODIFY mode: clone repo + analyze codebase instead of normal intake ──
+    if state.pipeline_mode == PipelineMode.MODIFY:
+        return await _s0_modify_intake(state)
+
     raw_input = state.project_metadata.get("raw_input", "")
     attachments = state.project_metadata.get("attachments", [])
 
@@ -170,6 +175,82 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
 
 # Register with DAG
 register_stage_node("s0_intake", s0_intake_node)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MODIFY Mode: Repo Intake
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _s0_modify_intake(state: PipelineState) -> PipelineState:
+    """S0 MODIFY: clone and analyze existing repo instead of building from scratch.
+
+    Steps:
+      1. Clone repo via git (shallow clone)
+      2. Detect stack from manifest files
+      3. Extract codebase context for Claude
+      4. Store in state.codebase_context for S2/S3 consumption
+    """
+    repo_url = state.source_repo_url or state.project_metadata.get("repo_url", "")
+    description = (
+        state.modification_description
+        or state.project_metadata.get("raw_input", "")
+    )
+
+    if not repo_url:
+        logger.error(f"[{state.project_id}] MODIFY S0: no repo URL provided")
+        state.s0_output = {
+            "error": "No repo URL provided for MODIFY mode",
+            "modify_mode": True,
+        }
+        return state
+
+    logger.info(f"[{state.project_id}] MODIFY S0: cloning {repo_url}")
+
+    try:
+        from factory.pipeline.codebase_ingestor import CodebaseIngestor
+
+        ingestor = CodebaseIngestor()
+        analysis = await ingestor.analyze(repo_url=repo_url)
+
+        state.codebase_context = analysis
+        state.source_repo_path = str(analysis.get("repo_path", ""))
+        state.project_metadata["detected_stack"] = analysis.get("stack", "unknown")
+
+        state.s0_output = {
+            "modify_mode": True,
+            "repo_url": repo_url,
+            "modification_description": description,
+            "detected_stack": analysis.get("stack", "unknown"),
+            "detected_architecture": analysis.get("architecture", "unknown"),
+            "file_count": analysis.get("file_count", 0),
+            "dependencies": analysis.get("dependencies", {}),
+            "context_chars": len(analysis.get("context_text", "")),
+            "app_name": analysis.get("app_name", "Existing App"),
+            "app_description": description,
+            "target_platforms": analysis.get("platforms", ["ios", "android"]),
+            "estimated_complexity": "medium",
+        }
+
+        logger.info(
+            f"[{state.project_id}] MODIFY S0 complete: "
+            f"stack={analysis.get('stack')}, "
+            f"files={analysis.get('file_count', 0)}"
+        )
+
+    except Exception as e:
+        logger.error(f"[{state.project_id}] MODIFY S0 failed: {e}")
+        # Fallback: proceed with description only (no repo context)
+        state.s0_output = {
+            "modify_mode": True,
+            "repo_url": repo_url,
+            "modification_description": description,
+            "error": str(e),
+            "app_description": description,
+            "target_platforms": ["ios", "android"],
+        }
+
+    return state
 
 def _fallback_requirements(raw_text: str) -> dict:
     """Parse requirements with a minimal fallback when AI parsing fails.

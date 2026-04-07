@@ -198,6 +198,11 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     requirements = state.s0_output or {}
     legal_output = state.s1_output or {}
 
+    # ── MODIFY mode: generate change blueprint instead of full app blueprint ──
+    from factory.core.state import PipelineMode
+    if state.pipeline_mode == PipelineMode.MODIFY:
+        return await _s2_modify_blueprint(state, requirements)
+
     # ══════════════════════════════════════
     # Phase 1: Stack Selection
     # ══════════════════════════════════════
@@ -437,3 +442,88 @@ async def _generate_compliance_artifacts(
 
 # Register with DAG
 register_stage_node("s2_blueprint", s2_blueprint_node)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MODIFY Mode: Change Blueprint
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _s2_modify_blueprint(
+    state: PipelineState,
+    requirements: dict,
+) -> PipelineState:
+    """S2 MODIFY: generate a targeted change blueprint (files to add/modify/delete).
+
+    Uses the codebase context from S0 to scope what needs changing.
+    Produces: list of file operations rather than a full app design.
+    """
+    description = requirements.get("modification_description", "")
+    detected_stack = requirements.get("detected_stack", "unknown")
+    context = state.codebase_context or {}
+    context_text = context.get("context_text", "")[:60000]  # fit in Claude context
+
+    logger.info(
+        f"[{state.project_id}] MODIFY S2: planning changes for '{description[:80]}'"
+    )
+
+    try:
+        change_plan_raw = await call_ai(
+            role=AIRole.STRATEGIST,
+            prompt=(
+                f"You are a software architect planning targeted code changes.\n\n"
+                f"MODIFICATION REQUEST: {description}\n\n"
+                f"DETECTED STACK: {detected_stack}\n\n"
+                f"CODEBASE CONTEXT:\n{context_text}\n\n"
+                f"Plan the minimal set of file changes needed. "
+                f"Return ONLY valid JSON:\n"
+                f'{{\n'
+                f'  "files_to_modify": [{{"path": "...", "change_summary": "...", "priority": "high|medium|low"}}],\n'
+                f'  "files_to_add": [{{"path": "...", "purpose": "..."}}],\n'
+                f'  "files_to_delete": ["path1"],\n'
+                f'  "change_summary": "1-2 sentence summary",\n'
+                f'  "version_bump": "patch|minor|major",\n'
+                f'  "estimated_files": 5\n'
+                f'}}'
+            ),
+            state=state,
+            action="plan_architecture",
+        )
+
+        change_plan = json.loads(change_plan_raw)
+
+    except (json.JSONDecodeError, TypeError, Exception) as e:
+        logger.warning(f"[{state.project_id}] MODIFY S2: change plan parse failed: {e}")
+        change_plan = {
+            "files_to_modify": [],
+            "files_to_add": [],
+            "files_to_delete": [],
+            "change_summary": description,
+            "version_bump": "patch",
+            "estimated_files": 1,
+        }
+
+    # Determine stack from S0 detection
+    try:
+        selected_stack = TechStack(detected_stack)
+    except ValueError:
+        selected_stack = TechStack.FLUTTERFLOW
+    state.selected_stack = selected_stack
+
+    state.s2_output = {
+        "modify_mode": True,
+        "modification_description": description,
+        "selected_stack": selected_stack.value,
+        "detected_stack": detected_stack,
+        "change_plan": change_plan,
+        "target_platforms": requirements.get("target_platforms", ["ios", "android"]),
+        "version_bump": change_plan.get("version_bump", "patch"),
+    }
+
+    logger.info(
+        f"[{state.project_id}] MODIFY S2 complete: "
+        f"{len(change_plan.get('files_to_modify', []))} modify, "
+        f"{len(change_plan.get('files_to_add', []))} add, "
+        f"{len(change_plan.get('files_to_delete', []))} delete"
+    )
+    return state

@@ -53,26 +53,31 @@ logger = logging.getLogger("factory.telegram.bot")
 
 
 async def authenticate_operator(update: Any) -> bool:
-    """Check if the Telegram user is in the operator whitelist.
+    """Check if the Telegram user is the authorized operator.
 
     Spec: §5.1.2
-    In production, checks Supabase operator_whitelist table.
-    In dry-run, all operators are allowed.
+    Layer 1 (fast): hardcoded operator ID check — unknown users get complete
+    silence (no error reply, no acknowledgment, nothing discoverable).
+    Layer 2 (Supabase): whitelist check for future multi-operator support.
     """
+    from factory.telegram.ai_handler import is_operator
     user_id = str(update.effective_user.id)
 
+    # Layer 1 — hardcoded exclusive access (silent reject for strangers)
+    if not is_operator(user_id):
+        logger.warning(f"Rejected unknown user {user_id} — silent drop")
+        return False  # NO reply — bot is invisible to strangers
+
+    # Layer 2 — Supabase whitelist (skipped if Supabase unavailable)
     try:
         from factory.integrations.supabase import check_operator_whitelist
         allowed = await check_operator_whitelist(user_id)
         if not allowed:
-            await update.message.reply_text(
-                "🚫 Unauthorized. Contact admin for access."
-            )
-            return False
+            logger.warning(f"Operator {user_id} in hardcoded list but not in Supabase whitelist")
+            # Allow anyway — hardcoded list is authoritative
         return True
     except Exception:
-        # Supabase not configured — allow all in dry-run mode
-        logger.debug(f"Auth check skipped for {user_id} (dry-run mode)")
+        logger.debug(f"Supabase whitelist skipped for {user_id}")
         return True
 
 
@@ -473,9 +478,158 @@ async def cmd_setup(update: Any, context: Any):
 
 
 @require_auth
+async def cmd_providers(update: Any, context: Any):
+    """Show AI provider + memory backend chain status."""
+    from factory.integrations.provider_chain import ai_chain, scout_chain
+    from factory.memory.mother_memory import get_memory_chain_status
+    import time
+
+    def _format_ai_chain(chain) -> str:
+        lines = []
+        active = chain.get_active()
+        for name in chain.chain:
+            s = chain.statuses[name]
+            if s.quota_exhausted and s.quota_reset_at:
+                eta = int(s.quota_reset_at - time.time())
+                h, m = divmod(max(eta, 0), 3600)
+                mins = m // 60
+                lines.append(f"  ⏳ {name}: quota — resets in {h}h {mins}m")
+            elif not s.available:
+                err = s.last_error[:40] if s.last_error else "unavailable"
+                lines.append(f"  ❌ {name}: {err}")
+            elif name == active:
+                lines.append(f"  ✅ {name}: ACTIVE ← currently in use")
+            else:
+                lines.append(f"  ⬜ {name}: ready (standby)")
+        return "\n".join(lines)
+
+    def _format_memory_chain() -> str:
+        statuses = get_memory_chain_status()
+        if not statuses:
+            return "  ⬜ not yet initialized"
+        lines = []
+        for s in statuses:
+            name = s["name"]
+            pending = s.get("pending_writes", 0)
+            pend_str = f" ({pending} pending)" if pending else ""
+            if s.get("quota_exhausted") and s.get("quota_resets_in") is not None:
+                eta = s["quota_resets_in"]
+                h, m = divmod(eta, 3600)
+                mins = m // 60
+                lines.append(f"  ⏳ {name}: quota — resets in {h}h {mins}m{pend_str}")
+            elif not s["available"]:
+                err_ct = s.get("consecutive_errors", 0)
+                lines.append(f"  ❌ {name}: offline ({err_ct} errors){pend_str}")
+            elif s == statuses[0]:  # first available = read-primary
+                lines.append(f"  ✅ {name}: ACTIVE (read-primary + write){pend_str}")
+            else:
+                lines.append(f"  💾 {name}: write-mirror (standby read){pend_str}")
+        return "\n".join(lines)
+
+    msg = (
+        "🤖 AI Provider Chain:\n"
+        + _format_ai_chain(ai_chain)
+        + "\n\n🔍 Scout Chain:\n"
+        + _format_ai_chain(scout_chain)
+        + "\n\n🧠 Mother Memory Chain (fan-out writes):\n"
+        + _format_memory_chain()
+        + "\n\n_All chains auto-recover when quotas reset.\n"
+        "Higher-priority backends always take priority once available._"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+@require_auth
 async def cmd_help(update: Any, context: Any):
     """§5.2: /help — Show all commands."""
     await update.message.reply_text(format_help_message())
+
+
+@require_auth
+async def cmd_modify(update: Any, context: Any):
+    """§5.2: /modify <repo_url> <description> — Modify an existing codebase.
+
+    Usage: /modify https://github.com/org/repo Add dark mode to the settings screen
+    """
+    user_id = str(update.effective_user.id)
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage: /modify <repo_url> <change description>\n\n"
+            "Example: /modify https://github.com/org/repo Add a dark mode toggle"
+        )
+        return
+
+    repo_url = context.args[0]
+    description = " ".join(context.args[1:])
+
+    if not repo_url.startswith(("https://", "git@", "http://")):
+        await update.message.reply_text(
+            f"Invalid repo URL: {repo_url}\n"
+            "Provide a full GitHub/GitLab URL."
+        )
+        return
+
+    active = await get_active_project(user_id)
+    if active:
+        await update.message.reply_text(
+            f"Active project {active['project_id']} in progress.\n"
+            "Use /cancel first, then /modify."
+        )
+        return
+
+    import uuid
+    project_id = f"mod_{uuid.uuid4().hex[:8]}"
+    prefs = await get_operator_preferences(user_id)
+
+    from factory.core.state import PipelineMode
+    state = PipelineState(
+        project_id=project_id,
+        operator_id=user_id,
+        autonomy_mode=AutonomyMode(prefs.get("autonomy_mode", "autopilot")),
+        execution_mode=ExecutionMode(prefs.get("execution_mode", "cloud")),
+        pipeline_mode=PipelineMode.MODIFY,
+        source_repo_url=repo_url,
+        modification_description=description,
+        project_metadata={
+            "raw_input": description,
+            "repo_url": repo_url,
+            "attachments": [],
+        },
+    )
+
+    await update_project_state(state)
+    await update.message.reply_text(
+        f"MODIFY mode started — [{project_id}]\n\n"
+        f"Repo: {repo_url}\n"
+        f"Change: {description[:200]}\n\n"
+        "Cloning repo and analyzing codebase..."
+    )
+
+    import asyncio
+
+    async def _run_modify():
+        try:
+            from factory.orchestrator import run_pipeline
+            from factory.telegram.notifications import send_telegram_message
+            final = await run_pipeline(state)
+            if final.current_stage.value == "halted":
+                reason = final.project_metadata.get("halt_reason", "unknown")
+                await send_telegram_message(user_id, f"MODIFY halted [{project_id}]: {reason}")
+            else:
+                await send_telegram_message(
+                    user_id,
+                    f"MODIFY complete for [{project_id}]! Use /status to see the diff."
+                )
+        except Exception as e:
+            logger.error(f"[{project_id}] MODIFY error: {e}")
+            try:
+                from factory.telegram.notifications import send_telegram_message
+                await send_telegram_message(user_id, f"MODIFY error [{project_id}]: {e}")
+            except Exception:
+                pass
+
+    asyncio.create_task(_run_modify())
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -530,39 +684,169 @@ async def handle_callback(update: Any, context: Any):
 
 
 async def handle_message(update: Any, context: Any):
-    """Handle free-text messages (project descriptions, etc.).
+    """Intelligent message handler — AI-powered intent routing.
 
     Spec: §5.3
-    If operator is in 'awaiting_project_description' state,
-    treat the message as a project brief. Otherwise, provide guidance.
+    Flow:
+      1. Silent reject for non-operators (no reply at all)
+      2. Rate limit check
+      3. Prompt injection protection
+      4. Wizard / pending reply intercept
+      5. Confirmation intercept (for destructive actions)
+      6. Gemini intent classification
+      7. Route to appropriate action
     """
     if not await authenticate_operator(update):
-        return
+        return  # Silent — strangers see nothing
+
+    from factory.telegram.ai_handler import (
+        _check_rate_limit, _is_injection_attempt, _sanitize,
+        classify_intent, ai_respond, has_pending_confirmation,
+        pop_confirmation, request_confirmation, _add_to_history,
+        load_history_from_memory,
+    )
 
     user_id = str(update.effective_user.id)
+    raw_text = (update.message.text or "").strip()
 
-    # §7.1.2 — Intercept if wizard is awaiting a free-text reply
+    # ── Pre-warm conversation history from Mother Memory on first message ──
+    await load_history_from_memory(user_id)
+
+    # ── Rate limit ──
+    if not _check_rate_limit(user_id):
+        await update.message.reply_text(
+            "Slow down — you're sending messages too fast. Wait a moment."
+        )
+        return
+
+    # ── Prompt injection protection ──
+    if _is_injection_attempt(raw_text):
+        logger.warning(f"Prompt injection attempt from {user_id}: {raw_text[:100]}")
+        await update.message.reply_text(
+            "That looks like an attempt to override my instructions. "
+            "I won't act on that."
+        )
+        return
+
+    text = _sanitize(raw_text)
+
+    # ── Wizard intercept (setup wizard free-text replies) ──
     from factory.telegram.decisions import has_pending_reply, resolve_reply
-    if update.message and update.message.text and has_pending_reply(user_id):
-        resolved = await resolve_reply(user_id, update.message.text.strip())
+    if update.message and text and has_pending_reply(user_id):
+        resolved = await resolve_reply(user_id, text)
         if resolved:
-            return  # Wizard captured this message
+            return
 
+    # ── Operator state: awaiting project description ──
     op_state = await get_operator_state(user_id)
-
     if op_state == "awaiting_project_description":
-        desc = update.message.text or ""
         await clear_operator_state(user_id)
-        await _start_project(update, user_id, desc)
-    else:
-        # Treat as implicit /new
-        text = update.message.text or ""
-        if len(text) > 20:
-            await _start_project(update, user_id, text)
+        await _handle_start_project_intent(update, user_id, text)
+        return
+
+    # ── Confirmation intercept (yes/no for destructive actions) ──
+    if has_pending_confirmation(user_id):
+        if text.lower().strip() in ("yes", "y", "confirm", "ok", "sure", "do it"):
+            action = pop_confirmation(user_id)
+            await _execute_confirmed_action(update, user_id, action)
         else:
+            pop_confirmation(user_id)
+            await update.message.reply_text("Cancelled. Nothing was changed.")
+        return
+
+    # ── AI intent classification + routing ──
+    if not text:
+        return
+
+    active = await get_active_project(user_id)
+    intent, confidence = await classify_intent(text)
+
+    logger.info(f"[{user_id}] intent={intent} confidence={confidence:.2f} msg={text[:60]}")
+
+    if intent == "start_project" and confidence >= 0.6:
+        await _handle_start_project_intent(update, user_id, text)
+
+    elif intent == "check_status":
+        if active:
+            from factory.core.state import PipelineState
+            try:
+                state = PipelineState.model_validate(active.get("state_json", {}))
+                reply = await ai_respond(user_id, text, active, intent=intent)
+                status_summary = format_status_message(state)
+                await update.message.reply_text(f"{reply}\n\n{status_summary}")
+            except Exception:
+                reply = await ai_respond(user_id, text, active, intent=intent)
+                await update.message.reply_text(reply)
+        else:
+            reply = await ai_respond(user_id, text, None, intent=intent)
+            await update.message.reply_text(reply)
+
+    elif intent == "cancel_project":
+        if active:
+            request_confirmation(user_id, "cancel_project")
             await update.message.reply_text(
-                "Send a project description, or use /help."
+                f"You're about to cancel project {active.get('project_id', '?')} "
+                f"(currently at {active.get('current_stage', '?')}).\n\n"
+                "This cannot be undone. Reply 'yes' to confirm, or anything else to abort."
             )
+        else:
+            await update.message.reply_text("No active project to cancel.")
+
+    elif intent in ("ask_question", "casual_chat", "unclear"):
+        reply = await ai_respond(user_id, text, active, intent=intent)
+        await update.message.reply_text(reply)
+
+    else:
+        # Fallback: AI decides
+        reply = await ai_respond(user_id, text, active, intent=intent)
+        await update.message.reply_text(reply)
+
+
+async def _handle_start_project_intent(
+    update: Any,
+    user_id: str,
+    description: str,
+) -> None:
+    """Safety gate before launching pipeline: show cost estimate and confirm."""
+    from factory.telegram.ai_handler import request_confirmation, _add_to_history
+
+    # Estimate cost based on typical S0-S8 run
+    estimated_cost = "$0.05–$0.15 (Gemini free tier, no charge)"
+
+    request_confirmation(user_id, f"start_project:{description}")
+    _add_to_history(user_id, "user", description)
+
+    await update.message.reply_text(
+        f"Got it — building: \"{description[:120]}\"\n\n"
+        f"Estimated cost: {estimated_cost}\n\n"
+        "Reply 'yes' to start, or anything else to cancel."
+    )
+
+
+async def _execute_confirmed_action(
+    update: Any,
+    user_id: str,
+    action: str | None,
+) -> None:
+    """Execute a previously confirmed destructive action."""
+    if not action:
+        await update.message.reply_text("Action expired. Nothing was done.")
+        return
+
+    if action.startswith("start_project:"):
+        description = action[len("start_project:"):]
+        await _start_project(update, user_id, description)
+
+    elif action == "cancel_project":
+        active = await get_active_project(user_id)
+        if active:
+            project_id = active.get("project_id", "")
+            await archive_project(project_id)
+            await update.message.reply_text(
+                f"Project {project_id} has been cancelled and archived."
+            )
+        else:
+            await update.message.reply_text("No active project found.")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -580,6 +864,7 @@ async def _start_project(
 
     Spec: §5.2 (/new → _start_project)
     """
+    import asyncio
     import uuid
 
     project_id = f"proj_{uuid.uuid4().hex[:8]}"
@@ -609,6 +894,36 @@ async def _start_project(
         f"[{project_id}] Project started by {user_id}: "
         f"{description[:100]}..."
     )
+
+    # Run pipeline stages in background — sends Telegram updates as each stage completes
+    async def _run_and_notify():
+        try:
+            from factory.orchestrator import run_pipeline
+            from factory.telegram.notifications import send_telegram_message
+            final = await run_pipeline(state)
+            if final.current_stage.value == "halted":
+                reason = final.project_metadata.get("halt_reason", "unknown")
+                await send_telegram_message(
+                    user_id,
+                    f"Pipeline halted for [{project_id}]: {reason}"
+                )
+            else:
+                await send_telegram_message(
+                    user_id,
+                    f"Pipeline complete for [{project_id}]! Use /status to see results."
+                )
+        except Exception as e:
+            logger.error(f"[{project_id}] Pipeline error: {e}")
+            try:
+                from factory.telegram.notifications import send_telegram_message
+                await send_telegram_message(
+                    user_id,
+                    f"Error running pipeline [{project_id}]: {e}"
+                )
+            except Exception:
+                pass
+
+    asyncio.create_task(_run_and_notify())
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -642,6 +957,17 @@ async def setup_bot() -> Any:
 
         app = Application.builder().token(token).build()
 
+        # ── Initialize Mother Memory chain (all 4 backends) in background ──
+        async def _init_memory_chain():
+            try:
+                from factory.memory.mother_memory import _get_chain
+                await _get_chain()
+                logger.info("[bot] Mother Memory chain initialized")
+            except Exception as e:
+                logger.warning(f"[bot] Memory chain init failed (will retry on demand): {e}")
+        import asyncio as _asyncio
+        _asyncio.create_task(_init_memory_chain())
+
         # ── Project lifecycle ──
         app.add_handler(CommandHandler("start", cmd_start))
         app.add_handler(CommandHandler("new", cmd_new_project))
@@ -664,10 +990,27 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("deploy_confirm", cmd_deploy_confirm))
         app.add_handler(CommandHandler("deploy_cancel", cmd_deploy_cancel))
 
+        # ── Evaluation ──
+        from factory.telegram.handlers.evaluate_handler import cmd_evaluate
+        app.add_handler(CommandHandler("evaluate", require_auth(cmd_evaluate)))
+
+        # ── Revenue & clients ──
+        from factory.telegram.handlers.revenue_handler import (
+            cmd_invoice, cmd_revenue, cmd_clients,
+        )
+        app.add_handler(CommandHandler("invoice", require_auth(cmd_invoice)))
+        app.add_handler(CommandHandler("revenue", require_auth(cmd_revenue)))
+        app.add_handler(CommandHandler("clients", require_auth(cmd_clients)))
+
+        # ── Analytics ──
+        from factory.telegram.handlers.analytics_handler import cmd_analytics
+        app.add_handler(CommandHandler("analytics", require_auth(cmd_analytics)))
+
         # ── Diagnostics ──
         app.add_handler(CommandHandler("warroom", cmd_warroom))
         app.add_handler(CommandHandler("legal", cmd_legal))
         app.add_handler(CommandHandler("setup", cmd_setup))
+        app.add_handler(CommandHandler("providers", cmd_providers))
         app.add_handler(CommandHandler("help", cmd_help))
 
         # ── Inline callbacks ──
@@ -680,8 +1023,11 @@ async def setup_bot() -> Any:
             handle_message,
         ))
 
+        # ── MODIFY mode ──
+        app.add_handler(CommandHandler("modify", require_auth(cmd_modify)))
+
         set_bot_instance(app.bot)
-        logger.info("Telegram bot configured with 16 command handlers")
+        logger.info("Telegram bot configured with 22 command handlers")
         return app
 
     except ImportError as e:
@@ -718,3 +1064,54 @@ async def run_bot_polling() -> None:
         await app.stop()
         await app.shutdown()
         logger.info("Bot stopped.")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §5.1 Webhook Entry Point
+# ═══════════════════════════════════════════════════════════════════
+
+# Cached Application instance (built once on first webhook call)
+_webhook_app = None
+_webhook_app_lock = None
+
+
+async def handle_telegram_update(body: dict) -> None:
+    """Process a single Telegram update received via webhook.
+
+    Spec: §5.1 — called by factory/main.py POST /webhook.
+
+    Builds (or reuses) the python-telegram-bot Application, deserialises the
+    raw JSON body into an Update object, and feeds it through the registered
+    command/message handlers exactly as polling would.
+    """
+    global _webhook_app, _webhook_app_lock
+
+    try:
+        from telegram import Update
+    except ImportError:
+        logger.warning("python-telegram-bot not installed — webhook ignored")
+        return
+
+    # Lazy-initialise the Application (once per process lifetime)
+    import asyncio
+    if _webhook_app_lock is None:
+        _webhook_app_lock = asyncio.Lock()
+
+    async with _webhook_app_lock:
+        if _webhook_app is None:
+            _webhook_app = await setup_bot()
+            if _webhook_app is None:
+                logger.error("Bot setup failed — cannot process webhook update")
+                return
+            await _webhook_app.initialize()
+            # Don't call start() — that would begin polling; webhook mode
+            # only needs the handlers wired and the bot token active.
+
+    if _webhook_app is None:
+        return
+
+    try:
+        update = Update.de_json(body, _webhook_app.bot)
+        await _webhook_app.process_update(update)
+    except Exception as e:
+        logger.error(f"Error processing Telegram update: {e}", exc_info=True)

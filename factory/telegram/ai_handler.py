@@ -222,7 +222,7 @@ ask_question    — asking a factual question about the pipeline, budget, errors
 casual_chat     — greeting, thanks, small talk, or testing the bot
 unclear         — ambiguous, needs clarification
 
-Respond with ONLY a JSON object: {"intent": "<one of the above>", "confidence": 0.0-1.0}
+Respond with ONLY a JSON object: {{"intent": "<one of the above>", "confidence": 0.0-1.0}}
 
 Message: {message}"""
 
@@ -293,7 +293,9 @@ async def _call_ai_for_bot(
                 logger.warning(f"[bot-ai] {provider} auth error — cascading")
             else:
                 ai_chain.mark_error(provider, err)
-                raise
+                logger.warning(f"[bot-ai] {provider} error ({err[:80]}) — cascading to next provider")
+                # Continue cascade — bot should never hard-fail if another
+                # provider is available.
 
     raise RuntimeError("All AI providers exhausted for bot response")
 

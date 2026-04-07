@@ -291,6 +291,8 @@ def is_quota_error(error_str: str) -> bool:
     return any(kw in error_str for kw in [
         "429", "RESOURCE_EXHAUSTED", "rate_limit_exceeded",
         "quota", "RateLimitError", "overloaded",
+        "credit balance", "too low", "billing", "insufficient_quota",
+        "Your credit balance",
     ])
 
 

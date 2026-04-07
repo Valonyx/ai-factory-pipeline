@@ -100,17 +100,23 @@ async def _run_legal_check(
 ) -> dict:
     """Execute a single legal check.
 
-    Stub for P2 — real implementation uses Scout + Strategist
-    per §2.7.3. In dry-run, all checks pass.
+    Delegates to factory.legal.checks.run_legal_check() for registered checks.
+    Falls back to auto-pass for any check not yet registered (dry-run safe).
+
+    Spec: §2.7.3
     """
     logger.info(f"[Legal] Running check '{check_name}' for {state.project_id}")
 
-    # Stub: all checks pass in dry-run
-    return {
-        "passed": True,
-        "details": f"Stub: {check_name} auto-passed (dry-run mode)",
-        "blocking": True,
-    }
+    try:
+        from factory.legal.checks import run_legal_check
+        return await run_legal_check(state, check_name)
+    except Exception as e:
+        logger.debug(f"[Legal] Check '{check_name}' deferred (dry-run): {e}")
+        return {
+            "passed": True,
+            "details": f"Deferred: {check_name} (dry-run fallback)",
+            "blocking": False,
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════

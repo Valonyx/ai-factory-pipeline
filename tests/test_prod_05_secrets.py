@@ -247,8 +247,9 @@ class TestValidateSecretsPreflight:
 
     def test_core_present(self):
         """Set all core secrets, verify counts."""
-        env_overrides = {name: "test" for name in CORE_SECRETS}
-        with patch.dict(os.environ, env_overrides):
+        def mock_get_secret(name):
+            return "test" if name in CORE_SECRETS else None
+        with patch("factory.core.secrets.get_secret", side_effect=mock_get_secret):
             result = validate_secrets_preflight(strict=False)
             assert result["core_present"] == len(CORE_SECRETS)
             assert len(result["missing_critical"]) == 0
@@ -256,8 +257,9 @@ class TestValidateSecretsPreflight:
 
     def test_strict_mode_raises(self):
         """Strict mode raises when critical secrets missing."""
-        with pytest.raises(EnvironmentError, match="CRITICAL"):
-            validate_secrets_preflight(strict=True)
+        with patch("factory.core.secrets.get_secret", return_value=None):
+            with pytest.raises(EnvironmentError, match="CRITICAL"):
+                validate_secrets_preflight(strict=True)
 
     def test_all_present(self):
         """Set all secrets, verify all_present is True."""
@@ -339,10 +341,11 @@ class TestVerifyFunctions:
         """All verify functions should raise when secret is missing."""
         import asyncio
 
-        for fn in [verify_anthropic, verify_perplexity, verify_neo4j,
-                    verify_github]:
-            with pytest.raises(EnvironmentError):
-                asyncio.get_event_loop().run_until_complete(fn())
+        with patch("factory.core.secrets.get_secret", return_value=None):
+            for fn in [verify_anthropic, verify_perplexity, verify_neo4j,
+                        verify_github]:
+                with pytest.raises(EnvironmentError):
+                    asyncio.get_event_loop().run_until_complete(fn())
 
     @pytest.mark.asyncio
     async def test_verify_all_returns_structured(self):

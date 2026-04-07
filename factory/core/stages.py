@@ -195,13 +195,12 @@ async def _legal_check_hook(
     """Run legal checks for a given stage/phase.
 
     Spec: §2.7.3
-    Stub — real implementation in legal/continuous.py (Part 14).
+    Delegates to factory.legal.checks.legal_check_hook().
     """
     try:
-        from factory.legal.continuous import legal_check_hook
+        from factory.legal.checks import legal_check_hook
         await legal_check_hook(state, stage, phase)
     except ImportError:
-        # Legal module not yet implemented — skip for dry-run
         logger.debug(
             f"[STUB] Legal check skipped: {stage.value}/{phase} "
             f"(legal module not loaded)"

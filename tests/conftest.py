@@ -82,6 +82,20 @@ def mock_ai():
         yield mock
 
 
+@pytest.fixture
+def mock_deploy_window():
+    """Patch is_within_deploy_window to always return True.
+
+    Used by full-pipeline integration tests so they pass regardless
+    of the wall-clock time (the real check blocks at 23:00 AST).
+    """
+    with patch(
+        "factory.legal.checks.is_within_deploy_window",
+        return_value=True,
+    ):
+        yield
+
+
 class MockNeo4j:
     """In-memory Neo4j mock."""
 

@@ -349,7 +349,7 @@ class TestInfrastructure:
 
 class TestEndToEnd:
     @pytest.mark.asyncio
-    async def test_run_pipeline_completes(self, state, mock_call_ai):
+    async def test_run_pipeline_completes(self, state, mock_call_ai, mock_deploy_window):
         """run_pipeline() runs end-to-end with mocked AI."""
         with patch(
             "factory.pipeline.s0_intake.call_ai",

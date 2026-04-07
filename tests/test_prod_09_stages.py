@@ -186,7 +186,7 @@ class TestS6Deploy:
 
     @pytest.mark.asyncio
     async def test_deploy_populates_output(
-        self, state, mock_call_ai,
+        self, state, mock_call_ai, mock_deploy_window,
     ):
         """S6 deploy populates s6_output."""
         with patch(
@@ -305,7 +305,7 @@ class TestS8Handoff:
 
 class TestFullPipeline:
     @pytest.mark.asyncio
-    async def test_full_e2e_pipeline(self, state, mock_call_ai):
+    async def test_full_e2e_pipeline(self, state, mock_call_ai, mock_deploy_window):
         """Full S0→S8 end-to-end via SimpleExecutor."""
         with patch(
             "factory.pipeline.s0_intake.call_ai",

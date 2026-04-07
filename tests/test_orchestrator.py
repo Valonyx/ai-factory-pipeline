@@ -67,7 +67,7 @@ class TestHaltHandler:
 
 class TestFullPipeline:
     @pytest.mark.asyncio
-    async def test_run_pipeline(self, fresh_state, mock_ai):
+    async def test_run_pipeline(self, fresh_state, mock_ai, mock_deploy_window):
         mock_ai.return_value = '{"stub": true}'
         result = await run_pipeline(fresh_state)
         assert result.current_stage in (Stage.S8_HANDOFF, Stage.HALTED)

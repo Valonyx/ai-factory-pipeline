@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     import aiohttp
-    from github import Github, GithubException
+    from github import Github, GithubException, Auth as GithubAuth
     _PYGITHUB_AVAILABLE = True
 except ImportError:
     _PYGITHUB_AVAILABLE = False
@@ -60,7 +60,7 @@ class GitHubClient:
         self.client = None
         if _PYGITHUB_AVAILABLE and self.token:
             try:
-                self.client = Github(self.token)
+                self.client = Github(auth=GithubAuth.Token(self.token))
             except Exception:
                 pass
 

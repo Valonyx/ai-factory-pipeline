@@ -378,10 +378,12 @@ async def archive_project(project_id: str, state: PipelineState) -> bool:
     """Archive a project (move from active to archived).
 
     Spec: §5.6 — archived_projects table.
+    Always removes from active_projects even if archive insert fails.
     """
     client = get_supabase_client()
+    archived = False
     try:
-        # Insert into archived_projects
+        # Insert into archived_projects (best-effort — table may not exist yet)
         client.table("archived_projects").insert({
             "project_id": project_id,
             "operator_id": state.operator_id,
@@ -390,19 +392,22 @@ async def archive_project(project_id: str, state: PipelineState) -> bool:
             "state_json": state.model_dump(mode="json"),
             "archived_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
+        archived = True
+    except Exception as e:
+        logger.warning(f"Archive insert skipped for {project_id}: {e}")
 
-        # Delete from active_projects
+    try:
+        # Always delete from active_projects regardless of archive result
         client.table("active_projects").delete().eq(
             "operator_id", state.operator_id
         ).execute()
-
         logger.info(
-            f"Project {project_id} archived "
-            f"(cost=${state.total_cost_usd:.2f})"
+            f"Project {project_id} removed from active "
+            f"(archived={archived}, cost=${state.total_cost_usd:.2f})"
         )
         return True
     except Exception as e:
-        logger.error(f"Failed to archive {project_id}: {e}")
+        logger.error(f"Failed to remove {project_id} from active_projects: {e}")
         return False
 
 

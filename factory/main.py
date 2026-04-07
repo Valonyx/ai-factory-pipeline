@@ -42,16 +42,34 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
     logger.info(f"AI Factory Pipeline v{PIPELINE_VERSION} starting")
 
-    # Start Telegram bot in polling mode when TELEGRAM_POLLING=true
-    # (local dev and Fly.io — no webhook URL needed)
     polling_task = None
     if os.getenv("TELEGRAM_POLLING", "false").lower() == "true":
+        # Local dev: run bot in polling mode
         try:
             from factory.telegram.bot import run_bot_polling
             polling_task = asyncio.create_task(run_bot_polling())
             logger.info("Telegram polling started as background task")
         except Exception as e:
             logger.warning(f"Telegram polling failed to start: {e}")
+    else:
+        # Webhook mode (Render/production): pre-initialize bot so first
+        # webhook call responds instantly instead of hanging 30+ seconds.
+        async def _prewarm_bot():
+            try:
+                from factory.telegram.bot import handle_telegram_update as _h  # noqa
+                from factory.telegram import bot as _bot_mod
+                import asyncio as _a
+                if _bot_mod._webhook_app_lock is None:
+                    _bot_mod._webhook_app_lock = _a.Lock()
+                async with _bot_mod._webhook_app_lock:
+                    if _bot_mod._webhook_app is None:
+                        _bot_mod._webhook_app = await _bot_mod.setup_bot()
+                        if _bot_mod._webhook_app is not None:
+                            await _bot_mod._webhook_app.initialize()
+                            logger.info("Telegram bot pre-warmed and ready")
+            except Exception as e:
+                logger.warning(f"Bot pre-warm failed (will init on first request): {e}")
+        asyncio.create_task(_prewarm_bot())
 
     yield
 
@@ -114,12 +132,16 @@ async def telegram_webhook(request: Request):
 
     Spec: §5.1
 
-    Receives updates from Telegram, dispatches to bot handler.
+    Responds to Telegram immediately (within 5s) and dispatches the
+    update to the bot handler as a background task so Telegram never
+    times out waiting for us.
     """
     try:
         from factory.telegram.bot import handle_telegram_update
         body = await request.json()
-        await handle_telegram_update(body)
+        # Fire-and-forget: Telegram requires a fast 200 OK, the actual
+        # processing happens asynchronously so we never block the response.
+        asyncio.create_task(handle_telegram_update(body))
         return {"ok": True}
     except ImportError:
         logger.warning("Telegram bot module not fully configured")

@@ -61,6 +61,22 @@ def copilot_state(fresh_state):
 
 
 @pytest.fixture(autouse=True)
+def force_mock_ai_provider():
+    """Set AI_PROVIDER=mock for all tests (autouse).
+
+    Stages do `from factory.core.roles import call_ai` — a bound local
+    reference that bypasses the mock_ai fixture which patches the root
+    factory.core.roles.call_ai. Setting AI_PROVIDER=mock triggers the
+    fast shortcut inside call_ai() regardless of which reference is used.
+
+    Tests that explicitly test real AI (test_prod_01_anthropic.py etc.)
+    can override with patch.dict(os.environ, {"AI_PROVIDER": "anthropic"}).
+    """
+    with patch.dict(os.environ, {"AI_PROVIDER": "mock", "SCOUT_PROVIDER": "mock"}):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def mock_telegram():
     """Patch all Telegram sends to no-op (autouse)."""
     with patch(

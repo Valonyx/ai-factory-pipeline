@@ -71,6 +71,21 @@ def mock_telegram():
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def mock_persist_state():
+    """Patch persist_state to no-op (autouse).
+
+    Prevents E2E tests from making 27+ live Supabase calls per pipeline run.
+    Without this, full-pipeline tests take minutes instead of milliseconds.
+    """
+    with patch(
+        "factory.pipeline.graph.persist_state",
+        new_callable=AsyncMock,
+    ) as mock:
+        mock.return_value = 1
+        yield mock
+
+
 @pytest.fixture
 def mock_ai():
     """Patch call_ai to return stub responses."""

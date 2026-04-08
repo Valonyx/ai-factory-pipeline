@@ -46,6 +46,24 @@ from factory.telegram.decisions import (
 
 logger = logging.getLogger("factory.telegram.bot")
 
+# ═══════════════════════════════════════════════════════════════════
+# Background Task Registry — prevents asyncio tasks from being GC'd
+# before completion.  asyncio.create_task() returns a Task; if no
+# reference is kept Python may collect it mid-run, silently killing
+# the pipeline.  All long-running fire-and-forget tasks go here.
+# ═══════════════════════════════════════════════════════════════════
+
+_background_tasks: set = set()
+
+
+def _bg(coro) -> "asyncio.Task":
+    """Create a background task and keep a hard reference until it finishes."""
+    import asyncio as _asyncio
+    task = _asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 # ═══════════════════════════════════════════════════════════════════
 # §5.1.2 Operator Authentication
@@ -260,7 +278,7 @@ async def cmd_autonomy(update: Any, context: Any):
     active = await get_active_project(user_id)
 
     if not active:
-        prefs = await get_operator_preferences(user_id)
+        prefs = get_operator_preferences(user_id)
         current = prefs.get("autonomy_mode", "autopilot")
         new_mode = "copilot" if current == "autopilot" else "autopilot"
         await set_operator_preference(user_id, "autonomy_mode", new_mode)
@@ -316,19 +334,59 @@ async def cmd_restore(update: Any, context: Any):
         )
         return
 
-    await update.message.reply_text(
-        f"⏪ Restoring to snapshot #{snapshot_id}...\n"
-        f"(Full restore requires Supabase — stub for dry-run)"
-    )
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project to restore.")
+        return
+
+    project_id = active["project_id"]
+    await update.message.reply_text(f"⏪ Restoring snapshot #{snapshot_id} for {project_id}...")
+    try:
+        from factory.integrations.supabase import restore_state
+        restored = await restore_state(project_id, snapshot_id)
+        if restored is None:
+            await update.message.reply_text(f"Snapshot #{snapshot_id} not found.")
+            return
+        await update_project_state(restored)
+        await update.message.reply_text(
+            f"✅ Restored to snapshot #{snapshot_id} — stage: {restored.current_stage.value}\n"
+            f"Use /continue to resume or /status to check."
+        )
+    except ValueError as e:
+        await update.message.reply_text(f"⚠️ Restore failed: {e}")
+    except Exception as e:
+        logger.error(f"Restore error: {e}", exc_info=True)
+        await update.message.reply_text(f"Restore error — check logs.")
 
 
 @require_auth
 async def cmd_snapshots(update: Any, context: Any):
     """§5.2: /snapshots — List time-travel snapshots."""
-    await update.message.reply_text(
-        "📸 Snapshots: (requires Supabase connection)\n"
-        "Use /restore State_#N to restore."
-    )
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project. /new to start.")
+        return
+
+    project_id = active["project_id"]
+    try:
+        from factory.integrations.supabase import list_snapshots
+        snaps = await list_snapshots(project_id, limit=10)
+        if not snaps:
+            await update.message.reply_text("No snapshots yet for this project.")
+            return
+        lines = [f"📸 Snapshots for {project_id}:\n"]
+        for s in snaps:
+            lines.append(
+                f"  State_#{s['snapshot_id']} — {s.get('stage', '?')} "
+                f"({s.get('created_at', '')[:16]})"
+            )
+        lines.append("\nUse /restore State_#N to restore.")
+        await update.message.reply_text("\n".join(lines))
+    except Exception as e:
+        logger.error(f"Snapshots error: {e}", exc_info=True)
+        await update.message.reply_text("Could not fetch snapshots — check logs.")
 
 
 @require_auth
@@ -448,7 +506,7 @@ async def cmd_deploy_confirm(update: Any, context: Any):
         await update.message.reply_text("No pending deploy confirmation.")
         return
 
-    await record_deploy_decision(active["project_id"], "confirm")
+    await record_deploy_decision(active["project_id"], user_id, True)
     await update.message.reply_text("✅ Deployment confirmed. Starting S6...")
 
 
@@ -461,7 +519,7 @@ async def cmd_deploy_cancel(update: Any, context: Any):
         await update.message.reply_text("No pending deploy to cancel.")
         return
 
-    await record_deploy_decision(active["project_id"], "cancel")
+    await record_deploy_decision(active["project_id"], user_id, False)
     await update.message.reply_text("❌ Deployment cancelled. Returned to S5.")
 
 
@@ -622,6 +680,183 @@ _runner_module = None
 
 
 @require_auth
+async def cmd_admin(update: Any, context: Any):
+    """Admin override commands: budget_override, reset_retries, dump_state."""
+    user_id = str(update.effective_user.id)
+    args = context.args or []
+
+    if not args:
+        await update.message.reply_text(
+            "🔧 Admin commands:\n"
+            "  /admin budget_override <USD>  — raise budget cap\n"
+            "  /admin reset_retries           — reset S5→S3 retry count\n"
+            "  /admin dump_state              — raw state JSON\n"
+            "  /admin force_stage <STAGE>     — jump to stage\n"
+            "  /admin clear_halt              — clear legal/circuit halt"
+        )
+        return
+
+    active = await get_active_project(user_id)
+    subcmd = args[0].lower()
+
+    if subcmd == "budget_override":
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /admin budget_override <USD>")
+            return
+        try:
+            new_limit = float(args[1])
+        except ValueError:
+            await update.message.reply_text("Invalid amount.")
+            return
+        if not active:
+            await update.message.reply_text("No active project.")
+            return
+        state = PipelineState.model_validate(active["state_json"])
+        state.budget_limit_usd = new_limit
+        state.circuit_breaker_triggered = False
+        await update_project_state(state)
+        await update.message.reply_text(f"✅ Budget cap raised to ${new_limit:.2f}")
+
+    elif subcmd == "reset_retries":
+        if not active:
+            await update.message.reply_text("No active project.")
+            return
+        state = PipelineState.model_validate(active["state_json"])
+        state.retry_count = 0
+        await update_project_state(state)
+        await update.message.reply_text("✅ Retry count reset to 0.")
+
+    elif subcmd == "dump_state":
+        if not active:
+            await update.message.reply_text("No active project.")
+            return
+        import json
+        state = PipelineState.model_validate(active["state_json"])
+        raw = json.dumps(state.model_dump(mode="json"), indent=2)
+        # Telegram 4096 char limit
+        for chunk in [raw[i:i+3900] for i in range(0, min(len(raw), 12000), 3900)]:
+            await update.message.reply_text(f"```\n{chunk}\n```", parse_mode="Markdown")
+
+    elif subcmd == "force_stage":
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /admin force_stage <STAGE_NAME>")
+            return
+        if not active:
+            await update.message.reply_text("No active project.")
+            return
+        try:
+            target = Stage(args[1].upper())
+        except ValueError:
+            valid = [s.value for s in Stage]
+            await update.message.reply_text(f"Unknown stage. Valid: {', '.join(valid)}")
+            return
+        state = PipelineState.model_validate(active["state_json"])
+        state.previous_stage = state.current_stage
+        state.current_stage = target
+        state.legal_halt = False
+        state.circuit_breaker_triggered = False
+        await update_project_state(state)
+        await update.message.reply_text(f"✅ Forced stage to {target.value}")
+
+    elif subcmd == "clear_halt":
+        if not active:
+            await update.message.reply_text("No active project.")
+            return
+        state = PipelineState.model_validate(active["state_json"])
+        state.legal_halt = False
+        state.legal_halt_reason = None
+        state.circuit_breaker_triggered = False
+        await update_project_state(state)
+        await update.message.reply_text("✅ Halts cleared. Use /continue to resume.")
+
+    else:
+        await update.message.reply_text(f"Unknown admin command: {subcmd}. See /admin for help.")
+
+
+@require_auth
+async def cmd_force_continue(update: Any, context: Any):
+    """/force_continue <reason> — override a legal halt with explicit acceptance."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project.")
+        return
+
+    reason = " ".join(context.args) if context.args else ""
+    if not reason or len(reason) < 10:
+        await update.message.reply_text(
+            "Usage: /force_continue <explicit reason>\n\n"
+            "Example: /force_continue I accept compliance risk for internal testing\n\n"
+            "You must provide a reason of at least 10 characters."
+        )
+        return
+
+    state = PipelineState.model_validate(active["state_json"])
+    if not state.legal_halt and not state.circuit_breaker_triggered:
+        await update.message.reply_text("Pipeline is not halted — nothing to override.")
+        return
+
+    halt_reason = state.legal_halt_reason or "circuit breaker"
+    state.legal_halt = False
+    state.legal_halt_reason = None
+    state.circuit_breaker_triggered = False
+    if state.current_stage == Stage.HALTED and state.previous_stage:
+        state.current_stage = state.previous_stage
+
+    # Log the override
+    state.legal_checks_log.append({
+        "check": "force_continue_override",
+        "stage": state.current_stage.value,
+        "phase": "operator",
+        "passed": True,
+        "reason": reason,
+        "overridden_halt": halt_reason,
+    })
+
+    await update_project_state(state)
+    logger.warning(
+        f"[{state.project_id}] FORCE_CONTINUE by {user_id}: "
+        f"overrode '{halt_reason}' — reason: {reason}"
+    )
+    await update.message.reply_text(
+        f"⚠️ Legal halt overridden.\n"
+        f"Halted reason was: {halt_reason}\n"
+        f"Your acceptance: {reason}\n\n"
+        f"Resuming from {state.current_stage.value}...\n"
+        f"Use /continue to trigger execution."
+    )
+
+
+@require_auth
+async def cmd_budget(update: Any, context: Any):
+    """/budget [new_limit] — show or set project budget."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project.")
+        return
+
+    state = PipelineState.model_validate(active["state_json"])
+
+    if context.args:
+        try:
+            new_limit = float(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Usage: /budget <USD amount>")
+            return
+        state.budget_limit_usd = new_limit
+        state.circuit_breaker_triggered = False
+        await update_project_state(state)
+        await update.message.reply_text(
+            f"💰 Budget updated: ${new_limit:.2f}\n"
+            f"Spent so far: ${state.total_cost_usd:.4f}"
+        )
+    else:
+        from factory.telegram.messages import format_cost_message
+        await update.message.reply_text(format_cost_message(state))
+
+
+@require_auth
 async def cmd_modify(update: Any, context: Any):
     """§5.2: /modify <repo_url> <description> — Modify an existing codebase.
 
@@ -705,7 +940,7 @@ async def cmd_modify(update: Any, context: Any):
             except Exception:
                 pass
 
-    asyncio.create_task(_run_modify())
+    _bg(_run_modify())
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -814,8 +1049,9 @@ async def handle_message(update: Any, context: Any):
             return
 
     # ── Operator state: awaiting project description ──
+    # get_operator_state returns {"state": str, "context": {}} or None
     op_state = await get_operator_state(user_id)
-    if op_state == "awaiting_project_description":
+    if isinstance(op_state, dict) and op_state.get("state") == "awaiting_project_description":
         await clear_operator_state(user_id)
         await _handle_start_project_intent(update, user_id, text)
         return
@@ -999,7 +1235,7 @@ async def _start_project(
             except Exception:
                 pass
 
-    asyncio.create_task(_run_and_notify())
+    _bg(_run_and_notify())
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1041,9 +1277,25 @@ async def setup_bot() -> Any:
                 logger.info("[bot] Mother Memory chain initialized")
             except Exception as e:
                 logger.warning(f"[bot] Memory chain init failed (will retry on demand): {e}")
-        import asyncio as _asyncio
-        _mem_task = _asyncio.create_task(_init_memory_chain())
-        app._memory_init_task = _mem_task  # prevent garbage collection
+        _bg(_init_memory_chain())
+
+        from telegram.ext import MessageHandler as MH
+        from telegram.error import TelegramError
+
+        # ── Global error handler — surfaces all handler exceptions ──
+        async def _error_handler(update: object, context: Any) -> None:
+            err = context.error
+            logger.error(f"[bot] Unhandled exception: {err}", exc_info=err)
+            if isinstance(update, object) and hasattr(update, "effective_message"):
+                try:
+                    await update.effective_message.reply_text(
+                        f"⚠️ Internal error: {type(err).__name__}: {str(err)[:200]}\n"
+                        "Check logs. Try again or /status."
+                    )
+                except Exception:
+                    pass
+
+        app.add_error_handler(_error_handler)
 
         # ── Project lifecycle ──
         app.add_handler(CommandHandler("start", cmd_start))
@@ -1062,53 +1314,65 @@ async def setup_bot() -> Any:
         # ── Pipeline flow ──
         app.add_handler(CommandHandler("continue", cmd_continue))
         app.add_handler(CommandHandler("cancel", cmd_cancel))
+        app.add_handler(CommandHandler("modify", require_auth(cmd_modify)))
 
         # ── Deploy gate (FIX-08) ──
         app.add_handler(CommandHandler("deploy_confirm", cmd_deploy_confirm))
         app.add_handler(CommandHandler("deploy_cancel", cmd_deploy_cancel))
 
-        # ── Evaluation ──
-        from factory.telegram.handlers.evaluate_handler import cmd_evaluate
-        app.add_handler(CommandHandler("evaluate", require_auth(cmd_evaluate)))
-
-        # ── Revenue & clients ──
-        from factory.telegram.handlers.revenue_handler import (
-            cmd_invoice, cmd_revenue, cmd_clients,
-        )
-        app.add_handler(CommandHandler("invoice", require_auth(cmd_invoice)))
-        app.add_handler(CommandHandler("revenue", require_auth(cmd_revenue)))
-        app.add_handler(CommandHandler("clients", require_auth(cmd_clients)))
-
-        # ── Analytics ──
-        from factory.telegram.handlers.analytics_handler import cmd_analytics
-        app.add_handler(CommandHandler("analytics", require_auth(cmd_analytics)))
+        # ── Admin / overrides ──
+        app.add_handler(CommandHandler("admin", require_auth(cmd_admin)))
+        app.add_handler(CommandHandler("force_continue", require_auth(cmd_force_continue)))
+        app.add_handler(CommandHandler("budget", require_auth(cmd_budget)))
 
         # ── Diagnostics ──
-        app.add_handler(CommandHandler("warroom", cmd_warroom))
-        app.add_handler(CommandHandler("legal", cmd_legal))
-        app.add_handler(CommandHandler("setup", cmd_setup))
-        app.add_handler(CommandHandler("providers", cmd_providers))
+        app.add_handler(CommandHandler("warroom", require_auth(cmd_warroom)))
+        app.add_handler(CommandHandler("legal", require_auth(cmd_legal)))
+        app.add_handler(CommandHandler("providers", require_auth(cmd_providers)))
+        app.add_handler(CommandHandler("setup", require_auth(cmd_setup)))
         app.add_handler(CommandHandler("help", cmd_help))
 
         # ── Mode switching ──
-        app.add_handler(CommandHandler("online", cmd_online))
-        app.add_handler(CommandHandler("local", cmd_local))
+        app.add_handler(CommandHandler("online", require_auth(cmd_online)))
+        app.add_handler(CommandHandler("local", require_auth(cmd_local)))
+
+        # ── Evaluation ──
+        try:
+            from factory.telegram.handlers.evaluate_handler import cmd_evaluate
+            app.add_handler(CommandHandler("evaluate", require_auth(cmd_evaluate)))
+        except Exception as e:
+            logger.warning(f"evaluate_handler unavailable: {e}")
+
+        # ── Revenue & clients ──
+        try:
+            from factory.telegram.handlers.revenue_handler import (
+                cmd_invoice, cmd_revenue, cmd_clients,
+            )
+            app.add_handler(CommandHandler("invoice", require_auth(cmd_invoice)))
+            app.add_handler(CommandHandler("revenue", require_auth(cmd_revenue)))
+            app.add_handler(CommandHandler("clients", require_auth(cmd_clients)))
+        except Exception as e:
+            logger.warning(f"revenue_handler unavailable: {e}")
+
+        # ── Analytics ──
+        try:
+            from factory.telegram.handlers.analytics_handler import cmd_analytics
+            app.add_handler(CommandHandler("analytics", require_auth(cmd_analytics)))
+        except Exception as e:
+            logger.warning(f"analytics_handler unavailable: {e}")
 
         # ── Inline callbacks ──
         app.add_handler(CallbackQueryHandler(handle_callback))
 
-        # ── Free-text + media ──
+        # ── Free-text + media (must be last — catches everything not matched above) ──
         app.add_handler(MessageHandler(
             filters.TEXT | filters.PHOTO
             | filters.Document.ALL | filters.VOICE,
             handle_message,
         ))
 
-        # ── MODIFY mode ──
-        app.add_handler(CommandHandler("modify", require_auth(cmd_modify)))
-
         set_bot_instance(app.bot)
-        logger.info("Telegram bot configured with 22 command handlers")
+        logger.info("Telegram bot configured with 30 command handlers + error handler")
         return app
 
     except ImportError as e:

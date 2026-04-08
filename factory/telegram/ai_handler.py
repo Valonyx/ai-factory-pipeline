@@ -313,10 +313,20 @@ async def _call_bot_provider(
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
         client = _anthropic.AsyncAnthropic(api_key=api_key)
+        # Extract system prompt from the combined prompt if present.
+        # The bot passes a full prompt including _SYSTEM_PROMPT as a preamble.
+        # We split it so Claude sees a proper system role, not user content.
+        if _SYSTEM_PROMPT in prompt:
+            sys_part = _SYSTEM_PROMPT
+            user_part = prompt[prompt.index(_SYSTEM_PROMPT) + len(_SYSTEM_PROMPT):].strip()
+        else:
+            sys_part = _SYSTEM_PROMPT
+            user_part = prompt
         resp = await client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
+            system=sys_part,
+            messages=[{"role": "user", "content": user_part}],
         )
         return resp.content[0].text.strip()
 

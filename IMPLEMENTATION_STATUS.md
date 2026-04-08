@@ -1,18 +1,27 @@
 # AI Factory Pipeline v5.6 — Implementation Status
 
-**Audit Date:** 2026-04-07  
+**Audit Date:** 2026-04-07 (updated 2026-04-08)  
 **Auditor:** Claude Code (claude-sonnet-4-6)  
-**Audit Method:** Static code analysis (Python execution unavailable in audit environment)
+**Audit Method:** Static code analysis + live test execution
 
 ---
 
 ## TL;DR
 
-The pipeline is **~88% complete** by spec coverage. All 9 pipeline stages (S0–S8) are fully implemented and wired. The remaining 12% consists of intentional P2/P3 deferred work (GUI automation, real legal check execution, runbook docs) that does not block autonomous app generation.
+The pipeline is **~95% complete** by spec coverage. All 9 pipeline stages (S0–S8) are fully implemented and wired. **532/532 tests pass in ~6s.** The remaining 5% is intentional P3 deferred work (OmniParser/UI-TARS GUI automation, Claude Vision vibe check, runbook docs) that does not block autonomous app generation.
 
-Two bugs were fixed during this audit:
-- **STAB-01**: `graph.py` stub legal checks now delegate to real `legal/checks.py` implementations
-- **STAB-02**: `stages.py` broken import (`legal.continuous` → `legal.checks`) fixed
+Fixes applied 2026-04-07/08 (STAB-01 through STAB-13, COMP-01 through COMP-05, FIX-BOT-01+02, FIX-GH-01):
+- **STAB-01/02**: Real legal checks wired in graph.py + stages.py
+- **STAB-12**: Test suite hung 2h+ fixed (DRY_RUN=true in conftest)
+- **STAB-13**: Secrets test wrong patch target fixed
+- **COMP-01**: vibe_check() wired into S2 Blueprint Phase 4
+- **COMP-02**: War Room upgraded with Mother Memory pattern storage in S3
+- **COMP-03**: War Room L2/L3 + orchestration tests added (532 total)
+- **COMP-04**: vibe_check wiring test added
+- **COMP-05**: War Room set_fix_hooks wired in S3 retry — L3 rewrites now persist
+- **FIX-BOT-01**: Per-stage Telegram progress notifications in pipeline_node decorator
+- **FIX-BOT-02**: Orphaned asyncio.create_task in bot setup_bot() fixed
+- **FIX-GH-01**: Health probe scheduler exit 1 → exit 0 (non-fatal on Render sleep)
 
 ---
 
@@ -57,12 +66,13 @@ Two bugs were fixed during this audit:
 
 | Feature | Spec Ref | Status | Notes |
 |---------|----------|--------|-------|
-| War Room L2/L3 | §8.10 | ⚠️ 80% | Flow wired, advanced debug bodies stubbed |
-| Design engine (vibe_check) | §4.3 | ⚠️ 80% | Returns mock score; real Claude Vision call P2 |
+| War Room L2/L3 | §8.10 | ✅ 95% | Real AI calls; hooks wired; L3 file rewrites persist (COMP-05) |
+| Design engine (vibe_check) | §4.3 | ✅ 90% | Wired into S2; text-based Scout; real Claude Vision screenshots P3 |
 | iOS deployment (FIX-21) | §4.7.2 | ⚠️ 85% | 5-step protocol wired; real Transporter path via CI |
 | Android deployment (FIX-22) | §4.7.1 | ⚠️ 85% | Play API wired; Firebase Distribution fallback |
-| MODIFY mode | NB4 §20–23 | ⚠️ 80% | S0 ingestion + S3 diff scaffolded; full engine P2 |
+| MODIFY mode | NB4 §20–23 | ✅ 95% | Full diff engine complete; change_plan + DiffGenerator wired |
 | Local/Hybrid execution | §2.7 | ⚠️ 85% | Cloudflare tunnel impl; real routing P2 |
+| Telegram per-stage notifications | §3.x | ✅ 100% | pipeline_node sends S0–S8 progress updates (FIX-BOT-01) |
 
 ### Tier 3: PARTIAL / DEFERRED (P2/P3)
 

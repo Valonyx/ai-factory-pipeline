@@ -891,7 +891,7 @@ async def cmd_modify(update: Any, context: Any):
 
     import uuid
     project_id = f"mod_{uuid.uuid4().hex[:8]}"
-    prefs = await get_operator_preferences(user_id)
+    prefs = get_operator_preferences(user_id)
 
     from factory.core.state import PipelineMode
     state = PipelineState(
@@ -1180,7 +1180,7 @@ async def _start_project(
     import uuid
 
     project_id = f"proj_{uuid.uuid4().hex[:8]}"
-    prefs = await get_operator_preferences(user_id)
+    prefs = get_operator_preferences(user_id)
 
     state = PipelineState(
         project_id=project_id,
@@ -1314,27 +1314,27 @@ async def setup_bot() -> Any:
         # ── Pipeline flow ──
         app.add_handler(CommandHandler("continue", cmd_continue))
         app.add_handler(CommandHandler("cancel", cmd_cancel))
-        app.add_handler(CommandHandler("modify", require_auth(cmd_modify)))
+        app.add_handler(CommandHandler("modify", cmd_modify))
 
         # ── Deploy gate (FIX-08) ──
         app.add_handler(CommandHandler("deploy_confirm", cmd_deploy_confirm))
         app.add_handler(CommandHandler("deploy_cancel", cmd_deploy_cancel))
 
         # ── Admin / overrides ──
-        app.add_handler(CommandHandler("admin", require_auth(cmd_admin)))
-        app.add_handler(CommandHandler("force_continue", require_auth(cmd_force_continue)))
-        app.add_handler(CommandHandler("budget", require_auth(cmd_budget)))
+        app.add_handler(CommandHandler("admin", cmd_admin))
+        app.add_handler(CommandHandler("force_continue", cmd_force_continue))
+        app.add_handler(CommandHandler("budget", cmd_budget))
 
         # ── Diagnostics ──
-        app.add_handler(CommandHandler("warroom", require_auth(cmd_warroom)))
-        app.add_handler(CommandHandler("legal", require_auth(cmd_legal)))
-        app.add_handler(CommandHandler("providers", require_auth(cmd_providers)))
-        app.add_handler(CommandHandler("setup", require_auth(cmd_setup)))
+        app.add_handler(CommandHandler("warroom", cmd_warroom))
+        app.add_handler(CommandHandler("legal", cmd_legal))
+        app.add_handler(CommandHandler("providers", cmd_providers))
+        app.add_handler(CommandHandler("setup", cmd_setup))
         app.add_handler(CommandHandler("help", cmd_help))
 
         # ── Mode switching ──
-        app.add_handler(CommandHandler("online", require_auth(cmd_online)))
-        app.add_handler(CommandHandler("local", require_auth(cmd_local)))
+        app.add_handler(CommandHandler("online", cmd_online))
+        app.add_handler(CommandHandler("local", cmd_local))
 
         # ── Evaluation ──
         try:

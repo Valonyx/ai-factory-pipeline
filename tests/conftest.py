@@ -72,8 +72,29 @@ def force_mock_ai_provider():
     Tests that explicitly test real AI (test_prod_01_anthropic.py etc.)
     can override with patch.dict(os.environ, {"AI_PROVIDER": "anthropic"}).
     """
-    with patch.dict(os.environ, {"AI_PROVIDER": "mock", "SCOUT_PROVIDER": "mock"}):
+    with patch.dict(os.environ, {
+        "AI_PROVIDER": "mock",
+        "SCOUT_PROVIDER": "mock",
+        "DRY_RUN": "true",   # bypasses pre_deploy_gate 15-min Telegram polling loop
+    }):
         yield
+
+
+@pytest.fixture(autouse=True)
+def mock_store_pipeline_decision():
+    """Patch store_pipeline_decision to no-op (autouse).
+
+    call_ai() always schedules asyncio.create_task(store_pipeline_decision(...))
+    for STRATEGIST calls — even when AI_PROVIDER=mock produces a mock response.
+    Without this, the background task tries to connect to the full MemoryChain
+    (Neo4j + Supabase + Upstash + Turso), causing hangs at test teardown.
+    """
+    with patch(
+        "factory.memory.mother_memory.store_pipeline_decision",
+        new_callable=AsyncMock,
+    ) as mock:
+        mock.return_value = "mock-decision-id"
+        yield mock
 
 
 @pytest.fixture(autouse=True)
@@ -177,9 +198,14 @@ class MockNeo4j:
         return []
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_neo4j():
-    """In-memory Neo4j mock."""
+    """In-memory Neo4j mock (autouse).
+
+    S8 handoff calls get_neo4j() to store patterns/docs in Mother Memory.
+    Without this, any test that exercises S8 makes live Neo4j Aura calls,
+    which can timeout or hit connection limits when tests run concurrently.
+    """
     neo4j = MockNeo4j()
     with patch(
         "factory.integrations.neo4j.get_neo4j",

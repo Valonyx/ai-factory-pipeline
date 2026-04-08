@@ -204,7 +204,9 @@ async def call_ai(
 
     # ── Step 7: Persist Strategist decisions to Mother Memory ──
     # Key planning outputs are stored so any future provider has institutional memory.
-    if role == AIRole.STRATEGIST and len(response) > 50:
+    # Skip in mock mode to prevent background tasks from connecting to real backends.
+    if role == AIRole.STRATEGIST and len(response) > 50 and \
+            os.getenv("AI_PROVIDER", "").lower() != "mock":
         try:
             from factory.memory.mother_memory import store_pipeline_decision
             import asyncio

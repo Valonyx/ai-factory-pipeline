@@ -341,7 +341,7 @@ class TestVerifyFunctions:
         """All verify functions should raise when secret is missing."""
         import asyncio
 
-        with patch("factory.core.secrets.get_secret", return_value=None):
+        with patch("factory.setup.verify.get_secret", return_value=None):
             for fn in [verify_anthropic, verify_perplexity, verify_neo4j,
                         verify_github]:
                 with pytest.raises(EnvironmentError):

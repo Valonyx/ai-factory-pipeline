@@ -86,6 +86,32 @@ def mock_persist_state():
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def mock_build_chain():
+    """Patch build_with_chain to no-op (autouse).
+
+    build_with_chain makes real GitHub Actions API calls with up to 20s
+    timeouts. Without this, any test that exercises S4 takes 20+ seconds.
+    Only patches when factory.infra.build_chain is importable (requires aiohttp).
+    """
+    try:
+        import factory.infra.build_chain  # only patchable when aiohttp installed
+        from unittest.mock import MagicMock
+        with patch(
+            "factory.infra.build_chain.build_with_chain",
+            new_callable=AsyncMock,
+        ) as mock:
+            result = MagicMock()
+            result.success = False
+            result.error = "mocked in tests"
+            result.artifacts = {}
+            result.provider = "mock"
+            mock.return_value = result
+            yield mock
+    except ModuleNotFoundError:
+        yield None  # aiohttp not installed; S4 already degrades gracefully
+
+
 @pytest.fixture
 def mock_ai():
     """Patch call_ai to return stub responses."""

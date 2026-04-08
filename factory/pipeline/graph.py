@@ -203,6 +203,19 @@ def transition_to(state: PipelineState, stage: Stage) -> None:
     })
 
 
+_STAGE_PROGRESS: dict[Stage, str] = {
+    Stage.S0_INTAKE:    "📥 *S0 Intake* — requirements parsed and project initialized",
+    Stage.S1_LEGAL:     "⚖️ *S1 Legal* — compliance checks passed",
+    Stage.S2_BLUEPRINT: "🏗 *S2 Blueprint* — architecture and design system ready",
+    Stage.S3_CODEGEN:   "💻 *S3 CodeGen* — source files generated",
+    Stage.S4_BUILD:     "🔨 *S4 Build* — artefacts compiled",
+    Stage.S5_TEST:      "🧪 *S5 Tests* — all test suites passed",
+    Stage.S6_DEPLOY:    "🚀 *S6 Deploy* — app deployed successfully",
+    Stage.S7_VERIFY:    "✅ *S7 Verify* — post-deploy checks passed",
+    Stage.S8_HANDOFF:   "📦 *S8 Handoff* — assets and docs delivered",
+}
+
+
 def pipeline_node(stage: Stage):
     """Decorator wrapping every DAG node with legal checks, snapshots,
     and stage transitions.
@@ -236,6 +249,16 @@ def pipeline_node(stage: Stage):
 
             # Persist snapshot (time-travel)
             await persist_state(state)
+
+            # Send per-stage progress notification to operator
+            if state.operator_id:
+                try:
+                    from factory.telegram.notifications import send_telegram_message
+                    msg = _STAGE_PROGRESS.get(stage)
+                    if msg:
+                        await send_telegram_message(state.operator_id, msg)
+                except Exception:
+                    pass  # Never let notification failure break the pipeline
 
             return state
         return wrapper

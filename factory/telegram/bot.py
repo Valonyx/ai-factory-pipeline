@@ -1042,7 +1042,8 @@ async def setup_bot() -> Any:
             except Exception as e:
                 logger.warning(f"[bot] Memory chain init failed (will retry on demand): {e}")
         import asyncio as _asyncio
-        _asyncio.create_task(_init_memory_chain())
+        _mem_task = _asyncio.create_task(_init_memory_chain())
+        app._memory_init_task = _mem_task  # prevent garbage collection
 
         # ── Project lifecycle ──
         app.add_handler(CommandHandler("start", cmd_start))

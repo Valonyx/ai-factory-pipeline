@@ -161,19 +161,19 @@ class ScreenParser:
             elements: list[UIElement] = []
             for i, text in enumerate(data["text"]):
                 text = text.strip()
-            if not text or int(data["conf"][i]) < 30:
-                continue
-            cx = data["left"][i] + data["width"][i] // 2
-            cy = data["top"][i] + data["height"][i] // 2
-            elements.append(UIElement(
-                label=text[:50],
-                element_type=_classify_text_element(text),
-                x=cx, y=cy,
-                width=data["width"][i],
-                height=data["height"][i],
-                confidence=float(data["conf"][i]) / 100,
-                text_content=text,
-            ))
+                if not text or int(data["conf"][i]) < 30:
+                    continue
+                cx = data["left"][i] + data["width"][i] // 2
+                cy = data["top"][i] + data["height"][i] // 2
+                elements.append(UIElement(
+                    label=text[:50],
+                    element_type=_classify_text_element(text),
+                    x=cx, y=cy,
+                    width=data["width"][i],
+                    height=data["height"][i],
+                    confidence=float(data["conf"][i]) / 100,
+                    text_content=text,
+                ))
 
             # Detect rectangular regions (likely buttons)
             edges = cv2.Canny(gray, 50, 150)

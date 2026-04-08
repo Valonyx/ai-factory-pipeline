@@ -27,6 +27,9 @@ from factory.design.contrast import (
 
 logger = logging.getLogger("factory.design.grid_enforcer")
 
+# 4px grid unit (§3.4.2)
+GRID_UNIT: int = 4
+
 
 # ═══════════════════════════════════════════════════════════════════
 # §3.4.2 DesignSpec Model

@@ -97,6 +97,7 @@ SECRET_ROTATION_DAYS: dict[str, int] = {
     "TELEGRAM_OPERATOR_ID":   3650,  # static operator ID, no rotation needed
     "PERPLEXITY_API_KEY":       90,
     "FLUTTERFLOW_API_TOKEN":    90,
+    "UI_TARS_ENDPOINT":         90,
     "UI_TARS_API_KEY":          90,
     "APPLE_ID":                365,
     "APP_SPECIFIC_PASSWORD":   365,

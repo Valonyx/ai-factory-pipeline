@@ -276,6 +276,16 @@ class DataResidencyConfig:
 DATA_RESIDENCY = DataResidencyConfig()
 
 
+# Convenience aggregate for modules that import a single config object
+PIPELINE_CONFIG = {
+    "version": PIPELINE_FULL_VERSION,
+    "models": MODELS,
+    "budget": BUDGET,
+    "delivery": DELIVERY,
+    "data_residency": DATA_RESIDENCY,
+}
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Utility: Validate Required Config
 # ═══════════════════════════════════════════════════════════════════

@@ -175,26 +175,30 @@ def mock_deploy_window():
 
 
 class MockNeo4j:
-    """In-memory Neo4j mock."""
+    """In-memory Neo4j mock with async-compatible methods.
+
+    patterns.py calls `await neo4j_client.find_nodes(...)` and
+    `await neo4j_client.create_node(...)` — these must be coroutines.
+    """
 
     def __init__(self):
         self._nodes = []
         self._id_counter = 0
 
-    def create_node(self, label, props):
+    async def create_node(self, label, props):
         self._id_counter += 1
         node = {"_id": self._id_counter, "_label": label, **props}
         self._nodes.append(node)
         return self._id_counter
 
-    def find_nodes(self, label, filters=None):
+    async def find_nodes(self, label, filters=None):
         results = [n for n in self._nodes if n["_label"] == label]
         if filters:
             for k, v in filters.items():
                 results = [n for n in results if n.get(k) == v]
         return results
 
-    def query(self, cypher, params=None):
+    async def query(self, cypher, params=None):
         return []
 
 

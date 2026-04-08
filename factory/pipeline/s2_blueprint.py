@@ -140,6 +140,22 @@ async def copilot_stack_selection(
 # ═══════════════════════════════════════════════════════════════════
 
 
+def _infer_design_system(stack: TechStack) -> str:
+    """Map TechStack to its canonical design system.
+
+    Spec: §3.4.1
+    """
+    mapping = {
+        TechStack.SWIFT: "cupertino",
+        TechStack.KOTLIN: "material3",
+        TechStack.REACT_NATIVE: "material3",
+        TechStack.UNITY: "custom",
+        TechStack.PYTHON_BACKEND: "custom",
+        TechStack.FLUTTERFLOW: "material3",
+    }
+    return mapping.get(stack, "material3")
+
+
 def _init_stack_metadata(
     stack: TechStack, requirements: dict,
 ) -> dict:
@@ -295,45 +311,28 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # ══════════════════════════════════════
     # Phase 4: Design System (Vibe Check)
     # ══════════════════════════════════════
-    design_result = await call_ai(
-        role=AIRole.STRATEGIST,
-        prompt=(
-            f"DESIGN SYSTEM for {blueprint_data['app_name']}.\n\n"
-            f"Category: {blueprint_data['app_category']}\n"
-            f"Stack: {selected_stack.value}\n\n"
-            f"Return ONLY valid JSON:\n"
-            f'{{\n'
-            f'  "color_palette": {{"primary": "#hex", "secondary": "#hex", '
-            f'"background": "#hex", "text_primary": "#hex", '
-            f'"text_secondary": "#hex", "accent": "#hex"}},\n'
-            f'  "typography": {{"font_family": "...", "size_base": 16, '
-            f'"size_h1": 32, "size_h2": 24, "weight_normal": 400, '
-            f'"weight_bold": 700}},\n'
-            f'  "design_system": "material3|cupertino|custom",\n'
-            f'  "spacing": {{"unit": 4, "xs": 4, "sm": 8, "md": 16, '
-            f'"lg": 24, "xl": 32}}\n'
-            f'}}'
-        ),
-        state=state,
-        action="plan_architecture",
-    )
-
     try:
-        design = json.loads(design_result)
+        from factory.design.vibe_check import vibe_check
+        design = await vibe_check(state, requirements)
         blueprint_data["color_palette"] = design.get("color_palette", {})
         blueprint_data["typography"] = design.get("typography", {})
-        blueprint_data["design_system"] = design.get("design_system", "material3")
-    except json.JSONDecodeError:
-        logger.warning(f"[{state.project_id}] S2: Design parse failed, using defaults")
+        blueprint_data["spacing"] = design.get("spacing", {})
+        blueprint_data["visual_style"] = design.get("visual_style", "minimal")
+        blueprint_data["layout_patterns"] = design.get("layout_patterns", ["cards", "bottom_nav"])
+        blueprint_data["design_system"] = _infer_design_system(selected_stack)
+        logger.info(
+            f"[{state.project_id}] S2: Vibe Check complete — "
+            f"style={design.get('visual_style', 'minimal')}"
+        )
+    except Exception as e:
+        logger.warning(f"[{state.project_id}] S2: Vibe Check failed ({e}), using defaults")
         blueprint_data["color_palette"] = {
             "primary": "#1976D2", "secondary": "#FF9800",
             "background": "#FFFFFF", "text_primary": "#212121",
             "text_secondary": "#757575", "accent": "#03DAC6",
         }
-        blueprint_data["typography"] = {
-            "font_family": "Inter", "size_base": 16,
-        }
-        blueprint_data["design_system"] = "material3"
+        blueprint_data["typography"] = {"font_family": "Inter", "size_base": 16}
+        blueprint_data["design_system"] = _infer_design_system(selected_stack)
 
     state.s2_output = blueprint_data
 

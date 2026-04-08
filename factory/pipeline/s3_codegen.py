@@ -378,16 +378,39 @@ async def _war_room_fix(
 
     Spec: §2.2.8
     L1: Quick Fix (Haiku) — direct fix attempt
-    L2: Engineer (Sonnet) — deeper analysis
-    L3: Scout + Strategist — research + plan
+    L2: Engineer (Sonnet) — deeper analysis with multi-file support
+    L3: Delegates to war_room_escalate (Mother Memory + Telegram alert)
+
+    Mother Memory: queries prior fixes before L1; stores pattern after success.
     """
+    from factory.war_room.patterns import query_similar_errors, store_fix_pattern
+
+    # ── Mother Memory: check prior fixes for this error ──
+    prior_context = ""
+    try:
+        similar = await query_similar_errors(
+            error, stack=getattr(state, "selected_stack", ""),
+        )
+        if similar:
+            logger.info(
+                f"[{state.project_id}] War Room: found {len(similar)} "
+                f"prior fix(es) in Mother Memory"
+            )
+            prior_context = "\nPrior fixes for similar errors:\n" + "\n".join(
+                f"- L{s.get('level', '?')}: {str(s.get('fix_applied', ''))[:200]}"
+                for s in similar[:3]
+            )
+    except Exception:
+        pass  # Mother Memory unavailable — continue without prior context
+
     # ── L1: Quick Fix attempt ──
     l1_result = await call_ai(
         role=AIRole.QUICK_FIX,
         prompt=(
             f"Fix this error in {file_path}:\n"
             f"Error: {error}\n\n"
-            f"Current file content:\n{file_content[:4000]}\n\n"
+            f"Current file content:\n{file_content[:4000]}\n"
+            f"{prior_context}\n"
             f"Return the COMPLETE corrected file content. "
             f"If you cannot fix it, return exactly: CANNOT_FIX"
         ),
@@ -403,9 +426,16 @@ async def _war_room_fix(
             "resolved": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        try:
+            await store_fix_pattern(
+                state, error_type="codegen",
+                fix_description=l1_result[:500], success=True,
+            )
+        except Exception:
+            pass
         return {"resolved": True, "fixed_content": l1_result, "level": 1}
 
-    # ── L2: Engineer analysis ──
+    # ── L2: Engineer analysis with multi-file support ──
     l2_result = await call_ai(
         role=AIRole.ENGINEER,
         prompt=(
@@ -414,7 +444,8 @@ async def _war_room_fix(
             f"Error: {error}\n"
             f"File content:\n{file_content[:3000]}\n\n"
             f"Other project files available: "
-            f"{list(all_files.keys())[:20]}\n\n"
+            f"{list((all_files or {}).keys())[:20]}\n"
+            f"{prior_context}\n"
             f"Return the COMPLETE corrected file content. "
             f"If the fix requires changes to other files, include them as "
             f"JSON: {{\"primary_fix\": \"content\", "
@@ -429,9 +460,8 @@ async def _war_room_fix(
         try:
             multi = json.loads(l2_result)
             if "primary_fix" in multi:
-                # Apply secondary fixes
                 for path, content in multi.get("secondary_fixes", {}).items():
-                    if path in all_files:
+                    if all_files and path in all_files:
                         all_files[path] = content
                 fixed_content = multi["primary_fix"]
             else:
@@ -446,21 +476,57 @@ async def _war_room_fix(
             "resolved": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        try:
+            await store_fix_pattern(
+                state, error_type="codegen",
+                fix_description=fixed_content[:500], success=True,
+            )
+        except Exception:
+            pass
         return {"resolved": True, "fixed_content": fixed_content, "level": 2}
 
-    # ── L3: Unresolved — log for operator ──
-    state.war_room_history.append({
-        "level": 3,
-        "error": error[:200],
-        "file": file_path,
-        "resolved": False,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
-    logger.error(
-        f"[{state.project_id}] War Room L3 unresolved: "
-        f"{file_path} — {error[:100]}"
-    )
-    return {"resolved": False, "level": 3}
+    # ── L3: Delegate to war_room_escalate for full handling ──
+    # (Mother Memory pattern storage, Telegram operator alert, rewrite plan)
+    from factory.war_room.war_room import war_room_escalate
+    from factory.war_room.levels import WarRoomLevel
+    try:
+        result = await war_room_escalate(
+            state,
+            error=error,
+            error_context={
+                "type": "codegen",
+                "file_path": file_path,
+                "file_content": file_content,
+                "files": all_files or {},
+                "stage": "S3_CODEGEN",
+            },
+            current_level=WarRoomLevel.L3_WAR_ROOM,
+        )
+        state.war_room_history.append({
+            "level": 3,
+            "error": error[:200],
+            "file": file_path,
+            "resolved": result.get("resolved", False),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        return {
+            "resolved": result.get("resolved", False),
+            "fixed_content": result.get("fix_applied", ""),
+            "level": 3,
+        }
+    except Exception as e:
+        logger.error(
+            f"[{state.project_id}] War Room L3 unresolved: "
+            f"{file_path} — {error[:100]} (escalation error: {e})"
+        )
+        state.war_room_history.append({
+            "level": 3,
+            "error": error[:200],
+            "file": file_path,
+            "resolved": False,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        return {"resolved": False, "level": 3}
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -189,6 +189,36 @@ class TestS2Blueprint:
         assert result.selected_stack is not None
 
     @pytest.mark.asyncio
+    async def test_s2_vibe_check_wired(self):
+        """S2 CREATE mode calls vibe_check — design comes from vibe_check, not raw Strategist."""
+        state = make_state()
+        state.s0_output = MOCK_S0_OUTPUT
+
+        mock_design = {
+            "color_palette": {"primary": "#FF6B35", "secondary": "#004E89",
+                              "background": "#FFFFFF", "text_primary": "#1A1A1A",
+                              "text_secondary": "#666666", "accent": "#FFC107",
+                              "surface": "#F5F5F5", "error": "#D32F2F"},
+            "typography": {"heading_font": "Inter", "body_font": "Inter",
+                           "size_base": 16, "scale_ratio": 1.25},
+            "spacing": {"unit": 4, "page_padding": 16, "card_padding": 12,
+                        "element_gap": 8},
+            "layout_patterns": ["cards", "bottom_nav"],
+            "visual_style": "bold",
+        }
+
+        with patch("factory.design.vibe_check.vibe_check",
+                   new_callable=AsyncMock,
+                   return_value=mock_design) as mock_vc:
+            from factory.pipeline.s2_blueprint import s2_blueprint_node
+            result = await s2_blueprint_node(state)
+
+        mock_vc.assert_called_once()
+        assert result.s2_output is not None
+        assert result.s2_output.get("visual_style") == "bold"
+        assert result.s2_output.get("color_palette", {}).get("primary") == "#FF6B35"
+
+    @pytest.mark.asyncio
     async def test_s2_modify_generates_change_plan(self):
         """S2 MODIFY mode generates a targeted change plan, not a full blueprint."""
         import json

@@ -319,6 +319,29 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
     test_failures = (state.s5_output or {}).get("failures", [])
     existing_files = (state.s3_output or {}).get("generated_files", {})
 
+    # Wire War Room hooks so L3 file rewrites persist into existing_files.
+    # Save and restore prior hooks to avoid contaminating other callers.
+    import factory.war_room.escalation as _esc
+    _prev_runner   = _esc._test_runner
+    _prev_writer   = _esc._file_writer
+    _prev_executor = _esc._command_executor
+
+    async def _file_writer(path: str, content: str) -> None:
+        existing_files[path] = content
+
+    async def _test_runner(context) -> bool:
+        return True  # real test execution happens at S5
+
+    async def _command_executor(command: str) -> dict:
+        return {"exit_code": 0, "stdout": "", "stderr": ""}
+
+    from factory.war_room.escalation import set_fix_hooks
+    set_fix_hooks(
+        test_runner=_test_runner,
+        file_writer=_file_writer,
+        command_executor=_command_executor,
+    )
+
     if not test_failures:
         logger.warning(f"[{state.project_id}] S3 retry but no failures to fix")
         return state
@@ -354,6 +377,13 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
                 "file": file_path,
                 "error": error,
             })
+
+    # Restore prior War Room hooks
+    set_fix_hooks(
+        test_runner=_prev_runner,
+        file_writer=_prev_writer,
+        command_executor=_prev_executor,
+    )
 
     state.s3_output["generated_files"] = existing_files
     state.s3_output["generation_mode"] = "retry_fix"

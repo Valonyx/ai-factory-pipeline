@@ -46,9 +46,9 @@ _command_executor: Optional[Callable[..., Awaitable[dict]]] = None
 
 
 def set_fix_hooks(
-    test_runner: Callable[..., Awaitable[bool]],
-    file_writer: Callable[..., Awaitable[None]],
-    command_executor: Callable[..., Awaitable[dict]],
+    test_runner: Optional[Callable[..., Awaitable[bool]]],
+    file_writer: Optional[Callable[..., Awaitable[None]]],
+    command_executor: Optional[Callable[..., Awaitable[dict]]],
 ) -> None:
     """Inject test/file/command hooks for fix application."""
     global _test_runner, _file_writer, _command_executor

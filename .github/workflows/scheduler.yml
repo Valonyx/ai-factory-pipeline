@@ -39,6 +39,7 @@ jobs:
         env:
           APP_URL: ${{ secrets.SERVICE_URL }}
         run: |
+          set +e  # never fail — janitor is advisory only
           if [[ -z "${APP_URL}" ]]; then
             echo "SERVICE_URL secret not set — skipping janitor"
             echo "Set it at: github.com/Valonyx/ai-factory-pipeline/settings/secrets/actions"
@@ -50,12 +51,13 @@ jobs:
             -H "Content-Type: application/json" \
             --max-time 120 \
             --retry 2 \
-            --retry-delay 10)
+            --retry-delay 10 || echo "000")
           echo "HTTP status: ${response}"
-          cat /tmp/janitor_response.json || true
+          cat /tmp/janitor_response.json 2>/dev/null || true
           if [ "${response}" != "200" ]; then
             echo "Janitor returned HTTP ${response} — non-fatal, continuing"
           fi
+          exit 0
 
   health:
     name: Health Probe (every 5min)
@@ -70,15 +72,19 @@ jobs:
         env:
           APP_URL: ${{ secrets.SERVICE_URL }}
         run: |
+          set +e  # never fail — health probe is advisory only
           if [[ -z "${APP_URL}" ]]; then
             echo "SERVICE_URL secret not set — skipping health probe"
             exit 0
           fi
+          # || echo "000" ensures curl timeout/DNS failures don't propagate a non-zero exit
           response=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
-            "${APP_URL}/health" --max-time 15)
-          echo "Health HTTP ${response}: $(cat /tmp/health_response.json 2>/dev/null || echo '')"
-          if [ "${response}" != "200" ]; then
+            "${APP_URL}/health" --max-time 15 || echo "000")
+          body=$(cat /tmp/health_response.json 2>/dev/null || echo '')
+          echo "Health HTTP ${response}: ${body}"
+          if [ "${response}" = "200" ]; then
+            echo "✅ Service healthy"
+          else
             echo "⚠️  Service returned HTTP ${response} (may be sleeping — non-fatal)"
-            exit 0
           fi
-          echo "✅ Service healthy"
+          exit 0

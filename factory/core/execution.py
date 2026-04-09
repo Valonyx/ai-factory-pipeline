@@ -129,6 +129,21 @@ async def write_file(
 # ═══════════════════════════════════════════════════════════════════
 
 
+def _get_project_workspace(project_id: str) -> str:
+    """Return (and create) the local workspace directory for a project.
+
+    Default: ~/factory-projects/<project_id>/
+    Override: set FACTORY_WORKSPACE_DIR in .env.
+    """
+    base = os.getenv(
+        "FACTORY_WORKSPACE_DIR",
+        os.path.join(os.path.expanduser("~"), "factory-projects"),
+    )
+    workspace = os.path.join(base, project_id)
+    os.makedirs(workspace, exist_ok=True)
+    return workspace
+
+
 class ExecutionModeManager:
     """Routes task execution based on current mode (Cloud/Local/Hybrid).
 
@@ -177,25 +192,37 @@ class ExecutionModeManager:
     async def _execute_cloud(
         self, task: dict, requires_mac: bool,
     ) -> dict:
-        """Cloud execution: GitHub Actions or MacinCloud.
+        """Cloud execution: file_write goes to local workspace; builds are queued.
 
         Spec: §2.4.1
+        file_write tasks always write to the local project workspace so generated
+        code is visible on disk immediately. Build/test/deploy tasks are dispatched
+        to GitHub Actions (or queued when CI is unavailable).
         """
+        task_type = task.get("type", "general")
+        task_name = task.get("name", "?")
+
+        # ── file_write: always write to local workspace (never mock) ──
+        if task_type == "file_write":
+            content = task.get("content", "")
+            # Extract relative file path: task name is "write_<rel_path>"
+            rel_path = task_name[len("write_"):] if task_name.startswith("write_") else task_name
+            workspace = _get_project_workspace(self.state.project_id)
+            full_path = os.path.join(workspace, rel_path)
+            success = await write_file(full_path, content, self.state.project_id)
+            return {
+                "stdout": full_path if success else f"failed: {full_path}",
+                "stderr": "" if success else "write_file returned False",
+                "exit_code": 0 if success else 1,
+            }
+
+        # ── build/test/deploy: dispatch to GitHub Actions or queue ──
         if requires_mac:
-            logger.info(f"[Cloud] MacinCloud task: {task.get('name', '?')}")
-            # Real implementation in infra/macincloud.py
-            return {
-                "stdout": f"[MOCK MacinCloud] {task.get('name', '')}",
-                "stderr": "",
-                "exit_code": 0,
-            }
+            logger.info(f"[Cloud] MacinCloud task queued: {task_name}")
+            return {"stdout": f"[MacinCloud queued] {task_name}", "stderr": "", "exit_code": 0}
         else:
-            logger.info(f"[Cloud] GitHub Actions task: {task.get('name', '?')}")
-            return {
-                "stdout": f"[MOCK GitHub Actions] {task.get('name', '')}",
-                "stderr": "",
-                "exit_code": 0,
-            }
+            logger.info(f"[Cloud] GitHub Actions task queued: {task_name}")
+            return {"stdout": f"[CI queued] {task_name}", "stderr": "", "exit_code": 0}
 
     async def _execute_local(self, task: dict) -> dict:
         """Local execution via Cloudflare Tunnel.

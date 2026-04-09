@@ -141,9 +141,10 @@ def route_after_test(state: PipelineState) -> str:
 def route_after_verify(state: PipelineState) -> str:
     if state.current_stage == Stage.HALTED:
         return "halt"
-    # Check s7_output first, then project_metadata fallback
+    # Check s7_output first, then project_metadata fallback.
+    # S7 writes "passed" (not "verified") — check both keys.
     s7 = state.s7_output or {}
-    verify_passed = s7.get("verified", state.project_metadata.get("verify_passed", False))
+    verify_passed = s7.get("passed", s7.get("verified", state.project_metadata.get("verify_passed", False)))
     if verify_passed:
         return "s8_handoff"
     deploy_retries = state.retry_count

@@ -73,10 +73,15 @@ jobs:
         run: ./gradlew assemble${{ inputs.build_type == 'release' && 'Release' || 'Debug' }}
 
       - name: Sign AAB (if keystore available)
-        if: steps.check.outputs.skip != 'true' && secrets.KEYSTORE_BASE64 != ''
+        if: steps.check.outputs.skip != 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-
+          if [[ -z "${KEYSTORE_BASE64}" ]]; then
+            echo "KEYSTORE_BASE64 not set — skipping signing"
+            exit 0
+          fi
+          echo "${KEYSTORE_BASE64}" | base64 --decode > release.keystore
           jarsigner -verbose \
             -sigalg SHA256withRSA -digestalg SHA-256 \
             -keystore release.keystore \

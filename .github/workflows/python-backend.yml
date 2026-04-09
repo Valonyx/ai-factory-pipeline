@@ -46,6 +46,7 @@ jobs:
           IMAGE="gcr.io/${{ inputs.gcp_project || vars.GCP_PROJECT_ID }}/${{ inputs.service_name }}:${{ inputs.version }}-${{ github.run_number }}"
           docker build -t $IMAGE .
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "$IMAGE" > image-tag.txt
 
       - name: Push to GCR
         run: docker push $IMAGE
@@ -54,9 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-image-tag
-          path: |
-            echo "${{ env.IMAGE }}" > image-tag.txt
-            image-tag.txt
+          path: image-tag.txt
           retention-days: 7
 
   deploy-cloud-run:

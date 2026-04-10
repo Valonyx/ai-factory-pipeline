@@ -155,6 +155,7 @@ async def setup_secrets_interactive():
 
     print(f"\nProject: {gcp_project}")
     print(f"Required secrets: {len(REQUIRED_SECRETS)}")
+    from factory.config import CONDITIONAL_SECRETS
     print(f"Conditional secrets: {len(CONDITIONAL_SECRETS)}")
     print()
 

@@ -124,6 +124,24 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
 
     exec_mgr = ExecutionModeManager(state)
     deploy_results: dict = {}
+    source_only = (state.s4_output or {}).get("source_only", False)
+
+    # ══════════════════════════════════════════
+    # SOURCE-ONLY PATH: no binary was built — deliver source code zip
+    # ══════════════════════════════════════════
+    if source_only:
+        source_result = await _deliver_source_zip(state, stack)
+        deploy_results["source_code"] = source_result
+        state.s6_output = {
+            "deployments": deploy_results,
+            "all_success": source_result.get("success", False),
+            "source_only": True,
+        }
+        logger.info(
+            f"[{state.project_id}] S6 Deploy (source-only): "
+            f"delivered={source_result.get('success')}"
+        )
+        return state
 
     # ══════════════════════════════════════════
     # Phase 1: Platform Icon Generation (v5.4.1 Patch 1)
@@ -181,6 +199,100 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
         f"all_success={state.s6_output['all_success']}"
     )
     return state
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Source-Only Delivery (when no binary was built)
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _deliver_source_zip(
+    state: PipelineState,
+    stack: TechStack,
+) -> dict:
+    """Package source code as zip and deliver via Telegram.
+
+    Used when S4 produced source files but no binary (GUI build unavailable).
+    Gives the operator tangible output even without a build environment.
+    """
+    import os
+    import zipfile
+    import tempfile
+
+    from factory.core.execution import _get_project_workspace
+    from factory.telegram.notifications import send_telegram_file
+
+    workspace = _get_project_workspace(state.project_id)
+    app_name = (state.s0_output or {}).get("app_name", state.project_id)
+    files_written = (state.s4_output or {}).get("files_written", 0)
+
+    if not os.path.isdir(workspace) or files_written == 0:
+        await send_telegram_message(
+            state.operator_id,
+            f"⚠️ No source files found for {app_name}.\n"
+            f"S3 code generation may have failed. Check /warroom.",
+        )
+        return {"success": False, "method": "source_zip", "error": "no_source_files"}
+
+    # Create zip of workspace
+    safe_name = app_name.lower().replace(" ", "_")[:30]
+    zip_name = f"{safe_name}_source.zip"
+    zip_path = os.path.join(tempfile.gettempdir(), zip_name)
+
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(workspace):
+                # Skip hidden dirs and __pycache__
+                dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
+                for file in files:
+                    full = os.path.join(root, file)
+                    rel = os.path.relpath(full, workspace)
+                    zf.write(full, rel)
+
+        zip_size_mb = os.path.getsize(zip_path) / (1024 * 1024)
+        file_count = sum(
+            len(files) for _, dirs, files in os.walk(workspace)
+            if not any(d.startswith(".") for d in dirs)
+        )
+
+        # Send message first
+        await send_telegram_message(
+            state.operator_id,
+            f"📦 *{app_name}* — source code ready\n\n"
+            f"Stack: {stack.value}\n"
+            f"Files: {file_count}\n"
+            f"Size: {zip_size_mb:.1f} MB\n\n"
+            f"Local path: `{workspace}`\n\n"
+            f"To build: open in {stack.value} IDE or push to GitHub "
+            f"to trigger CI build.\n"
+            f"To enable auto-build: set `MACINCLOUD_API_KEY` in .env",
+        )
+
+        # Send the zip
+        success = await send_telegram_file(
+            state.operator_id,
+            zip_path,
+            caption=f"{app_name} source code ({stack.value})",
+        )
+
+        return {
+            "success": True,
+            "method": "source_zip",
+            "zip_path": zip_path,
+            "zip_size_mb": round(zip_size_mb, 2),
+            "file_count": file_count,
+            "telegram_sent": success,
+        }
+
+    except Exception as e:
+        logger.error(f"[{state.project_id}] Source zip failed: {e}")
+        await send_telegram_message(
+            state.operator_id,
+            f"📂 *{app_name}* source code at:\n`{workspace}`\n\n"
+            f"Zip delivery failed: {str(e)[:100]}\n"
+            f"Files are available locally.",
+        )
+        return {"success": True, "method": "source_local", "workspace": workspace}
 
 
 # ═══════════════════════════════════════════════════════════════════

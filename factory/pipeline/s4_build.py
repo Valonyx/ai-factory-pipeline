@@ -27,7 +27,7 @@ from factory.core.state import (
     TechStack,
 )
 from factory.core.roles import call_ai
-from factory.core.execution import ExecutionModeManager
+from factory.core.execution import ExecutionModeManager, _get_project_workspace
 from factory.core.user_space import enforce_user_space
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
@@ -167,27 +167,50 @@ async def s4_build_node(state: PipelineState) -> PipelineState:
         datetime.now(timezone.utc) - build_start
     ).total_seconds()
 
+    source_only = build_result.get("source_only", False)
     state.s4_output = {
         "build_success": build_result.get("success", False),
+        "source_only": source_only,
         "artifacts": build_result.get("artifacts", {}),
         "execution_mode": state.execution_mode.value,
         "build_duration_seconds": round(build_duration, 1),
         "errors": build_result.get("errors", []),
         "dependency_errors": dep_errors,
         "files_written": len(files) - len(write_errors),
+        "workspace_path": _get_project_workspace(state.project_id),
     }
 
-    # War Room for build failures
-    if not build_result.get("success") and build_result.get("errors"):
+    # War Room for build failures (skip for source_only — no binary to fix)
+    if not build_result.get("success") and build_result.get("errors") and not source_only:
         for error in build_result["errors"][:3]:
             wr_result = await _attempt_build_fix(state, error, exec_mgr)
             if wr_result.get("resolved"):
                 state.s4_output["build_success"] = True
                 break
 
+    # Notify operator of workspace location so they can see generated files
+    workspace = state.s4_output["workspace_path"]
+    files_written = state.s4_output["files_written"]
+    if source_only:
+        from factory.telegram.notifications import send_telegram_message
+        await send_telegram_message(
+            state.operator_id,
+            f"📂 *Source code ready* — {files_written} file(s) written to:\n"
+            f"`{workspace}`\n\n"
+            f"Build environment ({stack.value}) not available locally.\n"
+            f"Source code will be zipped and sent to you in the next step.\n"
+            f"Set `MACINCLOUD_API_KEY` to enable automated builds.",
+        )
+    elif files_written > 0:
+        from factory.telegram.notifications import send_telegram_message
+        await send_telegram_message(
+            state.operator_id,
+            f"📂 *Project files*: {files_written} file(s) at `{workspace}`",
+        )
+
     logger.info(
         f"[{state.project_id}] S4 Build: "
-        f"success={state.s4_output['build_success']}, "
+        f"success={state.s4_output['build_success']}, source_only={source_only}, "
         f"duration={build_duration:.1f}s, "
         f"artifacts={len(state.s4_output.get('artifacts', {}))}"
     )
@@ -334,9 +357,10 @@ async def _build_gui(
 
     except Exception as e:
         logger.error(f"[{state.project_id}] UI automation failed: {e}")
-        # Final fallback: mark as pending manual build
+        # Final fallback: no binary produced — source code is ready but not built
         return {
-            "success": True,   # Don't block pipeline — log for manual follow-up
+            "success": False,
+            "source_only": True,   # Tells S6 to deliver source zip, not binary
             "artifacts": {
                 stack.value: {
                     "status": "pending_manual_build",
@@ -346,7 +370,10 @@ async def _build_gui(
                     ),
                 }
             },
-            "errors": [],
+            "errors": [
+                f"{stack.value} build skipped — no build environment available. "
+                f"Source code written to workspace. Set MACINCLOUD_API_KEY to enable."
+            ],
         }
 
 

@@ -261,11 +261,19 @@ async def _codegen_full_generation(
     try:
         files = json.loads(result)
     except json.JSONDecodeError:
-        logger.warning(
-            f"[{state.project_id}] S3: Failed to parse Engineer JSON, "
-            f"creating minimal scaffold"
-        )
-        files = _create_minimal_scaffold(stack, app_name)
+        # Try to extract JSON from markdown code fences (common with Gemini/free-tier)
+        files = _extract_json_from_response(result)
+        if not files:
+            logger.warning(
+                f"[{state.project_id}] S3: Failed to parse Engineer JSON, "
+                f"creating minimal scaffold"
+            )
+            files = _create_minimal_scaffold(stack, app_name)
+        else:
+            logger.info(
+                f"[{state.project_id}] S3: Extracted {len(files)} files from "
+                f"markdown-wrapped AI response"
+            )
 
     # ── Step 2: Generate security rules (if auth) ──
     if auth_method and auth_method != "none":
@@ -716,6 +724,40 @@ async def _generate_ci_config(
 # ═══════════════════════════════════════════════════════════════════
 # Minimal Scaffold Fallback
 # ═══════════════════════════════════════════════════════════════════
+
+
+def _extract_json_from_response(text: str) -> dict:
+    """Try to extract a JSON object from an AI response that may be wrapped in
+    markdown code fences (```json ... ```) or contain preamble text.
+
+    Returns a dict of {file_path: content} or empty dict on failure.
+    """
+    import re
+
+    if not text:
+        return {}
+
+    # Try stripping markdown code fences
+    patterns = [
+        r"```json\s*([\s\S]*?)```",  # ```json ... ```
+        r"```\s*([\s\S]*?)```",       # ``` ... ```
+        r"\{[\s\S]*\}",               # bare JSON object anywhere
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            candidate = match.group(1) if "(" in pattern and ")" in pattern else match.group(0)
+            # For the bare-object pattern, group(0) is the whole match
+            if pattern == r"\{[\s\S]*\}":
+                candidate = match.group(0)
+            try:
+                parsed = json.loads(candidate.strip())
+                if isinstance(parsed, dict) and parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+    return {}
 
 
 def _create_minimal_scaffold(

@@ -369,6 +369,9 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
 
     await send_telegram_message(state.operator_id, delivery_message)
 
+    # ── Send legal docs as Telegram files so operator gets them directly ──
+    await _send_docs_via_telegram(state, app_name, legal_docs, handoff_docs)
+
     # Legal disclaimer reminder
     await send_telegram_message(
         state.operator_id,
@@ -484,6 +487,57 @@ async def _store_in_mother_memory(
         )
     except Exception as e:
         logger.debug(f"[{state.project_id}] Mother Memory store skipped: {e}")
+
+
+async def _send_docs_via_telegram(
+    state: PipelineState,
+    app_name: str,
+    legal_docs: dict[str, str],
+    handoff_docs: dict[str, str],
+) -> None:
+    """Send legal and handoff documents as Telegram files.
+
+    Writes each doc to a temp file and sends via send_telegram_file.
+    Gives operator direct access without needing GitHub.
+    """
+    import os
+    import tempfile
+
+    from factory.telegram.notifications import send_telegram_file
+
+    all_docs = {
+        **{f"legal_{k}.md": v for k, v in legal_docs.items()},
+        **{k: v for k, v in handoff_docs.items() if not k.startswith("_")},
+    }
+
+    if not all_docs:
+        return
+
+    sent = 0
+    for filename, content in all_docs.items():
+        if not content or len(content) < 20:
+            continue
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=f"_{filename}", delete=False, encoding="utf-8",
+            )
+            tmp.write(content)
+            tmp.close()
+            ok = await send_telegram_file(
+                state.operator_id,
+                tmp.name,
+                caption=f"📄 {filename} — {app_name}",
+            )
+            if ok:
+                sent += 1
+            os.unlink(tmp.name)
+        except Exception as e:
+            logger.debug(f"[{state.project_id}] Doc send failed ({filename}): {e}")
+
+    if sent > 0:
+        logger.info(
+            f"[{state.project_id}] S8: Sent {sent} documents via Telegram"
+        )
 
 
 # Register with DAG (replaces stub)

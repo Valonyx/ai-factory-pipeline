@@ -63,12 +63,16 @@ from factory.setup.verify import (
 
 @pytest.fixture(autouse=True)
 def clean_state():
-    """Clear caches and reset GCP client before each test."""
+    """Clear caches and reset GCP client + dotenv state before each test."""
     clear_cache()
     reset_gcp_client()
+    # Reset dotenv loaded flag to force reload in tests that need fresh env state
+    import factory.core.secrets as secrets_module
+    secrets_module._dotenv_loaded = False
     yield
     clear_cache()
     reset_gcp_client()
+    secrets_module._dotenv_loaded = False
 
 
 # ═══════════════════════════════════════════════════════════════════

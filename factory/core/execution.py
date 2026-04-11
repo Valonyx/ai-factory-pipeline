@@ -129,17 +129,24 @@ async def write_file(
 # ═══════════════════════════════════════════════════════════════════
 
 
-def _get_project_workspace(project_id: str) -> str:
+def _get_project_workspace(project_id: str, app_name: Optional[str] = None) -> str:
     """Return (and create) the local workspace directory for a project.
 
-    Default: ~/factory-projects/<project_id>/
+    Directory name: sanitized app_name if available, else project_id.
+    Default base: ~/factory-projects/
     Override: set FACTORY_WORKSPACE_DIR in .env.
     """
     base = os.getenv(
         "FACTORY_WORKSPACE_DIR",
         os.path.join(os.path.expanduser("~"), "factory-projects"),
     )
-    workspace = os.path.join(base, project_id)
+    if app_name:
+        import re
+        dir_name = re.sub(r"[^\w\-]", "_", app_name.strip().lower())
+        dir_name = re.sub(r"_+", "_", dir_name).strip("_") or project_id
+    else:
+        dir_name = project_id
+    workspace = os.path.join(base, dir_name)
     os.makedirs(workspace, exist_ok=True)
     return workspace
 
@@ -207,7 +214,11 @@ class ExecutionModeManager:
             content = task.get("content", "")
             # Extract relative file path: task name is "write_<rel_path>"
             rel_path = task_name[len("write_"):] if task_name.startswith("write_") else task_name
-            workspace = _get_project_workspace(self.state.project_id)
+            app_name = (
+                (self.state.s0_output or {}).get("app_name")
+                or self.state.idea_name
+            )
+            workspace = _get_project_workspace(self.state.project_id, app_name)
             full_path = os.path.join(workspace, rel_path)
             success = await write_file(full_path, content, self.state.project_id)
             return {

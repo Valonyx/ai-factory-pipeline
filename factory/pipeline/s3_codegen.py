@@ -103,7 +103,8 @@ def _build_codegen_prompt(
         f"Auth: {auth_method}\n"
         f"Colors: {colors}\n"
         f"Features: {features}\n\n"
-        f"Return ONLY valid JSON: {{\"file_path\": \"file_content\", ...}}\n"
+        f"Return ONLY valid JSON (no markdown, no code fences, no explanation): "
+        f"{{\"file_path\": \"file_content\", ...}}\n"
         f"Include ALL necessary files (entry point, screens, models, config, manifest).\n"
     )
 

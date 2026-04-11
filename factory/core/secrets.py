@@ -277,7 +277,8 @@ def get_secret(name: str) -> Optional[str]:
     # 3. Try environment variable (also loads .env once)
     load_dotenv_if_available()
     value = os.getenv(name)
-    if value is not None:
+    # Treat empty strings as "not found" (e.g., KEY= in .env file)
+    if value and value.strip():
         _cache_set(name, value)
         return value
 

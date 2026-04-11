@@ -177,7 +177,10 @@ async def s4_build_node(state: PipelineState) -> PipelineState:
         "errors": build_result.get("errors", []),
         "dependency_errors": dep_errors,
         "files_written": len(files) - len(write_errors),
-        "workspace_path": _get_project_workspace(state.project_id),
+        "workspace_path": _get_project_workspace(
+            state.project_id,
+            app_name=(state.s0_output or {}).get("app_name") or state.idea_name,
+        ),
     }
 
     # War Room for build failures (skip for source_only — no binary to fix)

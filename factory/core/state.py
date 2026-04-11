@@ -203,7 +203,7 @@ BUDGET_GOVERNOR_ENABLED: bool = (
 
 MODEL_CONFIG: dict[str, str] = {
     "strategist":      os.getenv("STRATEGIST_MODEL",       "claude-opus-4-6"),
-    "engineer":        os.getenv("ENGINEER_MODEL",          "claude-sonnet-4-5-20250929"),
+    "engineer":        os.getenv("ENGINEER_MODEL",          "claude-sonnet-4-6"),
     "quick_fix":       os.getenv("QUICKFIX_MODEL",          "claude-haiku-4-5-20251001"),
     "gui_supervisor":  os.getenv("GUI_SUPERVISOR_MODEL",    "claude-haiku-4-5-20251001"),
     "scout_search":    os.getenv("SCOUT_MODEL",             "sonar-pro"),
@@ -218,6 +218,7 @@ MODEL_OVERRIDES: dict[str, Optional[str]] = {
 
 VALID_ANTHROPIC_MODELS: set[str] = {
     "claude-opus-4-6",
+    "claude-sonnet-4-6",
     "claude-opus-4-5-20250929",
     "claude-sonnet-4-5-20250929",
     "claude-sonnet-4-20250514",

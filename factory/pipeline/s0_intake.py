@@ -97,8 +97,12 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
             f"[{state.project_id}] S0: Failed to parse Quick Fix JSON, "
             f"using fallback extraction"
         )
+        # Try to extract a short name: use the first word cluster before any colon/comma
+        import re as _re
+        _first_words = _re.sub(r"[^a-zA-Z0-9 ]", " ", raw_input).split()
+        _fallback_name = " ".join(_first_words[:3]).title() or "Untitled"
         requirements = {
-            "app_name": raw_input[:50].strip() or "Untitled",
+            "app_name": _fallback_name,
             "app_description": raw_input[:500],
             "app_category": "other",
             "features_must": [],
@@ -164,6 +168,9 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
             requirements["operator_additions"] = "Operator requested expansion"
 
     state.s0_output = requirements
+    # Propagate app name so workspace directory uses it (not UUID)
+    if requirements.get("app_name"):
+        state.idea_name = requirements["app_name"]
 
     logger.info(
         f"[{state.project_id}] S0 complete: "

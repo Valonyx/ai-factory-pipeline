@@ -103,8 +103,12 @@ def _build_codegen_prompt(
         f"Auth: {auth_method}\n"
         f"Colors: {colors}\n"
         f"Features: {features}\n\n"
-        f"Return ONLY valid JSON (no markdown, no code fences, no explanation): "
-        f"{{\"file_path\": \"file_content\", ...}}\n"
+        f"Return ONLY a raw JSON object. No markdown. No code fences. No explanation.\n"
+        f"Each key is a relative file path. Each value is the complete raw file content.\n"
+        f"Example format:\n"
+        f'{{"lib/main.dart":"import \'package:flutter/material.dart\';\\nvoid main(){{runApp(MyApp());}}", '
+        f'"pubspec.yaml":"name: myapp\\nversion: 1.0.0"}}\n'
+        f"IMPORTANT: file content values must be raw code strings — NOT wrapped in ```fences```.\n"
         f"Include ALL necessary files (entry point, screens, models, config, manifest).\n"
     )
 
@@ -280,6 +284,20 @@ async def _codegen_full_generation(
                 f"[{state.project_id}] S3: Extracted {len(files)} files from "
                 f"markdown-wrapped AI response"
             )
+
+    # ── Sanitize: strip markdown fences from file content values ──
+    # Models sometimes wrap values in ```lang\n...\n``` inside the JSON
+    files = _sanitize_file_contents(files)
+
+    # ── Validate: if only 1 tiny file was generated it's a stub, not real code ──
+    total_content_bytes = sum(len(v) for v in files.values() if isinstance(v, str))
+    if total_content_bytes < 300 or (len(files) == 1 and "main.dart" in files and total_content_bytes < 500):
+        logger.warning(
+            f"[{state.project_id}] S3: Generated content too small "
+            f"({total_content_bytes} bytes, {len(files)} files) — "
+            f"regenerating with explicit file-by-file prompts"
+        )
+        files = await _generate_files_individually(state, stack, app_name, blueprint_data)
 
     # ── Step 2: Generate security rules (if auth) ──
     if auth_method and auth_method != "none":
@@ -730,6 +748,152 @@ async def _generate_ci_config(
 # ═══════════════════════════════════════════════════════════════════
 # Minimal Scaffold Fallback
 # ═══════════════════════════════════════════════════════════════════
+
+
+def _sanitize_file_contents(files: dict) -> dict:
+    """Strip markdown code fences from file content values.
+
+    Models sometimes return:
+      {"lib/main.dart": "```dart\\nimport ...\\n```"}
+    This extracts just the code from inside the fence.
+    """
+    import re
+    fence_re = re.compile(r"^```[\w]*\n?([\s\S]*?)```\s*$", re.MULTILINE)
+    result = {}
+    for path, content in files.items():
+        if not isinstance(content, str):
+            result[path] = content
+            continue
+        m = fence_re.match(content.strip())
+        if m:
+            result[path] = m.group(1).rstrip()
+        else:
+            result[path] = content
+    return result
+
+
+async def _generate_files_individually(
+    state,
+    stack: "TechStack",
+    app_name: str,
+    blueprint_data: dict,
+) -> dict:
+    """Generate each key file separately when bulk generation fails.
+
+    This is more reliable for smaller/weaker models — one file per call,
+    asking for raw code output only (no JSON wrapper, no markdown fences).
+    """
+    screens = blueprint_data.get("screens", [])
+    data_model = blueprint_data.get("data_model", [])
+    auth = blueprint_data.get("auth_method", "email")
+    colors = blueprint_data.get("color_palette", {})
+    primary = colors.get("primary", "#6366f1")
+
+    files: dict = {}
+
+    if stack == TechStack.FLUTTERFLOW:
+        # main.dart
+        main_result = await call_ai(
+            role=AIRole.ENGINEER,
+            prompt=(
+                f"Write ONLY the complete content of lib/main.dart for a Flutter app called '{app_name}'.\n"
+                f"Requirements:\n"
+                f"- MaterialApp with title '{app_name}'\n"
+                f"- Primary color: {primary}\n"
+                f"- Home screen: {screens[0]['name'] if screens else 'HomeScreen'}Screen widget\n"
+                f"- Firebase initialization (FirebaseApp)\n"
+                f"- Import firebase_core, material\n"
+                f"- Async main with WidgetsFlutterBinding.ensureInitialized()\n\n"
+                f"Output: raw Dart code only. No markdown fences. No explanation."
+            ),
+            state=state,
+            action="write_code",
+        )
+        files["lib/main.dart"] = _strip_fences(main_result)
+
+        # pubspec.yaml
+        pubspec_result = await call_ai(
+            role=AIRole.ENGINEER,
+            prompt=(
+                f"Write ONLY the complete pubspec.yaml for a Flutter app called '{app_name}'.\n"
+                f"Include: flutter sdk, firebase_core, cloud_firestore, firebase_auth, "
+                f"provider or riverpod, cached_network_image, go_router.\n"
+                f"Use latest stable versions (2024-2025).\n"
+                f"Output: raw YAML only. No markdown fences. No explanation."
+            ),
+            state=state,
+            action="write_code",
+        )
+        files["pubspec.yaml"] = _strip_fences(pubspec_result)
+
+        # Home screen
+        home_name = screens[0]["name"].replace(" ", "") if screens else "Home"
+        home_result = await call_ai(
+            role=AIRole.ENGINEER,
+            prompt=(
+                f"Write ONLY the complete lib/screens/{home_name.lower()}_screen.dart "
+                f"for a Flutter app called '{app_name}'.\n"
+                f"Purpose: {screens[0].get('purpose', 'Main screen') if screens else 'Main screen'}\n"
+                f"Components: {screens[0].get('components', []) if screens else ['list', 'fab']}\n"
+                f"Auth method: {auth}\n"
+                f"Primary color: {primary}\n"
+                f"Use StatefulWidget, Material Design 3, proper Dart null safety.\n"
+                f"Output: raw Dart code only. No markdown fences. No explanation."
+            ),
+            state=state,
+            action="write_code",
+        )
+        files[f"lib/screens/{home_name.lower()}_screen.dart"] = _strip_fences(home_result)
+
+        # README
+        files["README.md"] = (
+            f"# {app_name}\n\n"
+            f"Generated by AI Factory Pipeline.\n\n"
+            f"## Setup\n```\nflutter pub get\nflutter run\n```\n\n"
+            f"## Stack\nFlutter + Firebase\n"
+        )
+
+    elif stack == TechStack.REACT_NATIVE:
+        app_result = await call_ai(
+            role=AIRole.ENGINEER,
+            prompt=(
+                f"Write ONLY the complete App.tsx for a React Native + Expo app called '{app_name}'.\n"
+                f"Include: NavigationContainer, Stack navigator, "
+                f"{screens[0]['name'] if screens else 'Home'}Screen as first screen.\n"
+                f"Primary color: {primary}\n"
+                f"Output: raw TypeScript/TSX code only. No markdown fences. No explanation."
+            ),
+            state=state,
+            action="write_code",
+        )
+        files["App.tsx"] = _strip_fences(app_result)
+        files["package.json"] = (
+            f'{{"name":"{app_name.lower().replace(" ","-")}","version":"1.0.0",'
+            f'"main":"expo/AppEntry.js","scripts":{{"start":"expo start",'
+            f'"android":"expo start --android","ios":"expo start --ios"}},'
+            f'"dependencies":{{"expo":"~51.0.0","react":"18.2.0",'
+            f'"react-native":"0.74.0","@react-navigation/native":"^6.0.0",'
+            f'"firebase":"^10.0.0"}}}}\n'
+        )
+
+    else:
+        # Other stacks: use the minimal scaffold but with real entry point logic
+        files = _create_minimal_scaffold(stack, app_name)
+
+    logger.info(
+        f"[{state.project_id}] S3: File-by-file generation produced "
+        f"{len(files)} files ({sum(len(v) for v in files.values() if isinstance(v,str))} bytes)"
+    )
+    return files
+
+
+def _strip_fences(text: str) -> str:
+    """Remove leading/trailing markdown code fences from a string."""
+    import re
+    if not text:
+        return text
+    m = re.match(r"^```[\w]*\n?([\s\S]*?)```\s*$", text.strip(), re.MULTILINE)
+    return m.group(1).rstrip() if m else text.strip()
 
 
 def _extract_json_from_response(text: str) -> dict:

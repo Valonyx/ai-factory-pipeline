@@ -52,6 +52,13 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     raw_input = state.project_metadata.get("raw_input", "")
     attachments = state.project_metadata.get("attachments", [])
 
+    # ── Pre-enrichment: inject memory + scout research ──
+    from factory.core.stage_enrichment import enrich_prompt
+    _base_extraction_prompt_to_enrich = (
+        f"Extract structured requirements from this app description.\n\n"
+        f"User input: {raw_input}\n"
+    )
+
     # ── Step 1: Quick Fix extracts requirements ──
     extraction_prompt = (
         f"Extract structured requirements from this app description.\n\n"
@@ -82,9 +89,12 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
         f'}}'
     )
 
+    enriched_extraction_prompt = await enrich_prompt(
+        "s0_intake", extraction_prompt, state, scout=False,
+    )
     result = await call_ai(
         role=AIRole.QUICK_FIX,
-        prompt=extraction_prompt,
+        prompt=enriched_extraction_prompt,
         state=state,
         action="general",
     )
@@ -169,8 +179,22 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
 
     state.s0_output = requirements
     # Propagate app name so workspace directory uses it (not UUID)
-    if requirements.get("app_name"):
+    if requirements.get("app_name") and not state.idea_name:
         state.idea_name = requirements["app_name"]
+
+    # Store insight for future projects
+    from factory.core.stage_enrichment import store_stage_insight
+    await store_stage_insight(
+        "s0_intake", state,
+        fact=(
+            f"App '{requirements.get('app_name', '?')}' "
+            f"({requirements.get('app_category', '?')}) requested. "
+            f"Complexity: {requirements.get('estimated_complexity', '?')}. "
+            f"Features: {', '.join(requirements.get('features_must', [])[:5])}."
+        ),
+        category="requirements",
+        ttl_hours=720,
+    )
 
     logger.info(
         f"[{state.project_id}] S0 complete: "

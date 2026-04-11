@@ -200,17 +200,28 @@ async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
         )
         return None
 
+    from factory.core.stage_enrichment import enrich_prompt
     s0 = state.s0_output or {}
+    _guidelines_base = (
+        f"Does this app description violate Apple App Store "
+        f"or Google Play guidelines?\n"
+        f"App: {s0.get('app_description', '')}\n"
+        f"Category: {s0.get('app_category', '')}\n"
+        f"Has payments: {s0.get('has_payments', False)}\n"
+        f"Return: pass/fail with specific guideline references."
+    )
+    _guidelines_prompt = await enrich_prompt(
+        "s7_verify", _guidelines_base, state,
+        scout=True,
+        scout_query=(
+            f"Current Apple App Store and Google Play Store review guidelines 2025-2026 "
+            f"for {s0.get('app_category', 'general')} apps. "
+            f"Common rejection reasons, required privacy disclosures, payment rules."
+        ),
+    )
     guidelines = await call_ai(
         role=AIRole.SCOUT,
-        prompt=(
-            f"Does this app description violate Apple App Store "
-            f"or Google Play guidelines?\n"
-            f"App: {s0.get('app_description', '')}\n"
-            f"Category: {s0.get('app_category', '')}\n"
-            f"Has payments: {s0.get('has_payments', False)}\n"
-            f"Return: pass/fail with specific guideline references."
-        ),
+        prompt=_guidelines_prompt,
         state=state,
         action="general",
     )

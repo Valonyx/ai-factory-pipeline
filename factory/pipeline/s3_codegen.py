@@ -242,6 +242,7 @@ async def _codegen_full_generation(
     app_name = blueprint_data.get("app_name", state.project_id)
 
     # ── Step 1: Generate code files ──
+    from factory.core.stage_enrichment import enrich_prompt
     code_prompt = _build_codegen_prompt(
         stack=stack,
         app_name=app_name,
@@ -250,6 +251,10 @@ async def _codegen_full_generation(
         api_endpoints=api_endpoints,
         auth_method=auth_method,
         blueprint_data=blueprint_data,
+    )
+    code_prompt = await enrich_prompt(
+        "s3_codegen", code_prompt, state,
+        scout=True,
     )
 
     result = await call_ai(

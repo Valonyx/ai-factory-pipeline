@@ -985,6 +985,22 @@ async def handle_callback(update: Any, context: Any):
         await store_operator_decision(user_id, payload)
         await query.edit_message_text(f"✅ Decision recorded.")
 
+    elif data.startswith("select_name:"):
+        # Format: select_name:{app_name}||{description}
+        payload = data[len("select_name:"):]
+        parts = payload.split("||", 1)
+        chosen_name = parts[0].strip()
+        description = parts[1] if len(parts) > 1 else ""
+        await query.edit_message_text(
+            f"✅ App name set: *{chosen_name}*\n\nStarting the pipeline...",
+            parse_mode="Markdown",
+        )
+        # We need an update-like object — use query.message as a proxy
+        class _FakeUpdate:
+            message = query.message
+            effective_user = query.from_user
+        await _start_project(_FakeUpdate(), user_id, description, app_name=chosen_name)
+
     elif data in ("project_continue", "project_archive_new", "cancel_abort", "restore_cancel"):
         await query.edit_message_text("OK.")
 
@@ -1054,6 +1070,18 @@ async def handle_message(update: Any, context: Any):
     if isinstance(op_state, dict) and op_state.get("state") == "awaiting_project_description":
         await clear_operator_state(user_id)
         await _handle_start_project_intent(update, user_id, text)
+        return
+
+    if isinstance(op_state, dict) and op_state.get("state") == "awaiting_app_name":
+        ctx = op_state.get("context", {})
+        description = ctx.get("description", "")
+        attachments = ctx.get("attachments", [])
+        await clear_operator_state(user_id)
+        name_input = text.strip()
+        if name_input.lower() in ("skip", "/skip", "s", ""):
+            await _suggest_app_names(update, user_id, description, attachments)
+        else:
+            await _start_project(update, user_id, description, attachments, app_name=name_input)
         return
 
     # ── Confirmation intercept (yes/no for destructive actions) ──
@@ -1147,7 +1175,7 @@ async def _execute_confirmed_action(
 
     if action.startswith("start_project:"):
         description = action[len("start_project:"):]
-        await _start_project(update, user_id, description)
+        await _ask_app_name(update, user_id, description)
 
     elif action == "cancel_project":
         active = await get_active_project(user_id)
@@ -1162,6 +1190,153 @@ async def _execute_confirmed_action(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# App Name Flow
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _ask_app_name(
+    update: Any,
+    user_id: str,
+    description: str,
+    attachments: Optional[list] = None,
+) -> None:
+    """Step 1 of project launch: ask the operator for the app name.
+
+    Sets awaiting_app_name state so the next free-text reply is captured.
+    Operator can type a name or 'skip' to get AI-generated suggestions.
+    """
+    await set_operator_state(
+        user_id,
+        "awaiting_app_name",
+        {"description": description, "attachments": attachments or []},
+    )
+    await update.message.reply_text(
+        "What should your app be called?\n\n"
+        "Type the name (e.g. *Pulsey*) or type `skip` to get AI name suggestions.",
+        parse_mode="Markdown",
+    )
+
+
+async def _suggest_app_names(
+    update: Any,
+    user_id: str,
+    description: str,
+    attachments: Optional[list] = None,
+) -> None:
+    """Call the AI to suggest 5 app names, then present as an inline keyboard."""
+    import json as _json
+    await update.message.reply_text("Thinking of names for your app...")
+
+    try:
+        from factory.core.roles import call_ai
+        from factory.core.state import AIRole, PipelineState as _PS
+        import uuid
+
+        # Build a minimal throwaway state for the AI call
+        _tmp_state = _PS(
+            project_id=f"naming_{uuid.uuid4().hex[:6]}",
+            operator_id=user_id,
+        )
+        _tmp_state.project_metadata = {"raw_input": description}
+
+        prompt = (
+            f"Suggest 5 unique, catchy app names for this idea:\n\n"
+            f"{description[:400]}\n\n"
+            f"Requirements:\n"
+            f"- Short (1-2 words, max 12 characters each word)\n"
+            f"- Memorable and brandable\n"
+            f"- Avoid generic words like 'App' or 'Pro'\n"
+            f"- Consider the target market (Saudi Arabia / MENA)\n\n"
+            f"Return ONLY a JSON array of 5 strings: [\"Name1\", \"Name2\", \"Name3\", \"Name4\", \"Name5\"]"
+        )
+
+        result = await call_ai(
+            role=AIRole.QUICK_FIX,
+            prompt=prompt,
+            state=_tmp_state,
+            action="general",
+        )
+        names = _json.loads(result)
+        if not isinstance(names, list) or len(names) < 2:
+            raise ValueError("Invalid names response")
+        names = [str(n).strip() for n in names[:5] if str(n).strip()]
+    except Exception as e:
+        logger.warning(f"Name suggestion failed: {e}")
+        # Fallback: derive simple names from description
+        words = description.replace(",", " ").replace(".", " ").split()
+        names = [w.capitalize() for w in words if len(w) > 3][:5]
+        if not names:
+            names = ["MyApp", "QuickApp", "FlowApp", "SwiftApp", "LaunchApp"]
+
+    # Build inline keyboard — each button sets the name
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        # Encode: select_name:{name}||{description}
+        # Truncate description to keep callback_data under 64 bytes total
+        desc_short = description[:40].replace("||", " ")
+        buttons = [
+            [InlineKeyboardButton(name, callback_data=f"select_name:{name}||{desc_short}")]
+            for name in names
+        ]
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            "Here are 5 name suggestions — tap one to use it, "
+            "or reply with your own name:",
+            reply_markup=reply_markup,
+        )
+        # Also keep listening for a typed reply
+        await set_operator_state(
+            user_id,
+            "awaiting_app_name",
+            {"description": description, "attachments": attachments or []},
+        )
+    except ImportError:
+        # Dry-run mode without telegram library
+        name_list = "\n".join(f"{i+1}. {n}" for i, n in enumerate(names))
+        await update.message.reply_text(
+            f"Suggested names:\n{name_list}\n\nReply with your chosen name."
+        )
+        await set_operator_state(
+            user_id,
+            "awaiting_app_name",
+            {"description": description, "attachments": attachments or []},
+        )
+
+
+@require_auth
+async def cmd_rename(update: Any, context: Any):
+    """/rename <new name> — rename the active project's app name."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project. Start one with /new.")
+        return
+
+    new_name = " ".join(context.args).strip() if context.args else ""
+    if not new_name:
+        await update.message.reply_text(
+            "Usage: /rename <new app name>\n\nExample: /rename Pulsey"
+        )
+        return
+
+    state = PipelineState.model_validate(active["state_json"])
+    old_name = state.idea_name or state.project_metadata.get("app_name", state.project_id)
+    state.idea_name = new_name
+    if state.s0_output:
+        state.s0_output["app_name"] = new_name
+    state.project_metadata["app_name"] = new_name
+    await update_project_state(state)
+
+    await update.message.reply_text(
+        f"✅ App name updated: *{old_name}* → *{new_name}*\n\n"
+        f"Future files and references will use '{new_name}'.\n"
+        f"Previously generated files keep their old name until the next build.",
+        parse_mode="Markdown",
+    )
+    logger.info(f"[{state.project_id}] App renamed: {old_name!r} → {new_name!r}")
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Project Launcher
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1171,6 +1346,7 @@ async def _start_project(
     user_id: str,
     description: str,
     attachments: Optional[list] = None,
+    app_name: Optional[str] = None,
 ) -> None:
     """Create and launch a new pipeline project.
 
@@ -1185,6 +1361,7 @@ async def _start_project(
     state = PipelineState(
         project_id=project_id,
         operator_id=user_id,
+        idea_name=app_name or None,
         autonomy_mode=AutonomyMode(
             prefs.get("autonomy_mode", "autopilot"),
         ),
@@ -1194,12 +1371,14 @@ async def _start_project(
         project_metadata={
             "raw_input": description,
             "attachments": attachments or [],
+            **({"app_name": app_name} if app_name else {}),
         },
     )
 
     await update_project_state(state)
+    name_display = f" ({app_name})" if app_name else ""
     await update.message.reply_text(
-        format_project_started(project_id, state)
+        format_project_started(project_id, state) + name_display
     )
 
     logger.info(
@@ -1315,6 +1494,7 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("continue", cmd_continue))
         app.add_handler(CommandHandler("cancel", cmd_cancel))
         app.add_handler(CommandHandler("modify", cmd_modify))
+        app.add_handler(CommandHandler("rename", cmd_rename))
 
         # ── Deploy gate (FIX-08) ──
         app.add_handler(CommandHandler("deploy_confirm", cmd_deploy_confirm))

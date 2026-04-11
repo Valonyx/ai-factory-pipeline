@@ -141,19 +141,22 @@ async def _generate_test_suite(
     data_model = blueprint_data.get("data_model", [])
     api_endpoints = blueprint_data.get("api_endpoints", [])
 
+    from factory.core.stage_enrichment import enrich_prompt
+    _test_base = (
+        f"Generate test suite for {stack.value} project.\n\n"
+        f"Screens: {[s.get('name', '?') for s in screens]}\n"
+        f"Data model: {json.dumps(data_model)[:2000]}\n"
+        f"API endpoints: {json.dumps(api_endpoints)[:1500]}\n\n"
+        f"Generate:\n"
+        f"- Unit tests for data models\n"
+        f"- Widget/component tests for key screens\n"
+        f"- Integration test for auth flow (if applicable)\n\n"
+        f"Return JSON (no markdown): {{\"file_path\": \"file_content\", ...}}"
+    )
+    _test_prompt = await enrich_prompt("s5_test", _test_base, state, scout=False)
     test_result = await call_ai(
         role=AIRole.ENGINEER,
-        prompt=(
-            f"Generate test suite for {stack.value} project.\n\n"
-            f"Screens: {[s.get('name', '?') for s in screens]}\n"
-            f"Data model: {json.dumps(data_model)[:2000]}\n"
-            f"API endpoints: {json.dumps(api_endpoints)[:1500]}\n\n"
-            f"Generate:\n"
-            f"- Unit tests for data models\n"
-            f"- Widget/component tests for key screens\n"
-            f"- Integration test for auth flow (if applicable)\n\n"
-            f"Return JSON: {{\"file_path\": \"file_content\", ...}}"
-        ),
+        prompt=_test_prompt,
         state=state,
         action="write_code",
     )

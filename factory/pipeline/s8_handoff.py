@@ -290,27 +290,39 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
     stack = blueprint_data.get("selected_stack", "unknown")
     platforms = blueprint_data.get("target_platforms", [])
 
+    from factory.core.stage_enrichment import enrich_prompt, store_stage_insight
+
     # ── Step 1: Generate legal documents (DocuGen §3.5) ──
     legal_docs = await generate_legal_documents(state, blueprint_data)
 
     # ── Step 2: Compile project summary ──
     deployments = (state.s6_output or {}).get("deployments", {})
+    _summary_base = (
+        f"Compile a project handoff summary.\n\n"
+        f"App: {app_name}\n"
+        f"Stack: {stack}\n"
+        f"Platforms: {platforms}\n"
+        f"Deployments: {json.dumps(deployments)[:2000]}\n"
+        f"Legal docs generated: {list(legal_docs.keys())}\n"
+        f"Total AI cost: ${state.total_cost_usd:.2f}\n"
+        f"War Room activations: {1 if state.war_room_active else 0}\n"
+        f"Snapshot ID: {state.snapshot_id}\n\n"
+        f"Return a concise Markdown summary for the operator."
+    )
+    _summary_prompt = await enrich_prompt("s8_handoff", _summary_base, state, scout=False)
     summary = await call_ai(
         role=AIRole.QUICK_FIX,
-        prompt=(
-            f"Compile a project handoff summary.\n\n"
-            f"App: {app_name}\n"
-            f"Stack: {stack}\n"
-            f"Platforms: {platforms}\n"
-            f"Deployments: {json.dumps(deployments)[:2000]}\n"
-            f"Legal docs generated: {list(legal_docs.keys())}\n"
-            f"Total AI cost: ${state.total_cost_usd:.2f}\n"
-            f"War Room activations: {1 if state.war_room_active else 0}\n"
-            f"Snapshot ID: {state.snapshot_id}\n\n"
-            f"Return a concise Markdown summary for the operator."
-        ),
+        prompt=_summary_prompt,
         state=state,
         action="general",
+    )
+    # Store delivery insights for future projects
+    await store_stage_insight(
+        "s8_handoff", state,
+        fact=f"App {app_name} ({stack}) delivered. Cost: ${state.total_cost_usd:.2f}. "
+             f"Platforms: {platforms}.",
+        category="delivery",
+        ttl_hours=720,  # 30 days
     )
 
     # ── Step 2.5: Generate Handoff Intelligence Pack (FIX-27) ──

@@ -61,21 +61,29 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
     """
     requirements = state.s0_output or {}
 
+    # ── Pre-enrichment: inject memory context ──
+    from factory.core.stage_enrichment import enrich_prompt, store_stage_insight
+
     # ── Step 1: Scout researches KSA regulations ──
+    _legal_scout_query = (
+        f"What KSA regulations apply to this app?\n\n"
+        f"App: {requirements.get('app_description', 'Unknown')}\n"
+        f"Category: {requirements.get('app_category', 'other')}\n"
+        f"Has payments: {requirements.get('has_payments', False)}\n"
+        f"Has user accounts: {requirements.get('has_user_accounts', False)}\n"
+        f"Has location: {requirements.get('has_location', False)}\n\n"
+        f"Check: PDPL (data protection), CST (telecom/app registration), "
+        f"SAMA (financial), NDMO (data governance), NCA (cybersecurity), "
+        f"SDAIA (AI governance), Ministry of Commerce (business licensing).\n"
+        f"Return specific requirements per regulatory body."
+    )
+    _enriched_legal_query = await enrich_prompt(
+        "s1_legal", _legal_scout_query, state, scout=True,
+        scout_query=_legal_scout_query,
+    )
     legal_research = await call_ai(
         role=AIRole.SCOUT,
-        prompt=(
-            f"What KSA regulations apply to this app?\n\n"
-            f"App: {requirements.get('app_description', 'Unknown')}\n"
-            f"Category: {requirements.get('app_category', 'other')}\n"
-            f"Has payments: {requirements.get('has_payments', False)}\n"
-            f"Has user accounts: {requirements.get('has_user_accounts', False)}\n"
-            f"Has location: {requirements.get('has_location', False)}\n\n"
-            f"Check: PDPL (data protection), CST (telecom/app registration), "
-            f"SAMA (financial), NDMO (data governance), NCA (cybersecurity), "
-            f"SDAIA (AI governance), Ministry of Commerce (business licensing).\n"
-            f"Return specific requirements per regulatory body."
-        ),
+        prompt=_enriched_legal_query,
         state=state,
         action="general",
     )

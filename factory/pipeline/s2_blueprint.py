@@ -214,6 +214,9 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     requirements = state.s0_output or {}
     legal_output = state.s1_output or {}
 
+    # ── Pre-enrichment: Scout design patterns + memory ──
+    from factory.core.stage_enrichment import enrich_prompt, store_stage_insight  # noqa: F401
+
     # ── MODIFY mode: generate change blueprint instead of full app blueprint ──
     from factory.core.state import PipelineMode
     if state.pipeline_mode == PipelineMode.MODIFY:
@@ -239,10 +242,8 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # ══════════════════════════════════════
     # Phase 2: Architecture Design
     # ══════════════════════════════════════
-    architecture_result = await call_ai(
-        role=AIRole.STRATEGIST,
-        prompt=(
-            f"DESIGN THE APP ARCHITECTURE.\n\n"
+    _arch_base_prompt = (
+        f"DESIGN THE APP ARCHITECTURE.\n\n"
             f"App: {requirements.get('app_description', '')}\n"
             f"Stack: {selected_stack.value}\n"
             f"Features (must): {requirements.get('features_must', [])}\n"
@@ -251,7 +252,7 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
             f"Data classification: "
             f"{legal_output.get('data_classification', 'internal')}\n"
             f"Regulatory: {legal_output.get('regulatory_bodies', [])}\n\n"
-            f"Return ONLY valid JSON:\n"
+            f"Return ONLY valid JSON (no markdown, no code fences):\n"
             f'{{\n'
             f'  "screens": [{{"name": "...", "purpose": "...", '
             f'"components": ["..."], "data_bindings": '
@@ -264,7 +265,14 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
             f'  "services": {{"backend": "...", "storage": "...", "auth": "..."}},\n'
             f'  "env_vars": {{"VAR_NAME": "description"}}\n'
             f'}}'
-        ),
+    )
+    _arch_prompt = await enrich_prompt(
+        "s2_blueprint", _arch_base_prompt, state,
+        scout=True,
+    )
+    architecture_result = await call_ai(
+        role=AIRole.STRATEGIST,
+        prompt=_arch_prompt,
         state=state,
         action="plan_architecture",
     )
@@ -345,6 +353,10 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     if compliance_files:
         state.s2_output["compliance_artifacts"] = compliance_files
 
+    # Phase 6: Brand Asset Generation (Logo + Splash)
+    # ═════════════════════════════════════════════════
+    await _generate_and_deliver_brand_assets(state, state.s2_output)
+
     logger.info(
         f"[{state.project_id}] S2 complete: "
         f"stack={selected_stack.value}, "
@@ -352,6 +364,48 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
         f"collections={len(architecture.get('data_model', []))}"
     )
     return state
+
+
+async def _generate_and_deliver_brand_assets(
+    state: PipelineState,
+    blueprint_data: dict,
+) -> None:
+    """Generate app logo + splash screen and send via Telegram.
+
+    Non-blocking: failures are logged but do not halt the pipeline.
+    """
+    try:
+        from factory.design.logo_gen import (
+            generate_brand_assets,
+            send_brand_assets_to_telegram,
+        )
+        from factory.telegram.notifications import send_telegram_message
+
+        app_name = (
+            blueprint_data.get("app_name")
+            or state.idea_name
+            or (state.s0_output or {}).get("app_name")
+            or state.project_id
+        )
+
+        await send_telegram_message(
+            state.operator_id,
+            f"🎨 Generating logo and splash screen for *{app_name}*...",
+            parse_mode="Markdown",
+        )
+
+        assets = await generate_brand_assets(state, blueprint_data)
+        state.s2_output["brand_assets"] = {
+            "logo_path": assets.get("logo_path"),
+            "splash_path": assets.get("splash_path"),
+            "logo_prompt": assets.get("logo_prompt", ""),
+            "generated": bool(assets.get("logo_bytes") or assets.get("splash_bytes")),
+        }
+
+        await send_brand_assets_to_telegram(state.operator_id, assets, app_name)
+
+    except Exception as e:
+        logger.warning(f"[{state.project_id}] Brand asset generation failed (non-critical): {e}")
 
 
 async def _generate_compliance_artifacts(

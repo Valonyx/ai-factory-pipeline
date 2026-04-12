@@ -1390,26 +1390,48 @@ async def _start_project(
     async def _run_and_notify():
         try:
             from factory.orchestrator import run_pipeline
-            from factory.telegram.notifications import send_telegram_message
+            from factory.telegram.notifications import send_telegram_message, notify_operator
+            from factory.telegram.messages import format_halt_message
+            from factory.core.state import NotificationType
             final = await run_pipeline(state)
-            if final.current_stage.value == "halted":
-                reason = final.project_metadata.get("halt_reason", "unknown")
+            if final.current_stage == Stage.HALTED:
                 await send_telegram_message(
                     user_id,
-                    f"Pipeline halted for [{project_id}]: {reason}"
+                    format_halt_message(
+                        final,
+                        reason=final.project_metadata.get("halt_reason", "")
+                        or final.legal_halt_reason
+                        or final.project_metadata.get("last_error", "unknown"),
+                    ),
                 )
             else:
-                await send_telegram_message(
-                    user_id,
-                    f"Pipeline complete for [{project_id}]! Use /status to see results."
-                )
+                app_name = final.project_metadata.get("app_name", project_id)
+                github = final.project_metadata.get("github_repo", "")
+                deploy_url = (final.s6_output or {}).get("deployment_url", "")
+                summary_lines = [
+                    f"🎉 {app_name} is ready!",
+                    f"Cost: ${final.total_cost_usd:.2f}",
+                ]
+                if github:
+                    summary_lines.append(f"Repo: github.com/{github}")
+                if deploy_url:
+                    summary_lines.append(f"URL: {deploy_url}")
+                summary_lines.append("Use /status for full details.")
+                await send_telegram_message(user_id, "\n".join(summary_lines))
         except Exception as e:
-            logger.error(f"[{project_id}] Pipeline error: {e}")
+            logger.error(f"[{project_id}] Pipeline error: {e}", exc_info=True)
             try:
                 from factory.telegram.notifications import send_telegram_message
+                stage_val = state.current_stage.value if state.current_stage else "unknown"
                 await send_telegram_message(
                     user_id,
-                    f"Error running pipeline [{project_id}]: {e}"
+                    f"⚠️ Pipeline error in {stage_val}\n\n"
+                    f"{type(e).__name__}: {str(e)[:300]}\n\n"
+                    f"Options:\n"
+                    f"  /status — check current state\n"
+                    f"  /continue — retry from last stage\n"
+                    f"  /restore State_#{state.snapshot_id or 0} — rollback\n"
+                    f"  /cancel — abandon project",
                 )
             except Exception:
                 pass

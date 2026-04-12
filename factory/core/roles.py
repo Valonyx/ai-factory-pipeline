@@ -61,6 +61,7 @@ class _StubBudgetGovernor:
     """
     async def check(
         self, role: AIRole, state: PipelineState, contract: RoleContract,
+        notify_fn=None,
     ) -> RoleContract:
         return contract
 
@@ -143,7 +144,10 @@ async def call_ai(
 
     # ── Step 2: Budget Governor check (§2.14) ──
     try:
-        contract = await budget_governor.check(role, state, contract)
+        from factory.telegram.notifications import send_telegram_message as _tg_send
+        contract = await budget_governor.check(
+            role, state, contract, notify_fn=_tg_send,
+        )
     except BudgetIntakeBlockedError:
         logger.warning(f"RED tier: intake blocked for {state.project_id}")
         raise

@@ -32,9 +32,72 @@ from factory.monitoring.health import HeartbeatMonitor
 from factory.war_room.war_room import (
     war_room_escalate, should_retry, increment_retry,
 )
-from factory.telegram.notifications import send_telegram_message
+from factory.telegram.notifications import send_telegram_message, notify_operator
+from factory.core.state import NotificationType
 
 logger = logging.getLogger("factory.orchestrator")
+
+# Stage index for % complete calculation (0-based)
+_STAGE_ORDER = [
+    "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S3_CODEGEN",
+    "S4_BUILD", "S5_TEST", "S6_DEPLOY", "S7_VERIFY", "S8_HANDOFF",
+]
+
+_STAGE_ARTIFACTS: dict[str, list[str]] = {
+    "S0_INTAKE":    ["app_name", "app_description"],
+    "S1_LEGAL":     ["legal_dossier_pdf_path", "overall_risk", "data_classification"],
+    "S2_BLUEPRINT": ["blueprint_pdf_path", "selected_stack"],
+    "S3_CODEGEN":   ["github_repo", "files_generated"],
+    "S4_BUILD":     ["build_status", "build_artifacts"],
+    "S5_TEST":      ["test_summary", "all_passed"],
+    "S6_DEPLOY":    ["deployment_url", "deployment_status"],
+    "S7_VERIFY":    ["passed", "health_check_url"],
+    "S8_HANDOFF":   ["handoff_doc_path", "program_docs"],
+}
+
+
+async def _notify_stage_complete(state: PipelineState, stage_name: str) -> None:
+    """Send structured stage-completion progress to the operator.
+
+    Spec: §5.4 — every stage transition notifies operator with
+    stage name, % complete, cost, and key artifact links.
+    """
+    if not state.operator_id:
+        return
+
+    idx = next(
+        (i for i, s in enumerate(_STAGE_ORDER) if s == stage_name), -1,
+    )
+    pct = int((idx + 1) / len(_STAGE_ORDER) * 100) if idx >= 0 else 0
+
+    # Build artifact summary line
+    artifact_keys = _STAGE_ARTIFACTS.get(stage_name, [])
+    output = getattr(state, f"s{idx}_output", None) if idx >= 0 else None
+    artifact_parts = []
+    for key in artifact_keys:
+        val = None
+        if output and isinstance(output, dict):
+            val = output.get(key)
+        if val is None:
+            val = state.project_metadata.get(key)
+        if val is not None:
+            artifact_parts.append(f"{key}: {str(val)[:60]}")
+
+    artifact_line = " | ".join(artifact_parts[:2]) if artifact_parts else ""
+
+    progress_bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+    msg = (
+        f"[{progress_bar}] {pct}%\n"
+        f"Stage {stage_name} complete\n"
+        f"Cost: ${state.total_cost_usd:.3f}"
+    )
+    if artifact_line:
+        msg += f"\n{artifact_line}"
+
+    try:
+        await notify_operator(state, NotificationType.STAGE_TRANSITION, msg)
+    except Exception as e:
+        logger.debug(f"Stage progress notification failed (non-fatal): {e}")
 
 
 def pipeline_node(stage: Stage):
@@ -175,6 +238,8 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
         state = await stage_fn(state)
         if state.current_stage == Stage.HALTED:
             return await halt_handler_node(state)
+        # stage_name format: "s0_intake" → "S0_INTAKE"
+        await _notify_stage_complete(state, stage_name.upper())
 
     while True:
         route = route_after_test(state)
@@ -184,12 +249,15 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
             state = await s3_codegen_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
+            await _notify_stage_complete(state, "S3_CODEGEN")
             state = await s4_build_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
+            await _notify_stage_complete(state, "S4_BUILD")
             state = await s5_test_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
+            await _notify_stage_complete(state, "S5_TEST")
             continue
         if route == "s6_deploy":
             break
@@ -197,10 +265,12 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     state = await s6_deploy_node(state)
     if state.current_stage == Stage.HALTED:
         return await halt_handler_node(state)
+    await _notify_stage_complete(state, "S6_DEPLOY")
 
     state = await s7_verify_node(state)
     if state.current_stage == Stage.HALTED:
         return await halt_handler_node(state)
+    await _notify_stage_complete(state, "S7_VERIFY")
 
     while True:
         route = route_after_verify(state)
@@ -210,9 +280,11 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
             state = await s6_deploy_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
+            await _notify_stage_complete(state, "S6_DEPLOY")
             state = await s7_verify_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
+            await _notify_stage_complete(state, "S7_VERIFY")
             continue
         if route == "s8_handoff":
             break
@@ -220,6 +292,7 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     state = await s8_handoff_node(state)
     if state.current_stage == Stage.HALTED:
         return await halt_handler_node(state)
+    await _notify_stage_complete(state, "S8_HANDOFF")
 
     logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
     return state

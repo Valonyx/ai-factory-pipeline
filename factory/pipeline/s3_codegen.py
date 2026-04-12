@@ -330,11 +330,76 @@ async def _codegen_full_generation(
         "generation_mode": "full",
     }
 
+    # ── Step 5: Commit to GitHub repo ──
+    await _commit_to_github(state, files, app_name, stack)
+
     logger.info(
         f"[{state.project_id}] S3 CodeGen complete: "
         f"{len(files)} files generated for {stack.value}"
     )
     return state
+
+
+async def _commit_to_github(
+    state: "PipelineState",
+    files: dict,
+    app_name: str,
+    stack: "TechStack",
+) -> None:
+    """Create a GitHub repo and commit all generated files.
+
+    Spec: §4.4 — commit to operator's GitHub account via GitHubClient.
+    Non-fatal: pipeline continues even if GitHub is unavailable.
+    """
+    try:
+        from factory.integrations.github import get_github
+        import re as _re
+
+        gh = get_github()
+        if not gh.is_connected():
+            logger.info(f"[{state.project_id}] S3: GitHub not connected — skipping commit")
+            return
+
+        # Sanitise repo name: lowercase, dashes only
+        repo_name = _re.sub(r"[^a-z0-9-]", "-", app_name.lower())[:50].strip("-")
+        repo_name = repo_name or f"factory-{state.project_id[:8]}"
+
+        # Create repo (idempotent — skip if already exists)
+        if not await gh.repo_exists(repo_name):
+            await gh.create_repo(repo_name, private=True)
+            logger.info(f"[{state.project_id}] S3: Created GitHub repo: {repo_name}")
+        else:
+            logger.info(f"[{state.project_id}] S3: GitHub repo exists: {repo_name}")
+
+        # Commit all generated files in one batch
+        commit_result = await gh.commit_files(
+            repo=repo_name,
+            files=files,
+            message=(
+                f"feat: initial generated code — AI Factory Pipeline v5.6\n\n"
+                f"Stack: {stack.value}\n"
+                f"Files: {len(files)}\n"
+                f"Project: {state.project_id}"
+            ),
+        )
+
+        state.s3_output["github_repo"] = repo_name
+        state.s3_output["github_commit_count"] = commit_result.get("files", 0)
+        state.project_metadata["github_repo"] = repo_name
+
+        logger.info(
+            f"[{state.project_id}] S3: Committed {commit_result.get('files', 0)} "
+            f"files to github/{repo_name}"
+        )
+
+        from factory.telegram.notifications import send_telegram_message
+        await send_telegram_message(
+            state.operator_id,
+            f"📦 {len(files)} files committed to GitHub repo: {repo_name}",
+        )
+
+    except Exception as e:
+        logger.warning(f"[{state.project_id}] S3: GitHub commit failed (non-fatal): {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

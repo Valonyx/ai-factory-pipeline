@@ -271,7 +271,7 @@ async def _generate_program_docs(
         from factory.integrations.neo4j import get_neo4j
 
         neo4j = get_neo4j()
-        siblings = neo4j.find_nodes("ProjectNode", {"program_id": program_id})
+        siblings = await neo4j.find_nodes("ProjectNode", {"program_id": program_id})
         if siblings:
             siblings_done = all(
                 s.get("status") in ("complete", "S8_HANDOFF", "COMPLETED")

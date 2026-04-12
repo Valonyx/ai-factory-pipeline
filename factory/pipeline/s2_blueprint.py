@@ -357,6 +357,59 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # ═════════════════════════════════════════════════
     await _generate_and_deliver_brand_assets(state, state.s2_output)
 
+    # Phase 7: Design Package (WCAG + component lib + mockups + icons)
+    # ═════════════════════════════════════════════════════════════════
+    try:
+        from factory.pipeline.blueprint_pdf import build_design_package
+        design_pkg = await build_design_package(state, state.s2_output)
+        state.s2_output["design_package"] = design_pkg
+        logger.info(
+            f"[{state.project_id}] Design package: "
+            f"mockups={len(design_pkg.get('screen_mockup_paths', []))}, "
+            f"wcag_aa={design_pkg.get('wcag_aa_pass')}"
+        )
+    except Exception as _dpkg_err:
+        logger.warning(f"[{state.project_id}] Design package failed (non-fatal): {_dpkg_err}")
+
+    # Phase 8: Stack Selection ADR
+    # ═════════════════════════════
+    try:
+        from factory.pipeline.blueprint_pdf import write_stack_adr
+        adr_rationale = (
+            f"The Strategist selected {selected_stack.value} based on: "
+            f"target platforms ({requirements.get('target_platforms', [])}), "
+            f"app category ({requirements.get('app_category', 'other')}), "
+            f"complexity ({requirements.get('estimated_complexity', 'medium')}), "
+            f"and KSA payment requirements."
+        )
+        adr_path = await write_stack_adr(state, state.s2_output, adr_rationale)
+        state.s2_output["stack_adr_path"] = adr_path
+        logger.info(f"[{state.project_id}] Stack ADR: {adr_path}")
+    except Exception as _adr_err:
+        logger.warning(f"[{state.project_id}] ADR write failed (non-fatal): {_adr_err}")
+
+    # Phase 9: Master Blueprint PDF (100+ pages)
+    # ════════════════════════════════════════════
+    try:
+        from factory.pipeline.blueprint_pdf import generate_master_blueprint_pdf
+        blueprint_pdf_path = await generate_master_blueprint_pdf(state, state.s2_output)
+        state.s2_output["blueprint_pdf_path"] = blueprint_pdf_path
+        state.project_metadata["blueprint_doc_id"] = blueprint_pdf_path
+
+        from factory.telegram.notifications import notify_operator
+        from factory.core.state import NotificationType
+        await notify_operator(
+            state,
+            NotificationType.INFO,
+            f"📐 Master Blueprint PDF generated\n"
+            f"Screens: {len(architecture.get('screens', []))} | "
+            f"Stack: {selected_stack.value}\n"
+            f"Path: {blueprint_pdf_path}",
+        )
+        logger.info(f"[{state.project_id}] Blueprint PDF: {blueprint_pdf_path}")
+    except Exception as _bp_err:
+        logger.warning(f"[{state.project_id}] Blueprint PDF failed (non-fatal): {_bp_err}")
+
     logger.info(
         f"[{state.project_id}] S2 complete: "
         f"stack={selected_stack.value}, "

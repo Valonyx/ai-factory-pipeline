@@ -177,6 +177,55 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
 
     state.s1_output = legal_output
 
+    # ── Step 4b: Generate Legal Dossier PDF ──
+    try:
+        from factory.legal.docugen import generate_legal_documents
+        from factory.legal.pdf_generator import (
+            generate_legal_dossier_pdf,
+            upload_legal_pdf_to_supabase,
+        )
+
+        app_name = requirements.get("app_name", state.project_id)
+        business_model = requirements.get("app_category", "general")
+
+        # Generate ToS + Privacy Policy (DocuGen: Scout→Strategist→Engineer)
+        legal_docs = await generate_legal_documents(
+            state,
+            blueprint_data={"app_name": app_name, "business_model": business_model},
+        )
+
+        # Build multi-page PDF dossier
+        pdf_path = await generate_legal_dossier_pdf(
+            project_id=state.project_id,
+            app_name=app_name,
+            legal_output=legal_output,
+            legal_research=legal_research,
+            legal_documents=legal_docs,
+            operator_id=state.operator_id,
+        )
+
+        state.s1_output["legal_dossier_pdf_path"] = pdf_path
+        state.s1_output["legal_docs_generated"] = list(legal_docs.keys())
+
+        # Upload to Supabase storage (non-blocking)
+        pdf_url = await upload_legal_pdf_to_supabase(state.project_id, pdf_path)
+        if pdf_url:
+            state.s1_output["legal_dossier_url"] = pdf_url
+
+        from factory.telegram.notifications import notify_operator, NotificationType as _NT
+        from factory.core.state import NotificationType
+        await notify_operator(
+            state,
+            NotificationType.INFO,
+            f"📋 Legal Dossier PDF generated: {len(legal_docs)} documents\n"
+            f"Path: {pdf_path}"
+            + (f"\nURL: {pdf_url}" if pdf_url else ""),
+        )
+        logger.info(f"[{state.project_id}] Legal Dossier PDF: {pdf_path}")
+
+    except Exception as _pdf_err:
+        logger.warning(f"[{state.project_id}] Legal PDF generation failed (non-fatal): {_pdf_err}")
+
     # ── Step 5: Preflight App Store compliance (advisory) ──
     preflight_warnings = await _preflight_store_compliance(state)
     if preflight_warnings:

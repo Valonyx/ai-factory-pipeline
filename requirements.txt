@@ -116,3 +116,5 @@ yarl==1.23.0
 zstandard==0.25.0
 # Image processing (design engine)
 Pillow>=10.2.0,<11.0
+# PDF generation (legal dossier + blueprint)
+reportlab>=4.0

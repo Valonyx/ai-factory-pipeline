@@ -254,20 +254,112 @@ async def _generate_program_docs(
     """Generate per-program docs when all siblings complete S8.
 
     Spec: FIX-27 (per-program documents)
-    Stub for P2 — real implementation queries Neo4j for sibling status.
+    Queries Neo4j for sibling ProjectNode status. If all siblings are
+    in S8_HANDOFF or completed, generates 3 cross-project documents:
+      - Cross-Stack Integration Map
+      - Unified Deployment Guide
+      - Program Health Dashboard Configuration
     """
     program_id = state.project_metadata.get("program_id", "")
+    if not program_id:
+        return {}
 
-    # Stub: return deferred notice
-    # Real implementation checks if all siblings have completed S8
-    # via Neo4j query, then generates 3 cross-project docs
-    return {
-        "_PROGRAM_DOCS_DEFERRED": (
-            f"Program docs deferred: checking sibling status for "
-            f"program_id={program_id}. Generated when last sibling "
-            f"completes S8."
+    # ── Check sibling completion via Neo4j ──
+    siblings_done = False
+    stacks: list[str] = []
+    try:
+        from factory.integrations.neo4j import get_neo4j
+
+        neo4j = get_neo4j()
+        siblings = neo4j.find_nodes("ProjectNode", {"program_id": program_id})
+        if siblings:
+            siblings_done = all(
+                s.get("status") in ("complete", "S8_HANDOFF", "COMPLETED")
+                for s in siblings
+            )
+            stacks = list({s.get("stack", "unknown") for s in siblings if s.get("stack")})
+        else:
+            # No siblings registered — this is a single-project run
+            logger.info(f"[{state.project_id}] No siblings for program_id={program_id} — skipping program docs")
+            return {}
+    except Exception as e:
+        logger.warning(f"[{state.project_id}] Neo4j sibling check failed: {e}")
+        return {
+            "_PROGRAM_DOCS_DEFERRED": (
+                f"Program docs deferred (Neo4j unavailable): "
+                f"program_id={program_id}. Will retry on next S8 run."
+            ),
+        }
+
+    if not siblings_done:
+        logger.info(
+            f"[{state.project_id}] Program docs deferred: "
+            f"not all siblings complete for program_id={program_id}"
+        )
+        return {
+            "_PROGRAM_DOCS_DEFERRED": (
+                f"Program docs deferred: waiting for sibling completion. "
+                f"program_id={program_id}, stacks={stacks}"
+            ),
+        }
+
+    # ── All siblings complete — generate 3 cross-project docs ──
+    stacks_str = ", ".join(stacks) if stacks else "multi-stack"
+    logger.info(
+        f"[{state.project_id}] All siblings complete — generating program docs "
+        f"for program_id={program_id}, stacks={stacks}"
+    )
+
+    program_doc_prompts = {
+        "CROSS_STACK_INTEGRATION_MAP.md": (
+            f"Write a Cross-Stack Integration Map for program {program_id}.\n"
+            f"Stacks: {stacks_str}\n"
+            f"Context: {project_context[:1500]}\n\n"
+            f"Describe: how the stacks communicate, shared APIs, "
+            f"data flows, authentication boundaries, deployment order.\n"
+            f"Return Markdown with Mermaid diagrams where helpful."
+        ),
+        "UNIFIED_DEPLOYMENT_GUIDE.md": (
+            f"Write a Unified Deployment Guide for program {program_id}.\n"
+            f"Stacks: {stacks_str}\n"
+            f"Context: {project_context[:1500]}\n\n"
+            f"Include: deployment sequence, dependency order, "
+            f"rollback procedures, health verification steps, "
+            f"environment setup for each stack.\n"
+            f"Return Markdown."
+        ),
+        "PROGRAM_HEALTH_DASHBOARD.md": (
+            f"Write a Program Health Dashboard Configuration for "
+            f"program {program_id}.\n"
+            f"Stacks: {stacks_str}\n"
+            f"Context: {project_context[:1500]}\n\n"
+            f"Include: monitoring endpoints, alert thresholds, "
+            f"uptime targets, log aggregation setup, "
+            f"recommended monitoring tools.\n"
+            f"Return Markdown."
         ),
     }
+
+    docs: dict[str, str] = {}
+    for filename, prompt in program_doc_prompts.items():
+        try:
+            content = await call_ai(
+                role=AIRole.ENGINEER,
+                prompt=prompt,
+                state=state,
+                action="general",
+            )
+            header = (
+                f"<!-- Program Handoff Doc — {filename} -->\n"
+                f"<!-- Program: {program_id} | Stacks: {stacks_str} -->\n\n"
+            )
+            docs[filename] = header + content
+            logger.info(f"[{state.project_id}] Program doc generated: {filename}")
+        except Exception as e:
+            logger.warning(f"[{state.project_id}] Program doc {filename} failed: {e}")
+            docs[filename] = f"# {filename}\n\n_Generation failed: {e}_\n"
+
+    return docs
 
 
 # ═══════════════════════════════════════════════════════════════════

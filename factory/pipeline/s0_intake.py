@@ -23,6 +23,11 @@ from factory.core.state import (
     PipelineState,
     Stage,
 )
+from factory.core.mode_router import (
+    MasterMode,
+    mode_selection_message,
+    parse_mode_selection,
+)
 from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
@@ -176,6 +181,34 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
             requirements["estimated_complexity"] = "simple"
         elif selection == "expand":
             requirements["operator_additions"] = "Operator requested expansion"
+
+    # ── Step 4: Master Mode selection (Copilot only) ──
+    # In AUTOPILOT mode master_mode defaults to BALANCED (set on PipelineState).
+    # In COPILOT mode we present the 4-option mode menu before proceeding.
+    if state.autonomy_mode == AutonomyMode.COPILOT:
+        app_name_for_prompt = requirements.get("app_name", "your app")
+        try:
+            from factory.telegram.decisions import present_decision
+            mode_choice = await present_decision(
+                state=state,
+                decision_type="s0_mode_selection",
+                question=mode_selection_message(app_name_for_prompt),
+                options=[
+                    {"label": "🆓 Basic (free only, $0)",           "value": "basic"},
+                    {"label": "⚖️ Balanced (smart mix, ~$5–25)",     "value": "balanced"},
+                    {"label": "🎛 Custom (you pick providers)",       "value": "custom"},
+                    {"label": "🚀 Turbo (max performance, no limit)", "value": "turbo"},
+                ],
+                recommended=1,  # Balanced is default
+            )
+            state.master_mode = parse_mode_selection(str(mode_choice or ""))
+        except Exception as e:
+            logger.warning(
+                f"[{state.project_id}] S0: Mode selection failed ({e}), "
+                f"defaulting to BALANCED"
+            )
+    # Propagate to metadata so downstream stages can read without importing state
+    requirements["master_mode"] = state.master_mode.value
 
     state.s0_output = requirements
     # Propagate app name so workspace directory uses it (not UUID)

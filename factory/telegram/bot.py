@@ -22,6 +22,7 @@ from factory.core.state import (
     PipelineState,
     Stage,
 )
+from factory.core.mode_router import MasterMode, mode_selection_message
 from factory.telegram.messages import (
     format_welcome_message,
     format_help_message,
@@ -247,7 +248,7 @@ async def cmd_cost(update: Any, context: Any):
 
 @require_auth
 async def cmd_mode(update: Any, context: Any):
-    """§5.2: /mode — Toggle execution mode."""
+    """§5.2: /mode — Show or set Master Execution Mode (v5.8)."""
     user_id = str(update.effective_user.id)
     active = await get_active_project(user_id)
     if not active:
@@ -255,20 +256,61 @@ async def cmd_mode(update: Any, context: Any):
         return
 
     state = PipelineState.model_validate(active["state_json"])
+    arg = (context.args[0].lower() if context.args else "").strip()
 
-    if context.args and context.args[0].lower() in ("cloud", "local", "hybrid"):
-        target = context.args[0].lower()
-        state.execution_mode = ExecutionMode(target)
+    _MASTER_MODES = {"basic", "balanced", "custom", "turbo"}
+    _EXEC_MODES = {"cloud", "local", "hybrid"}
+
+    if arg in _MASTER_MODES:
+        state.master_mode = MasterMode(arg)
+        await update_project_state(state)
+        mm = state.master_mode
+        await update.message.reply_text(
+            f"{mm.emoji} Master mode set to *{mm.label}*."
+        )
+    elif arg in _EXEC_MODES:
+        # Backwards-compat: still allow /mode cloud|local|hybrid
+        state.execution_mode = ExecutionMode(arg)
         await update_project_state(state)
         emoji_map = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
         await update.message.reply_text(
-            f"{emoji_map[target]} Switched to {target.upper()}."
+            f"{emoji_map[arg]} Execution mode: {arg.upper()}."
         )
     else:
+        mm = state.master_mode
+        em = state.execution_mode
         await update.message.reply_text(
-            f"Current: {state.execution_mode.value}\n"
-            f"Usage: /mode cloud | /mode local | /mode hybrid"
+            f"{mm.emoji} *Master mode*: {mm.label}\n"
+            f"☁️ *Execution*: {em.value}\n\n"
+            f"Set master mode: /mode basic | balanced | custom | turbo\n"
+            f"Set exec mode:   /mode cloud | local | hybrid"
         )
+
+
+@require_auth
+async def cmd_switch_mode(update: Any, context: Any):
+    """v5.8: /switch_mode — Alias for /mode (set Master Execution Mode)."""
+    await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_quota(update: Any, context: Any):
+    """v5.8: /quota — Show per-provider quota usage."""
+    from factory.core.quota_tracker import get_quota_tracker
+    tracker = get_quota_tracker()
+    lines = tracker.usage_summary()
+    if lines:
+        body = "\n".join(lines)
+        soonest = tracker.soonest_reset()
+        reset_note = (
+            f"\nNext reset: {soonest.strftime('%Y-%m-%d %H:%M UTC')}"
+            if soonest else ""
+        )
+        await update.message.reply_text(
+            f"📊 *Provider Quota Usage*\n\n```\n{body}\n```{reset_note}"
+        )
+    else:
+        await update.message.reply_text("No quota data yet.")
 
 
 @require_auth
@@ -1506,6 +1548,8 @@ async def setup_bot() -> Any:
 
         # ── Execution control ──
         app.add_handler(CommandHandler("mode", cmd_mode))
+        app.add_handler(CommandHandler("switch_mode", cmd_switch_mode))   # v5.8 alias
+        app.add_handler(CommandHandler("quota", cmd_quota))               # v5.8 quota
         app.add_handler(CommandHandler("autonomy", cmd_autonomy))
 
         # ── Time travel ──

@@ -37,6 +37,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Lazy import to avoid circular issues — ModeRouter imports nothing from state
+from factory.core.mode_router import MasterMode  # noqa: E402
+
 logger = logging.getLogger("factory.core.state")
 
 
@@ -827,6 +830,7 @@ class PipelineState(BaseModel):
     # ── Autonomy & Execution ──
     autonomy_mode: AutonomyMode = AutonomyMode.AUTOPILOT
     execution_mode: ExecutionMode = ExecutionMode.CLOUD
+    master_mode: MasterMode = MasterMode.BALANCED  # v5.8 — provider selection strategy
     local_heartbeat_alive: bool = False
 
     # ── Pipeline Mode (CREATE vs MODIFY) ──

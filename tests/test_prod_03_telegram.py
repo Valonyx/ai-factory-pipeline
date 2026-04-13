@@ -87,11 +87,11 @@ class TestMessageFormatting:
 
     def test_status_message(self):
         state = PipelineState(project_id="test-proj", operator_id="123")
-        state.current_stage = Stage.S3_CODEGEN
+        state.current_stage = Stage.S4_CODEGEN
         state.total_cost_usd = 1.50
         msg = format_status_message(state)
         assert "test-proj" in msg
-        assert "S3_CODEGEN" in msg
+        assert "S4_CODEGEN" in msg
         assert "$1.50" in msg
 
     def test_cost_message(self):

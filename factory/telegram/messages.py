@@ -52,12 +52,12 @@ STAGE_EMOJI: dict[str, str] = {
     "S0_INTAKE":     "📥",
     "S1_LEGAL":      "⚖️",
     "S2_BLUEPRINT":  "🏗️",
-    "S3_CODEGEN":    "💻",
-    "S4_BUILD":      "🔨",
-    "S5_TEST":       "🧪",
-    "S6_DEPLOY":     "🚀",
-    "S7_VERIFY":     "✅",
-    "S8_HANDOFF":    "🎉",
+    "S4_CODEGEN":    "💻",
+    "S5_BUILD":      "🔨",
+    "S6_TEST":       "🧪",
+    "S7_DEPLOY":     "🚀",
+    "S8_VERIFY":     "✅",
+    "S9_HANDOFF":    "🎉",
     "COMPLETED":     "🏁",
     "HALTED":        "🛑",
 }
@@ -110,8 +110,8 @@ def format_stage_progress(state: PipelineState) -> str:
     Shows ✅ for completed, 🔵 for current, ⚪ for pending, 🔴 for halted.
     """
     stages = [
-        "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S3_CODEGEN",
-        "S4_BUILD", "S5_TEST", "S6_DEPLOY", "S7_VERIFY", "S8_HANDOFF",
+        "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S4_CODEGEN",
+        "S5_BUILD", "S6_TEST", "S7_DEPLOY", "S8_VERIFY", "S9_HANDOFF",
     ]
     current = state.current_stage.value
     current_idx = next(

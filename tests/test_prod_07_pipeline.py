@@ -4,11 +4,11 @@ PROD-7 Validation: Pipeline DAG + Stage Execution (S0–S2)
 Tests cover:
   1.  All 10 stage nodes registered in _stage_nodes
   2.  LEGAL_CHECKS_BY_STAGE covers expected stages
-  3.  route_after_test — pass → s6_deploy
-  4.  route_after_test — fail, retries left → s3_codegen
+  3.  route_after_test — pass → s7_deploy
+  4.  route_after_test — fail, retries left → s4_codegen
   5.  route_after_test — fail, retries exhausted → halt
-  6.  route_after_verify — pass → s8_handoff
-  7.  route_after_verify — fail, retries left → s6_deploy
+  6.  route_after_verify — pass → s9_handoff
+  7.  route_after_verify — fail, retries left → s7_deploy
   8.  route_after_verify — fail, retries exhausted → halt
   9.  SimpleExecutor.ainvoke runs full pipeline (stubs)
   10. S0 intake — empty message → fallback requirements
@@ -145,8 +145,8 @@ class TestDAGRegistration:
         """All 10 stage nodes (S0-S8 + halt) registered."""
         expected = [
             "s0_intake", "s1_legal", "s2_blueprint",
-            "s3_codegen", "s4_build", "s5_test",
-            "s6_deploy", "s7_verify", "s8_handoff",
+            "s3_design", "s4_codegen", "s5_build", "s6_test",
+            "s7_deploy", "s8_verify", "s9_handoff",
             "halt_handler",
         ]
         for name in expected:
@@ -156,9 +156,9 @@ class TestDAGRegistration:
     def test_legal_checks_map(self):
         """LEGAL_CHECKS_BY_STAGE covers expected stages."""
         assert Stage.S2_BLUEPRINT in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S3_CODEGEN in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S6_DEPLOY in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S8_HANDOFF in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S4_CODEGEN in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S7_DEPLOY in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S9_HANDOFF in LEGAL_CHECKS_BY_STAGE
         # Pre and post checks
         s2 = LEGAL_CHECKS_BY_STAGE[Stage.S2_BLUEPRINT]
         assert "pre" in s2
@@ -171,31 +171,31 @@ class TestDAGRegistration:
 
 class TestRouting:
     def test_route_after_test_pass(self, state):
-        state.s5_output = {"passed": True}
-        assert route_after_test(state) == "s6_deploy"
+        state.s6_output = {"passed": True}
+        assert route_after_test(state) == "s7_deploy"
 
     def test_route_after_test_fail_retry(self, state):
-        state.s5_output = {"passed": False}
+        state.s6_output = {"passed": False}
         state.retry_count = 0
-        assert route_after_test(state) == "s3_codegen"
+        assert route_after_test(state) == "s4_codegen"
         assert state.retry_count == 1
 
     def test_route_after_test_fail_exhausted(self, state):
-        state.s5_output = {"passed": False, "failures": ["err1"]}
+        state.s6_output = {"passed": False, "failures": ["err1"]}
         state.retry_count = MAX_TEST_RETRIES
         assert route_after_test(state) == "halt"
 
     def test_route_after_verify_pass(self, state):
-        state.s7_output = {"passed": True}
-        assert route_after_verify(state) == "s8_handoff"
+        state.s8_output = {"passed": True}
+        assert route_after_verify(state) == "s9_handoff"
 
     def test_route_after_verify_fail_retry(self, state):
-        state.s7_output = {"passed": False}
+        state.s8_output = {"passed": False}
         state.project_metadata["verify_retries"] = 0
-        assert route_after_verify(state) == "s6_deploy"
+        assert route_after_verify(state) == "s7_deploy"
 
     def test_route_after_verify_fail_exhausted(self, state):
-        state.s7_output = {"passed": False}
+        state.s8_output = {"passed": False}
         state.project_metadata["verify_retries"] = MAX_VERIFY_RETRIES
         assert route_after_verify(state) == "halt"
 
@@ -212,7 +212,7 @@ class TestSimpleExecutor:
         result = await executor.ainvoke(state)
         # Stubs all pass, so should reach completion
         assert result.s0_output is not None or result.current_stage in (
-            Stage.S8_HANDOFF, Stage.COMPLETED, Stage.HALTED,
+            Stage.S9_HANDOFF, Stage.COMPLETED, Stage.HALTED,
         )
 
 
@@ -365,6 +365,6 @@ class TestEndToEnd:
         # Should complete (stubs all pass)
         assert result.s0_output is not None
         assert result.current_stage in (
-            Stage.S8_HANDOFF, Stage.COMPLETED, Stage.HALTED,
+            Stage.S9_HANDOFF, Stage.COMPLETED, Stage.HALTED,
         )
         assert result.total_cost_usd >= 0

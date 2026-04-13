@@ -283,7 +283,7 @@ async def _check_siblings_complete(
             "program_id": program_id,
         })
         return all(
-            s.get("status") in ("complete", "S8_HANDOFF")
+            s.get("status") in ("complete", "S9_HANDOFF")
             for s in siblings
         )
     except Exception:

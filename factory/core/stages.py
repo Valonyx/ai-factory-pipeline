@@ -236,11 +236,11 @@ def route_after_test(state: PipelineState) -> str:
     if state.legal_halt or state.circuit_breaker_triggered:
         return "halt"
 
-    test_output = state.s5_output or {}
+    test_output = state.s6_output or {}
     all_passed = test_output.get("all_passed", False)
 
     if all_passed:
-        return "s6_deploy"
+        return "s7_deploy"
 
     # Check retry count
     max_retries = 3
@@ -251,7 +251,7 @@ def route_after_test(state: PipelineState) -> str:
         return "halt"
 
     state.retry_count += 1
-    return "s3_codegen"
+    return "s4_codegen"
 
 
 def route_after_verify(state: PipelineState) -> str:
@@ -262,15 +262,15 @@ def route_after_verify(state: PipelineState) -> str:
     if state.legal_halt or state.circuit_breaker_triggered:
         return "halt"
 
-    verify_output = state.s7_output or {}
+    verify_output = state.s8_output or {}
     verified = verify_output.get("verified", False)
 
     if verified:
-        return "s8_handoff"
+        return "s9_handoff"
 
     max_retries = 2
     if state.retry_count >= max_retries:
         return "halt"
 
     state.retry_count += 1
-    return "s6_deploy"
+    return "s7_deploy"

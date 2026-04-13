@@ -46,21 +46,23 @@ logger = logging.getLogger("factory.core.state")
 
 
 class Stage(str, Enum):
-    """Pipeline stages S0–S8 plus terminal states.
+    """Pipeline stages S0–S9 plus terminal states.
 
-    Spec: §2.1.1
+    Spec: §2.1.1 (v5.8 — 10 stages)
+    S3_DESIGN is new in v5.8 (split from S2 Blueprint).
     COMPLETED = terminal success — project finished all stages.
     HALTED = terminal failure — requires manual intervention.
     """
     S0_INTAKE     = "S0_INTAKE"
     S1_LEGAL      = "S1_LEGAL"
     S2_BLUEPRINT  = "S2_BLUEPRINT"
-    S3_CODEGEN    = "S3_CODEGEN"
-    S4_BUILD      = "S4_BUILD"
-    S5_TEST       = "S5_TEST"
-    S6_DEPLOY     = "S6_DEPLOY"
-    S7_VERIFY     = "S7_VERIFY"
-    S8_HANDOFF    = "S8_HANDOFF"
+    S3_DESIGN     = "S3_DESIGN"    # NEW v5.8 — UI/UX Design stage
+    S4_CODEGEN    = "S4_CODEGEN"
+    S5_BUILD      = "S5_BUILD"
+    S6_TEST       = "S6_TEST"
+    S7_DEPLOY     = "S7_DEPLOY"
+    S8_VERIFY     = "S8_VERIFY"
+    S9_HANDOFF    = "S9_HANDOFF"
     COMPLETED     = "COMPLETED"
     HALTED        = "HALTED"
 
@@ -170,13 +172,14 @@ class NotificationType(str, Enum):
 VALID_TRANSITIONS: dict[Stage, list[Stage]] = {
     Stage.S0_INTAKE:    [Stage.S1_LEGAL,     Stage.HALTED],
     Stage.S1_LEGAL:     [Stage.S2_BLUEPRINT, Stage.HALTED],
-    Stage.S2_BLUEPRINT: [Stage.S3_CODEGEN,   Stage.HALTED],
-    Stage.S3_CODEGEN:   [Stage.S4_BUILD,     Stage.HALTED],
-    Stage.S4_BUILD:     [Stage.S5_TEST,      Stage.HALTED],
-    Stage.S5_TEST:      [Stage.S6_DEPLOY, Stage.S3_CODEGEN, Stage.HALTED],
-    Stage.S6_DEPLOY:    [Stage.S7_VERIFY,    Stage.HALTED],
-    Stage.S7_VERIFY:    [Stage.S8_HANDOFF, Stage.S6_DEPLOY, Stage.HALTED],
-    Stage.S8_HANDOFF:   [Stage.COMPLETED,    Stage.HALTED],
+    Stage.S2_BLUEPRINT: [Stage.S3_DESIGN,    Stage.HALTED],
+    Stage.S3_DESIGN:    [Stage.S4_CODEGEN,   Stage.HALTED],
+    Stage.S4_CODEGEN:   [Stage.S5_BUILD,     Stage.HALTED],
+    Stage.S5_BUILD:     [Stage.S6_TEST,      Stage.HALTED],
+    Stage.S6_TEST:      [Stage.S7_DEPLOY, Stage.S4_CODEGEN, Stage.HALTED],
+    Stage.S7_DEPLOY:    [Stage.S8_VERIFY,    Stage.HALTED],
+    Stage.S8_VERIFY:    [Stage.S9_HANDOFF, Stage.S7_DEPLOY, Stage.HALTED],
+    Stage.S9_HANDOFF:   [Stage.COMPLETED,    Stage.HALTED],
     Stage.COMPLETED:    [],  # Terminal — no outbound transitions
     Stage.HALTED:       [],  # Terminal — requires manual intervention
 }
@@ -847,16 +850,17 @@ class PipelineState(BaseModel):
     legal_halt_reason: Optional[str] = None
     legal_checks_log: list[dict] = Field(default_factory=list)
 
-    # ── Stage Outputs ──
-    s0_output: Optional[dict] = None
-    s1_output: Optional[dict] = None
-    s2_output: Optional[dict] = None
-    s3_output: Optional[dict] = None
-    s4_output: Optional[dict] = None
-    s5_output: Optional[dict] = None
-    s6_output: Optional[dict] = None
-    s7_output: Optional[dict] = None
-    s8_output: Optional[dict] = None
+    # ── Stage Outputs (v5.8: 10 stages S0–S9) ──
+    s0_output: Optional[dict] = None   # S0 Intake
+    s1_output: Optional[dict] = None   # S1 Legal
+    s2_output: Optional[dict] = None   # S2 Blueprint
+    s3_output: Optional[dict] = None   # S3 Design (NEW v5.8)
+    s4_output: Optional[dict] = None   # S4 CodeGen
+    s5_output: Optional[dict] = None   # S5 Build
+    s6_output: Optional[dict] = None   # S6 Test
+    s7_output: Optional[dict] = None   # S7 Deploy
+    s8_output: Optional[dict] = None   # S8 Verify
+    s9_output: Optional[dict] = None   # S9 Handoff
 
     # ── Design Mocks (S2) ──
     design_mocks: list[str] = Field(default_factory=list)

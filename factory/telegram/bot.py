@@ -1407,7 +1407,7 @@ async def _start_project(
             else:
                 app_name = final.project_metadata.get("app_name", project_id)
                 github = final.project_metadata.get("github_repo", "")
-                deploy_url = (final.s6_output or {}).get("deployment_url", "")
+                deploy_url = (final.s7_output or {}).get("deployment_url", "")
                 summary_lines = [
                     f"🎉 {app_name} is ready!",
                     f"Cost: ${final.total_cost_usd:.2f}",

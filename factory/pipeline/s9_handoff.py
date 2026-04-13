@@ -1,8 +1,8 @@
 """
-AI Factory Pipeline v5.6 — S8 Handoff Node
+AI Factory Pipeline v5.6 — S9 Handoff Node
 
 Implements:
-  - §4.9 S8 Handoff (legal docs, summary, delivery)
+  - §4.9 S9 Handoff (legal docs, summary, delivery)
   - FIX-27 Handoff Intelligence Pack (4 per-project docs)
   - FIX-27 Per-program docs (3 docs, when all siblings complete)
   - DocuGen Module (§3.5) — legal doc generation
@@ -30,7 +30,7 @@ from factory.core.roles import call_ai
 from factory.telegram.notifications import send_telegram_message, notify_operator
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
-logger = logging.getLogger("factory.pipeline.s8_handoff")
+logger = logging.getLogger("factory.pipeline.s9_handoff")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -140,9 +140,9 @@ async def generate_handoff_intelligence_pack(
     docs: dict[str, str] = {}
 
     # ── Gather project context ──
-    deployments = (state.s6_output or {}).get("deployments", {})
+    deployments = (state.s7_output or {}).get("deployments", {})
     services = (state.s2_output or {}).get("services", {})
-    env_vars = (state.s3_output or {}).get("env_vars", {})
+    env_vars = (state.s4_output or {}).get("env_vars", {})
     api_endpoints = (state.s2_output or {}).get("api_endpoints", [])
     stack = blueprint_data.get("selected_stack", "unknown")
     app_name = blueprint_data.get("app_name", state.project_id)
@@ -255,7 +255,7 @@ async def _generate_program_docs(
 
     Spec: FIX-27 (per-program documents)
     Queries Neo4j for sibling ProjectNode status. If all siblings are
-    in S8_HANDOFF or completed, generates 3 cross-project documents:
+    in S9_HANDOFF or completed, generates 3 cross-project documents:
       - Cross-Stack Integration Map
       - Unified Deployment Guide
       - Program Health Dashboard Configuration
@@ -274,7 +274,7 @@ async def _generate_program_docs(
         siblings = await neo4j.find_nodes("ProjectNode", {"program_id": program_id})
         if siblings:
             siblings_done = all(
-                s.get("status") in ("complete", "S8_HANDOFF", "COMPLETED")
+                s.get("status") in ("complete", "S9_HANDOFF", "COMPLETED")
                 for s in siblings
             )
             stacks = list({s.get("stack", "unknown") for s in siblings if s.get("stack")})
@@ -363,12 +363,12 @@ async def _generate_program_docs(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# §4.9 S8 Handoff Node
+# §4.9 S9 Handoff Node
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pipeline_node(Stage.S8_HANDOFF)
-async def s8_handoff_node(state: PipelineState) -> PipelineState:
+@pipeline_node(Stage.S9_HANDOFF)
+async def s9_handoff_node(state: PipelineState) -> PipelineState:
     """S8: Handoff — generate legal docs, compile summary,
     generate handoff intelligence pack, deliver everything.
 
@@ -388,7 +388,7 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
     legal_docs = await generate_legal_documents(state, blueprint_data)
 
     # ── Step 2: Compile project summary ──
-    deployments = (state.s6_output or {}).get("deployments", {})
+    deployments = (state.s7_output or {}).get("deployments", {})
     _summary_base = (
         f"Compile a project handoff summary.\n\n"
         f"App: {app_name}\n"
@@ -401,7 +401,7 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
         f"Snapshot ID: {state.snapshot_id}\n\n"
         f"Return a concise Markdown summary for the operator."
     )
-    _summary_prompt = await enrich_prompt("s8_handoff", _summary_base, state, scout=False)
+    _summary_prompt = await enrich_prompt("s9_handoff", _summary_base, state, scout=False)
     summary = await call_ai(
         role=AIRole.QUICK_FIX,
         prompt=_summary_prompt,
@@ -410,7 +410,7 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
     )
     # Store delivery insights for future projects
     await store_stage_insight(
-        "s8_handoff", state,
+        "s9_handoff", state,
         fact=f"App {app_name} ({stack}) delivered. Cost: ${state.total_cost_usd:.2f}. "
              f"Platforms: {platforms}.",
         category="delivery",
@@ -485,7 +485,7 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
         f"before publishing.",
     )
 
-    state.s8_output = {
+    state.s9_output = {
         "delivered": True,
         "summary": summary[:2000],
         "legal_docs": list(legal_docs.keys()),
@@ -495,7 +495,7 @@ async def s8_handoff_node(state: PipelineState) -> PipelineState:
     }
 
     logger.info(
-        f"[{state.project_id}] S8 Handoff complete: "
+        f"[{state.project_id}] S9 Handoff complete: "
         f"delivered={True}, "
         f"legal={len(legal_docs)}, "
         f"handoff={len(handoff_doc_names)}"
@@ -526,14 +526,14 @@ async def _push_to_github(
         for name, content in legal_docs.items():
             await github_commit_file(
                 repo, f"legal/{name}.md", content,
-                f"S8 Handoff: legal/{name}",
+                f"S9 Handoff: legal/{name}",
             )
             committed += 1
         for name, content in handoff_docs.items():
             if not name.startswith("_"):
                 await github_commit_file(
                     repo, f"docs/{name}", content,
-                    f"S8 Handoff: docs/{name}",
+                    f"S9 Handoff: docs/{name}",
                 )
                 committed += 1
         logger.info(
@@ -645,12 +645,12 @@ async def _send_docs_via_telegram(
 
 
 # Register with DAG (replaces stub)
-register_stage_node("s8_handoff", s8_handoff_node)
+register_stage_node("s9_handoff", s9_handoff_node)
 
 def _compile_project_summary(state) -> dict:
     """Compile a project summary dict from pipeline state.
 
-    Spec: §4.9 S8 Handoff — summary for handoff intelligence pack.
+    Spec: §4.9 S9 Handoff — summary for handoff intelligence pack.
     """
     from datetime import datetime, timezone as _tz
     blueprint = state.s2_output or {}

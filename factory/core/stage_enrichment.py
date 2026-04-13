@@ -48,7 +48,7 @@ async def enrich_prompt(
     """Prepend relevant memory + optional scout research to a stage prompt.
 
     Args:
-        stage_name: e.g. "s0_intake", "s2_blueprint", "s3_codegen"
+        stage_name: e.g. "s0_intake", "s2_blueprint", "s4_codegen"
         prompt: The original AI prompt for this stage.
         state: PipelineState — used for project_id, operator_id, prior outputs.
         scout: If True, perform a Scout lookup to add fresh real-world context.
@@ -139,12 +139,12 @@ def _stage_memory_category(stage_name: str) -> str:
         "s0_intake":    "requirements",
         "s1_legal":     "legal",
         "s2_blueprint": "design",
-        "s3_codegen":   "code",
-        "s4_build":     "build",
-        "s5_test":      "testing",
-        "s6_deploy":    "deployment",
-        "s7_verify":    "compliance",
-        "s8_handoff":   "delivery",
+        "s4_codegen":   "code",
+        "s5_build":     "build",
+        "s6_test":      "testing",
+        "s7_deploy":    "deployment",
+        "s8_verify":    "compliance",
+        "s9_handoff":   "delivery",
     }
     return mapping.get(stage_name, "pipeline")
 
@@ -193,26 +193,26 @@ def _auto_scout_query(stage_name: str, state) -> str:
             f"Best UI/UX patterns for {category} mobile app 2025-2026. "
             f"Material Design 3, iOS HIG, accessibility guidelines."
         ),
-        "s3_codegen": (
+        "s4_codegen": (
             f"Best practices for {stack} development 2025-2026. "
             f"Common patterns, state management, Firebase integration."
         ),
-        "s4_build": (
+        "s5_build": (
             f"{stack} build optimization and CI/CD best practices 2025."
         ),
-        "s5_test": (
+        "s6_test": (
             f"Testing strategies for {stack} mobile apps. "
             f"Unit testing, integration testing, UI automation 2025."
         ),
-        "s6_deploy": (
+        "s7_deploy": (
             f"App store submission requirements Apple/Google 2025-2026. "
             f"Review guidelines, metadata, screenshots."
         ),
-        "s7_verify": (
+        "s8_verify": (
             f"App store compliance checklist for {category} app 2025. "
             f"Privacy policy, permissions, age rating requirements."
         ),
-        "s8_handoff": (
+        "s9_handoff": (
             f"App launch checklist for {category} app in {region} 2025."
         ),
     }

@@ -1,8 +1,8 @@
 """
-AI Factory Pipeline v5.6 — S4 Build Node
+AI Factory Pipeline v5.6 — S5 Build Node
 
 Implements:
-  - §4.5 S4 Build (compile using Cloud/Local/Hybrid mode)
+  - §4.5 S5 Build (compile using Cloud/Local/Hybrid mode)
   - §4.5.1 CLI build path (React Native, Swift, Kotlin, Python)
   - §4.5.2 GUI automation build path (FlutterFlow, Unity) — stub
   - Phase 1: Write files to workspace
@@ -31,7 +31,7 @@ from factory.core.execution import ExecutionModeManager, _get_project_workspace
 from factory.core.user_space import enforce_user_space
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
-logger = logging.getLogger("factory.pipeline.s4_build")
+logger = logging.getLogger("factory.pipeline.s5_build")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -80,12 +80,12 @@ STACK_BUILD_REQUIREMENTS: dict[TechStack, dict[str, bool]] = {
 
 
 # ═══════════════════════════════════════════════════════════════════
-# §4.5 S4 Build Node
+# §4.5 S5 Build Node
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pipeline_node(Stage.S4_BUILD)
-async def s4_build_node(state: PipelineState) -> PipelineState:
+@pipeline_node(Stage.S5_BUILD)
+async def s5_build_node(state: PipelineState) -> PipelineState:
     """S4: Build — compile the project using Cloud/Local/Hybrid mode.
 
     Spec: §4.5
@@ -97,7 +97,7 @@ async def s4_build_node(state: PipelineState) -> PipelineState:
     Cost target: <$0.50
     """
     blueprint_data = state.s2_output or {}
-    files = (state.s3_output or {}).get("generated_files", {})
+    files = (state.s4_output or {}).get("generated_files", {})
     stack_value = blueprint_data.get("selected_stack", "flutterflow")
 
     try:
@@ -168,7 +168,7 @@ async def s4_build_node(state: PipelineState) -> PipelineState:
     ).total_seconds()
 
     source_only = build_result.get("source_only", False)
-    state.s4_output = {
+    state.s5_output = {
         "build_success": build_result.get("success", False),
         "source_only": source_only,
         "artifacts": build_result.get("artifacts", {}),
@@ -188,12 +188,12 @@ async def s4_build_node(state: PipelineState) -> PipelineState:
         for error in build_result["errors"][:3]:
             wr_result = await _attempt_build_fix(state, error, exec_mgr)
             if wr_result.get("resolved"):
-                state.s4_output["build_success"] = True
+                state.s5_output["build_success"] = True
                 break
 
     # Notify operator of workspace location so they can see generated files
-    workspace = state.s4_output["workspace_path"]
-    files_written = state.s4_output["files_written"]
+    workspace = state.s5_output["workspace_path"]
+    files_written = state.s5_output["files_written"]
     if source_only:
         from factory.telegram.notifications import send_telegram_message
         await send_telegram_message(
@@ -212,10 +212,10 @@ async def s4_build_node(state: PipelineState) -> PipelineState:
         )
 
     logger.info(
-        f"[{state.project_id}] S4 Build: "
-        f"success={state.s4_output['build_success']}, source_only={source_only}, "
+        f"[{state.project_id}] S5 Build: "
+        f"success={state.s5_output['build_success']}, source_only={source_only}, "
         f"duration={build_duration:.1f}s, "
-        f"artifacts={len(state.s4_output.get('artifacts', {}))}"
+        f"artifacts={len(state.s5_output.get('artifacts', {}))}"
     )
     return state
 
@@ -415,7 +415,7 @@ async def _attempt_build_fix(
 
 
 # Register with DAG (replaces stub)
-register_stage_node("s4_build", s4_build_node)
+register_stage_node("s5_build", s5_build_node)
 
 def _get_target_stores(stack: TechStack, platforms: list[str] = None) -> list[str]:
     """Return the app stores targeted for a given stack and platforms.

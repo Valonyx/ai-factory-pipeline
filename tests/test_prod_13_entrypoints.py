@@ -189,30 +189,30 @@ class TestOrchestrator:
 
     def test_route_test_pass(self, state):
         """route_after_test: pass → s6_deploy."""
-        state.s5_output = {"all_passed": True}
+        state.s6_output = {"all_passed": True}
         assert route_after_test(state) == "s6_deploy"
 
     def test_route_test_fail_retry(self, state):
         """route_after_test: fail → s3_codegen."""
-        state.s5_output = {"all_passed": False}
+        state.s6_output = {"all_passed": False}
         state.retry_count = 0
         assert route_after_test(state) == "s3_codegen"
         assert state.retry_count == 1
 
     def test_route_test_exhausted(self, state):
         """route_after_test: exhausted → halt."""
-        state.s5_output = {"all_passed": False}
+        state.s6_output = {"all_passed": False}
         state.retry_count = 3
         assert route_after_test(state) == "halt"
 
     def test_route_verify_pass(self, state):
         """route_after_verify: pass → s8_handoff."""
-        state.s7_output = {"verified": True}
+        state.s8_output = {"verified": True}
         assert route_after_verify(state) == "s8_handoff"
 
     def test_route_verify_fail(self, state):
         """route_after_verify: fail → s6_deploy."""
-        state.s7_output = {"verified": False}
+        state.s8_output = {"verified": False}
         state.retry_count = 0
         assert route_after_verify(state) == "s6_deploy"
         assert state.retry_count == 1

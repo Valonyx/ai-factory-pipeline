@@ -5,12 +5,12 @@ from factory.core.state import PipelineState, Stage
 from factory.pipeline.s0_intake import s0_intake_node as s0_intake
 from factory.pipeline.s1_legal import s1_legal_node as s1_legal_gate
 from factory.pipeline.s2_blueprint import s2_blueprint_node as s2_blueprint
-from factory.pipeline.s3_codegen import s3_codegen_node as s3_codegen
-from factory.pipeline.s4_build import s4_build_node as s4_build
-from factory.pipeline.s5_test import s5_test_node as s5_test
-from factory.pipeline.s6_deploy import s6_deploy_node as s6_deploy
-from factory.pipeline.s7_verify import s7_verify_node as s7_verify
-from factory.pipeline.s8_handoff import s8_handoff_node as s8_handoff
+from factory.pipeline.s4_codegen import s4_codegen_node as s3_codegen
+from factory.pipeline.s5_build import s5_build_node as s4_build
+from factory.pipeline.s6_test import s6_test_node as s5_test
+from factory.pipeline.s7_deploy import s7_deploy_node as s6_deploy
+from factory.pipeline.s8_verify import s8_verify_node as s7_verify
+from factory.pipeline.s9_handoff import s9_handoff_node as s8_handoff
 
 
 class TestS0Intake:
@@ -51,7 +51,7 @@ class TestS4Build:
 class TestS5Test:
     @pytest.mark.asyncio
     async def test_test_stub(self, fresh_state, mock_ai):
-        fresh_state.s3_output = {"generated_files": {"test_app.py": "def test_main(): pass"}}
+        fresh_state.s4_output = {"generated_files": {"test_app.py": "def test_main(): pass"}}
         result = await s5_test(fresh_state)
         assert isinstance(result, PipelineState)
 

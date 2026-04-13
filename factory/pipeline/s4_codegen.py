@@ -2,7 +2,7 @@
 AI Factory Pipeline v5.6 — S3 Code Generation Node
 
 Implements:
-  - §4.4 S3 CodeGen (full generation + retry fix mode)
+  - §4.4 S4 CodeGen (full generation + retry fix mode)
   - Engineer generates all code files from Blueprint
   - Quick Fix validates generated code
   - §4.4.2 CI/CD configuration generation
@@ -27,16 +27,16 @@ from factory.core.state import (
 from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
-logger = logging.getLogger("factory.pipeline.s3_codegen")
+logger = logging.getLogger("factory.pipeline.s4_codegen")
 
 
 # ═══════════════════════════════════════════════════════════════════
-# §4.4 S3 CodeGen Node
+# §4.4 S4 CodeGen Node
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pipeline_node(Stage.S3_CODEGEN)
-async def s3_codegen_node(state: PipelineState) -> PipelineState:
+@pipeline_node(Stage.S4_CODEGEN)
+async def s4_codegen_node(state: PipelineState) -> PipelineState:
     """S3: CodeGen — generate all project files for the selected stack.
 
     Spec: §4.4
@@ -52,14 +52,14 @@ async def s3_codegen_node(state: PipelineState) -> PipelineState:
     if state.pipeline_mode == PipelineMode.MODIFY:
         return await _s3_modify_codegen(state, blueprint_data)
 
-    # Retry when: retry_count > 0 with prior failures, or previous_stage was S5_TEST
+    # Retry when: retry_count > 0 with prior failures, or previous_stage was S6_TEST
     s5_has_failures = bool(
-        state.s5_output and not state.s5_output.get("passed", True)
-        and state.s5_output.get("failures")
+        state.s6_output and not state.s6_output.get("passed", True)
+        and state.s6_output.get("failures")
     )
     is_retry = (
         state.retry_count > 0 and s5_has_failures
-    ) or state.previous_stage == Stage.S5_TEST
+    ) or state.previous_stage == Stage.S6_TEST
 
     if is_retry:
         state = await _codegen_retry_fix(state)
@@ -257,7 +257,7 @@ async def _codegen_full_generation(
         blueprint_data=blueprint_data,
     )
     code_prompt = await enrich_prompt(
-        "s3_codegen", code_prompt, state,
+        "s4_codegen", code_prompt, state,
         scout=True,
     )
 
@@ -323,7 +323,7 @@ async def _codegen_full_generation(
     # ── Step 4: Quick Fix validation pass ──
     files = await _quick_fix_validation(state, files, stack)
 
-    state.s3_output = {
+    state.s4_output = {
         "generated_files": files,
         "file_count": len(files),
         "stack": stack.value,
@@ -334,7 +334,7 @@ async def _codegen_full_generation(
     await _commit_to_github(state, files, app_name, stack)
 
     logger.info(
-        f"[{state.project_id}] S3 CodeGen complete: "
+        f"[{state.project_id}] S4 CodeGen complete: "
         f"{len(files)} files generated for {stack.value}"
     )
     return state
@@ -383,8 +383,8 @@ async def _commit_to_github(
             ),
         )
 
-        state.s3_output["github_repo"] = repo_name
-        state.s3_output["github_commit_count"] = commit_result.get("files", 0)
+        state.s4_output["github_repo"] = repo_name
+        state.s4_output["github_commit_count"] = commit_result.get("files", 0)
         state.project_metadata["github_repo"] = repo_name
 
         logger.info(
@@ -413,8 +413,8 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
     Spec: §4.4 (retry path)
     Uses War Room escalation (L1→L2→L3) for each failure.
     """
-    test_failures = (state.s5_output or {}).get("failures", [])
-    existing_files = (state.s3_output or {}).get("generated_files", {})
+    test_failures = (state.s6_output or {}).get("failures", [])
+    existing_files = (state.s4_output or {}).get("generated_files", {})
 
     # Wire War Room hooks so L3 file rewrites persist into existing_files.
     # Save and restore prior hooks to avoid contaminating other callers.
@@ -469,7 +469,7 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
                 "severity": severity,
             })
             state.errors.append({
-                "stage": "S3_CODEGEN",
+                "stage": "S4_CODEGEN",
                 "type": "unresolved_war_room",
                 "file": file_path,
                 "error": error,
@@ -482,10 +482,10 @@ async def _codegen_retry_fix(state: PipelineState) -> PipelineState:
         command_executor=_prev_executor,
     )
 
-    state.s3_output["generated_files"] = existing_files
-    state.s3_output["generation_mode"] = "retry_fix"
-    state.s3_output["fixes_applied"] = fixed_count
-    state.s3_output["unresolved"] = unresolved
+    state.s4_output["generated_files"] = existing_files
+    state.s4_output["generation_mode"] = "retry_fix"
+    state.s4_output["fixes_applied"] = fixed_count
+    state.s4_output["unresolved"] = unresolved
 
     logger.info(
         f"[{state.project_id}] S3 retry: {fixed_count} fixed, "
@@ -625,7 +625,7 @@ async def _war_room_fix(
                 "file_path": file_path,
                 "file_content": file_content,
                 "files": all_files or {},
-                "stage": "S3_CODEGEN",
+                "stage": "S4_CODEGEN",
             },
             current_level=WarRoomLevel.L3_WAR_ROOM,
         )
@@ -1026,7 +1026,7 @@ def _create_minimal_scaffold(
 
 
 # Register with DAG (replaces stub)
-register_stage_node("s3_codegen", s3_codegen_node)
+register_stage_node("s4_codegen", s4_codegen_node)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1118,7 +1118,7 @@ async def _s3_modify_codegen(
             generated_files=generated_files,
         )
         diff_summary = changeset.to_review_text()
-        state.s3_output = {
+        state.s4_output = {
             "modify_mode": True,
             "generated_files": generated_files,
             "deleted_files": files_to_delete,
@@ -1134,7 +1134,7 @@ async def _s3_modify_codegen(
         }
     except Exception as e:
         logger.warning(f"[{state.project_id}] MODIFY S3: diff build failed: {e}")
-        state.s3_output = {
+        state.s4_output = {
             "modify_mode": True,
             "generated_files": generated_files,
             "deleted_files": files_to_delete,

@@ -40,17 +40,17 @@ from factory.pipeline.graph import (
     SimpleExecutor,
     run_pipeline,
 )
-from factory.pipeline.s6_deploy import (
-    s6_deploy_node,
+from factory.pipeline.s7_deploy import (
+    s7_deploy_node,
     IOS_SUBMISSION_STEPS,
     _extract_deploy_url,
 )
-from factory.pipeline.s7_verify import (
-    s7_verify_node,
+from factory.pipeline.s8_verify import (
+    s8_verify_node,
     _verify_mobile,
 )
-from factory.pipeline.s8_handoff import (
-    s8_handoff_node,
+from factory.pipeline.s9_handoff import (
+    s9_handoff_node,
     DOCUGEN_TEMPLATES,
     HANDOFF_DOCS,
     PROGRAM_DOCS,
@@ -106,16 +106,16 @@ def state():
         "design_system": "material3",
     }
     s.selected_stack = TechStack.REACT_NATIVE
-    s.s3_output = {
+    s.s4_output = {
         "generated_files": {"App.tsx": "export default () => null"},
         "file_count": 1,
         "stack": "react_native",
     }
-    s.s4_output = {
+    s.s5_output = {
         "build_success": True,
         "artifacts": {"android": {"status": "success"}},
     }
-    s.s5_output = {
+    s.s6_output = {
         "passed": True,
         "total_tests": 10,
         "passed_tests": 10,
@@ -145,16 +145,16 @@ def mock_call_ai():
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Tests 1-5: S6 Deploy
+# Tests 1-5: S7 Deploy
 # ═══════════════════════════════════════════════════════════════════
 
-class TestS6Deploy:
+class TestS7Deploy:
     def test_all_nodes_registered(self):
         """All 10 stage nodes registered, zero stubs."""
         expected = [
             "s0_intake", "s1_legal", "s2_blueprint",
-            "s3_codegen", "s4_build", "s5_test",
-            "s6_deploy", "s7_verify", "s8_handoff",
+            "s4_codegen", "s5_build", "s6_test",
+            "s7_deploy", "s8_verify", "s9_handoff",
             "halt_handler",
         ]
         for name in expected:
@@ -190,20 +190,20 @@ class TestS6Deploy:
     ):
         """S6 deploy populates s6_output."""
         with patch(
-            "factory.pipeline.s6_deploy.call_ai",
+            "factory.pipeline.s7_deploy.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s6_deploy_node(state)
-        assert result.s6_output is not None
-        assert "deployments" in result.s6_output
-        assert "all_success" in result.s6_output
+            result = await s7_deploy_node(state)
+        assert result.s7_output is not None
+        assert "deployments" in result.s7_output
+        assert "all_success" in result.s7_output
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Tests 6-8: S7 Verify
+# Tests 6-8: S8 Verify
 # ═══════════════════════════════════════════════════════════════════
 
-class TestS7Verify:
+class TestS8Verify:
     def test_verify_mobile_api(self):
         """_verify_mobile handles API deployment."""
         result = _verify_mobile(
@@ -225,7 +225,7 @@ class TestS7Verify:
         self, state, mock_call_ai,
     ):
         """S7 verify populates s7_output."""
-        state.s6_output = {
+        state.s7_output = {
             "deployments": {
                 "web": {"success": True, "url": "https://test.web.app"},
                 "android": {"method": "api", "success": True},
@@ -233,20 +233,20 @@ class TestS7Verify:
             "all_success": True,
         }
         with patch(
-            "factory.pipeline.s7_verify.call_ai",
+            "factory.pipeline.s8_verify.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s7_verify_node(state)
-        assert result.s7_output is not None
-        assert "passed" in result.s7_output
-        assert "checks" in result.s7_output
+            result = await s8_verify_node(state)
+        assert result.s8_output is not None
+        assert "passed" in result.s8_output
+        assert "checks" in result.s8_output
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Tests 9-13: S8 Handoff
+# Tests 9-13: S9 Handoff
 # ═══════════════════════════════════════════════════════════════════
 
-class TestS8Handoff:
+class TestS9Handoff:
     def test_docugen_templates(self):
         """DOCUGEN_TEMPLATES has 5 templates."""
         assert len(DOCUGEN_TEMPLATES) == 5
@@ -271,8 +271,8 @@ class TestS8Handoff:
 
     def test_compile_summary(self, state):
         """_compile_project_summary has required fields."""
-        state.s6_output = {"deployments": {}}
-        state.s7_output = {"passed": True, "check_count": 3}
+        state.s7_output = {"deployments": {}}
+        state.s8_output = {"passed": True, "check_count": 3}
         summary = _compile_project_summary(state)
         assert summary["project_id"] == state.project_id
         assert summary["app_name"] == "RiyadhEats"
@@ -284,19 +284,19 @@ class TestS8Handoff:
         self, state, mock_call_ai,
     ):
         """S8 handoff populates s8_output."""
-        state.s6_output = {
+        state.s7_output = {
             "deployments": {"web": {"url": "https://test.web.app"}},
         }
-        state.s7_output = {"passed": True, "check_count": 2}
+        state.s8_output = {"passed": True, "check_count": 2}
         with patch(
-            "factory.pipeline.s8_handoff.call_ai",
+            "factory.pipeline.s9_handoff.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s8_handoff_node(state)
-        assert result.s8_output is not None
-        assert result.s8_output["delivered"] is True
-        assert "privacy_policy" in result.s8_output["legal_docs"]
-        assert "QUICK_START.md" in result.s8_output["handoff_docs"]
+            result = await s9_handoff_node(state)
+        assert result.s9_output is not None
+        assert result.s9_output["delivered"] is True
+        assert "privacy_policy" in result.s9_output["legal_docs"]
+        assert "QUICK_START.md" in result.s9_output["handoff_docs"]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -317,29 +317,29 @@ class TestFullPipeline:
             "factory.pipeline.s2_blueprint.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s3_codegen.call_ai",
+            "factory.pipeline.s4_codegen.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s4_build.call_ai",
+            "factory.pipeline.s5_build.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s5_test.call_ai",
+            "factory.pipeline.s6_test.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s6_deploy.call_ai",
+            "factory.pipeline.s7_deploy.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s7_verify.call_ai",
+            "factory.pipeline.s8_verify.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s8_handoff.call_ai",
+            "factory.pipeline.s9_handoff.call_ai",
             side_effect=mock_call_ai,
         ):
             result = await run_pipeline(state)
 
         # Should complete or be at S8_HANDOFF
         assert result.s0_output is not None
-        assert result.s8_output is not None or (
+        assert result.s9_output is not None or (
             result.current_stage == Stage.HALTED
         )
 

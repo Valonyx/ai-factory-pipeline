@@ -43,17 +43,17 @@ LEGAL_CHECKS_BY_STAGE: dict[Stage, dict[str, list[str]]] = {
         "pre":  ["ministry_of_commerce_licensing"],
         "post": ["blueprint_legal_compliance"],
     },
-    Stage.S3_CODEGEN: {
+    Stage.S4_CODEGEN: {
         "post": ["pdpl_consent_checkboxes", "data_residency_compliance"],
     },
-    Stage.S4_BUILD: {
+    Stage.S5_BUILD: {
         "post": ["no_prohibited_sdks"],
     },
-    Stage.S6_DEPLOY: {
+    Stage.S7_DEPLOY: {
         "pre":  ["cst_time_of_day_restrictions"],
         "post": ["deployment_region_compliance"],
     },
-    Stage.S8_HANDOFF: {
+    Stage.S9_HANDOFF: {
         "post": ["all_legal_docs_generated", "final_compliance_sign_off"],
     },
 }

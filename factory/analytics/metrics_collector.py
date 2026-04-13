@@ -170,8 +170,8 @@ class MetricsCollector:
 
         stages_map = {
             Stage.S0_INTAKE: 0, Stage.S1_LEGAL: 1, Stage.S2_BLUEPRINT: 2,
-            Stage.S3_CODEGEN: 3, Stage.S4_BUILD: 4, Stage.S5_TEST: 5,
-            Stage.S6_DEPLOY: 6, Stage.S7_VERIFY: 7, Stage.S8_HANDOFF: 8,
+            Stage.S4_CODEGEN: 3, Stage.S5_BUILD: 4, Stage.S6_TEST: 5,
+            Stage.S7_DEPLOY: 6, Stage.S8_VERIFY: 7, Stage.S9_HANDOFF: 8,
             Stage.COMPLETED: 9,
         }
         stages_done = stages_map.get(state.current_stage, 0)
@@ -189,6 +189,6 @@ class MetricsCollector:
             duration_seconds=0.0,
             stages_completed=stages_done,
             error_stage=None if success else state.current_stage.value,
-            deployment_targets=(state.s6_output or {}).get("deployments", {}).keys(),
+            deployment_targets=(state.s7_output or {}).get("deployments", {}).keys(),
         )
         await self.record_run(run)

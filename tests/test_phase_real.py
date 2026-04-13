@@ -216,10 +216,10 @@ class TestS3GitHubCommit:
     @pytest.mark.asyncio
     async def test_commit_to_github_stores_repo_name(self, fresh_state):
         """_commit_to_github() stores github_repo in state when connected."""
-        from factory.pipeline.s3_codegen import _commit_to_github
+        from factory.pipeline.s4_codegen import _commit_to_github
         from factory.core.state import TechStack
 
-        fresh_state.s3_output = {}
+        fresh_state.s4_output = {}
         files = {"lib/main.dart": "void main() {}", "pubspec.yaml": "name: app"}
 
         mock_gh = MagicMock()
@@ -238,17 +238,17 @@ class TestS3GitHubCommit:
                 stack=TechStack.FLUTTERFLOW,
             )
 
-        assert fresh_state.s3_output.get("github_repo") == "halal-delivery"
+        assert fresh_state.s4_output.get("github_repo") == "halal-delivery"
         assert fresh_state.project_metadata.get("github_repo") == "halal-delivery"
         mock_gh.commit_files.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_commit_to_github_skips_when_disconnected(self, fresh_state):
         """_commit_to_github() is non-fatal when GitHub not connected."""
-        from factory.pipeline.s3_codegen import _commit_to_github
+        from factory.pipeline.s4_codegen import _commit_to_github
         from factory.core.state import TechStack
 
-        fresh_state.s3_output = {}
+        fresh_state.s4_output = {}
 
         mock_gh = MagicMock()
         mock_gh.is_connected.return_value = False
@@ -264,15 +264,15 @@ class TestS3GitHubCommit:
                 stack=TechStack.FLUTTERFLOW,
             )
 
-        assert "github_repo" not in fresh_state.s3_output
+        assert "github_repo" not in fresh_state.s4_output
 
     @pytest.mark.asyncio
     async def test_commit_to_github_idempotent_existing_repo(self, fresh_state):
         """_commit_to_github() skips create_repo when repo already exists."""
-        from factory.pipeline.s3_codegen import _commit_to_github
+        from factory.pipeline.s4_codegen import _commit_to_github
         from factory.core.state import TechStack
 
-        fresh_state.s3_output = {}
+        fresh_state.s4_output = {}
 
         mock_gh = MagicMock()
         mock_gh.is_connected.return_value = True
@@ -315,7 +315,7 @@ class TestS8ProgramDocs:
     @pytest.mark.asyncio
     async def test_no_program_id_returns_empty(self, fresh_state):
         """Returns {} when no program_id in metadata."""
-        from factory.pipeline.s8_handoff import _generate_program_docs
+        from factory.pipeline.s9_handoff import _generate_program_docs
 
         fresh_state.project_metadata.pop("program_id", None)
         result = await _generate_program_docs(fresh_state, "context")
@@ -326,14 +326,14 @@ class TestS8ProgramDocs:
         self, fresh_state, mock_neo4j
     ):
         """Returns _PROGRAM_DOCS_DEFERRED when siblings not done."""
-        from factory.pipeline.s8_handoff import _generate_program_docs
+        from factory.pipeline.s9_handoff import _generate_program_docs
 
         fresh_state.project_metadata["program_id"] = "prog-001"
 
         # Register an incomplete sibling
         await mock_neo4j.create_node("ProjectNode", {
             "program_id": "prog-001",
-            "status": "S3_CODEGEN",
+            "status": "S4_CODEGEN",
             "stack": "flutterflow",
         })
 
@@ -345,7 +345,7 @@ class TestS8ProgramDocs:
         self, fresh_state, mock_neo4j
     ):
         """Generates 3 cross-project docs when all siblings are complete."""
-        from factory.pipeline.s8_handoff import _generate_program_docs
+        from factory.pipeline.s9_handoff import _generate_program_docs
 
         fresh_state.project_metadata["program_id"] = "prog-002"
 
@@ -353,7 +353,7 @@ class TestS8ProgramDocs:
         for stack in ["flutterflow", "react_native"]:
             await mock_neo4j.create_node("ProjectNode", {
                 "program_id": "prog-002",
-                "status": "S8_HANDOFF",
+                "status": "S9_HANDOFF",
                 "stack": stack,
             })
 
@@ -366,7 +366,7 @@ class TestS8ProgramDocs:
     @pytest.mark.asyncio
     async def test_no_siblings_returns_empty(self, fresh_state, mock_neo4j):
         """Returns {} when program_id has no registered siblings."""
-        from factory.pipeline.s8_handoff import _generate_program_docs
+        from factory.pipeline.s9_handoff import _generate_program_docs
 
         fresh_state.project_metadata["program_id"] = "prog-orphan"
         # No nodes registered for this program_id
@@ -377,7 +377,7 @@ class TestS8ProgramDocs:
     @pytest.mark.asyncio
     async def test_neo4j_unavailable_returns_deferred(self, fresh_state):
         """Returns deferred notice when Neo4j raises."""
-        from factory.pipeline.s8_handoff import _generate_program_docs
+        from factory.pipeline.s9_handoff import _generate_program_docs
 
         fresh_state.project_metadata["program_id"] = "prog-err"
 
@@ -429,7 +429,7 @@ class TestNotifyStageComplete:
             side_effect=lambda state, ntype, msg: messages.append(msg),
         ):
             await _notify_stage_complete(fresh_state, "S0_INTAKE")
-            await _notify_stage_complete(fresh_state, "S8_HANDOFF")
+            await _notify_stage_complete(fresh_state, "S9_HANDOFF")
 
         # Extract percentages
         def extract_pct(msg):
@@ -468,7 +468,7 @@ class TestNotifyStageComplete:
             side_effect=Exception("Telegram down"),
         ):
             # Should not raise
-            await _notify_stage_complete(fresh_state, "S3_CODEGEN")
+            await _notify_stage_complete(fresh_state, "S4_CODEGEN")
 
     @pytest.mark.asyncio
     async def test_stage_notification_called_in_pipeline(
@@ -490,7 +490,7 @@ class TestNotifyStageComplete:
         # First stage should be s0_intake
         assert call_args[0].upper() in ("S0_INTAKE",)
         # Last call should include S8_HANDOFF
-        assert "S8_HANDOFF" in call_args
+        assert "S9_HANDOFF" in call_args
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -608,19 +608,19 @@ class TestActionableErrorMessages:
         """On completion, message includes GitHub repo if present."""
         from factory.telegram.messages import format_status_message
 
-        fresh_state.current_stage = Stage.S8_HANDOFF
+        fresh_state.current_stage = Stage.S9_HANDOFF
         fresh_state.project_metadata["github_repo"] = "my-app"
 
         # format_status_message should reflect current stage
         msg = format_status_message(fresh_state)
-        assert "S8_HANDOFF" in msg
+        assert "S9_HANDOFF" in msg
 
     def test_format_halt_message_shows_snapshot_restore(self, fresh_state):
         """format_halt_message() includes /restore State_# link."""
         from factory.telegram.messages import format_halt_message
 
         fresh_state.snapshot_id = 7
-        fresh_state.current_stage = Stage.S5_TEST
+        fresh_state.current_stage = Stage.S6_TEST
 
         msg = format_halt_message(fresh_state, reason="test timeout")
         assert "State_#7" in msg or "restore" in msg.lower()
@@ -698,7 +698,7 @@ class TestTelegramNewProjectChain:
 
         active = {
             "project_id": "proj-existing",
-            "current_stage": "S3_CODEGEN",
+            "current_stage": "S4_CODEGEN",
             "state_json": PipelineState(
                 project_id="proj-existing", operator_id="12345"
             ).model_dump(mode="json"),

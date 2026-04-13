@@ -39,21 +39,21 @@ from factory.core.state import (
     AutonomyMode,
     ExecutionMode,
 )
-from factory.pipeline.s3_codegen import (
-    s3_codegen_node,
+from factory.pipeline.s4_codegen import (
+    s4_codegen_node,
     _create_minimal_scaffold,
     _parse_files_response,
     _war_room_fix,
 )
-from factory.pipeline.s4_build import (
-    s4_build_node,
+from factory.pipeline.s5_build import (
+    s5_build_node,
     STACK_BUILD_REQUIREMENTS,
     DEPENDENCY_COMMANDS,
     CLI_BUILD_COMMANDS,
     _get_target_stores,
 )
-from factory.pipeline.s5_test import (
-    s5_test_node,
+from factory.pipeline.s6_test import (
+    s6_test_node,
     pre_deploy_gate,
     TEST_COMMANDS,
     COPILOT_DEPLOY_TIMEOUT,
@@ -153,10 +153,10 @@ def mock_call_ai():
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Tests 1-4: S3 CodeGen
+# Tests 1-4: S4 CodeGen
 # ═══════════════════════════════════════════════════════════════════
 
-class TestS3CodeGen:
+class TestS4CodeGen:
     def test_minimal_scaffold_all_stacks(self):
         """Minimal scaffold exists for all 6 stacks."""
         for stack in TechStack:
@@ -176,43 +176,43 @@ class TestS3CodeGen:
     async def test_full_generation(self, state, mock_call_ai):
         """S3 full generation populates s3_output."""
         with patch(
-            "factory.pipeline.s3_codegen.call_ai",
+            "factory.pipeline.s4_codegen.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s3_codegen_node(state)
-        assert result.s3_output is not None
-        assert result.s3_output["file_count"] > 0
-        assert result.s3_output["generation_mode"] == "full"
+            result = await s4_codegen_node(state)
+        assert result.s4_output is not None
+        assert result.s4_output["file_count"] > 0
+        assert result.s4_output["generation_mode"] == "full"
 
     @pytest.mark.asyncio
     async def test_retry_fix_mode(self, state, mock_call_ai):
         """Retry from S5 uses targeted fix mode."""
-        state.s3_output = {
+        state.s4_output = {
             "generated_files": {"lib/main.dart": "broken"},
             "file_count": 1,
         }
-        state.s5_output = {
+        state.s6_output = {
             "passed": False,
             "failures": [
                 {"file": "lib/main.dart", "error": "syntax error"},
             ],
         }
-        state.previous_stage = Stage.S5_TEST
+        state.previous_stage = Stage.S6_TEST
         state.retry_count = 1
 
         with patch(
-            "factory.pipeline.s3_codegen.call_ai",
+            "factory.pipeline.s4_codegen.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s3_codegen_node(state)
-        assert result.s3_output["generation_mode"] == "retry_fix"
+            result = await s4_codegen_node(state)
+        assert result.s4_output["generation_mode"] == "retry_fix"
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Tests 5-9: S4 Build
+# Tests 5-9: S5 Build
 # ═══════════════════════════════════════════════════════════════════
 
-class TestS4Build:
+class TestS5Build:
     def test_build_requirements_all_stacks(self):
         """STACK_BUILD_REQUIREMENTS covers all 6 stacks."""
         for stack in TechStack:
@@ -250,24 +250,24 @@ class TestS4Build:
     @pytest.mark.asyncio
     async def test_build_populates_output(self, state, mock_call_ai):
         """S4 build populates s4_output."""
-        state.s3_output = {
+        state.s4_output = {
             "generated_files": {"lib/main.dart": "void main() {}"},
         }
         with patch(
-            "factory.pipeline.s4_build.call_ai",
+            "factory.pipeline.s5_build.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s4_build_node(state)
-        assert result.s4_output is not None
-        assert "build_success" in result.s4_output
-        assert "build_duration_seconds" in result.s4_output
+            result = await s5_build_node(state)
+        assert result.s5_output is not None
+        assert "build_success" in result.s5_output
+        assert "build_duration_seconds" in result.s5_output
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Tests 10-15: S5 Test
+# Tests 10-15: S6 Test
 # ═══════════════════════════════════════════════════════════════════
 
-class TestS5Test:
+class TestS6Test:
     def test_test_commands_all_stacks(self):
         """TEST_COMMANDS covers all 6 stacks."""
         for stack in TechStack:
@@ -284,19 +284,19 @@ class TestS5Test:
     @pytest.mark.asyncio
     async def test_test_populates_output(self, state, mock_call_ai):
         """S5 test populates s5_output."""
-        state.s3_output = {
+        state.s4_output = {
             "generated_files": {
                 "lib/main.dart": "void main() {}",
                 "test/main_test.dart": "void test() {}",
             },
         }
         with patch(
-            "factory.pipeline.s5_test.call_ai",
+            "factory.pipeline.s6_test.call_ai",
             side_effect=mock_call_ai,
         ):
-            result = await s5_test_node(state)
-        assert result.s5_output is not None
-        assert "passed" in result.s5_output
+            result = await s6_test_node(state)
+        assert result.s6_output is not None
+        assert "passed" in result.s6_output
 
     @pytest.mark.asyncio
     async def test_analyze_results_pass(self, state):
@@ -318,7 +318,7 @@ class TestS5Test:
     @pytest.mark.asyncio
     async def test_pre_deploy_gate_dryrun(self, state):
         """Pre-deploy gate returns True in dry-run."""
-        state.s5_output = {
+        state.s6_output = {
             "passed": True, "passed_tests": 5, "total_tests": 5,
             "failed_tests": 0,
         }
@@ -335,7 +335,7 @@ class TestWarRoom:
     async def test_escalation_l1_fix(self, state, mock_call_ai):
         """War Room L1 Quick Fix resolves."""
         with patch(
-            "factory.pipeline.s3_codegen.call_ai",
+            "factory.pipeline.s4_codegen.call_ai",
             side_effect=mock_call_ai,
         ):
             result = await _war_room_fix(
@@ -354,23 +354,23 @@ class TestIntegratedFlow:
     async def test_s3_s4_s5_flow(self, state, mock_call_ai):
         """S3→S4→S5 integrated flow."""
         with patch(
-            "factory.pipeline.s3_codegen.call_ai",
+            "factory.pipeline.s4_codegen.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s4_build.call_ai",
+            "factory.pipeline.s5_build.call_ai",
             side_effect=mock_call_ai,
         ), patch(
-            "factory.pipeline.s5_test.call_ai",
+            "factory.pipeline.s6_test.call_ai",
             side_effect=mock_call_ai,
         ):
-            state = await s3_codegen_node(state)
-            assert state.s3_output["file_count"] > 0
+            state = await s4_codegen_node(state)
+            assert state.s4_output["file_count"] > 0
 
-            state = await s4_build_node(state)
-            assert state.s4_output is not None
-
-            state = await s5_test_node(state)
+            state = await s5_build_node(state)
             assert state.s5_output is not None
+
+            state = await s6_test_node(state)
+            assert state.s6_output is not None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -381,10 +381,10 @@ class TestUpdatedStubs:
     def test_stubs_only_s6_s8(self):
         """Stubs module only registers S6–S8."""
         # S3–S5 should be registered by real modules
-        assert "s3_codegen" in _stage_nodes
-        assert "s4_build" in _stage_nodes
-        assert "s5_test" in _stage_nodes
+        assert "s4_codegen" in _stage_nodes
+        assert "s5_build" in _stage_nodes
+        assert "s6_test" in _stage_nodes
         # S6–S8 should also be registered (by stubs)
-        assert "s6_deploy" in _stage_nodes
-        assert "s7_verify" in _stage_nodes
-        assert "s8_handoff" in _stage_nodes
+        assert "s7_deploy" in _stage_nodes
+        assert "s8_verify" in _stage_nodes
+        assert "s9_handoff" in _stage_nodes

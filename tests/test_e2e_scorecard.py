@@ -272,11 +272,11 @@ class TestS3CodeGen:
         with patch("factory.core.roles.call_ai", new_callable=AsyncMock) as mock_ai:
             mock_ai.return_value = mock_files
 
-            from factory.pipeline.s3_codegen import s3_codegen_node
-            result = await s3_codegen_node(state)
+            from factory.pipeline.s4_codegen import s4_codegen_node
+            result = await s4_codegen_node(state)
 
-        assert result.s3_output is not None
-        assert "generated_files" in result.s3_output
+        assert result.s4_output is not None
+        assert "generated_files" in result.s4_output
 
     @pytest.mark.asyncio
     async def test_s3_modify_generates_diffs(self):
@@ -302,12 +302,12 @@ class TestS3CodeGen:
         with patch("factory.core.roles.call_ai", new_callable=AsyncMock) as mock_ai:
             mock_ai.return_value = "const App = () => <DarkMode />;  // added dark mode"
 
-            from factory.pipeline.s3_codegen import s3_codegen_node
-            result = await s3_codegen_node(state)
+            from factory.pipeline.s4_codegen import s4_codegen_node
+            result = await s4_codegen_node(state)
 
-        assert result.s3_output is not None
-        assert result.s3_output.get("modify_mode") is True
-        assert "generated_files" in result.s3_output
+        assert result.s4_output is not None
+        assert result.s4_output.get("modify_mode") is True
+        assert "generated_files" in result.s4_output
 
 
 # ─── S4 Build Scorecard ──────────────────────────────────────────────
@@ -327,14 +327,14 @@ class TestS4Build:
         """S4 produces s4_output for all stacks."""
         state = make_state(stack=TechStack(stack_value))
         state.s2_output = {**MOCK_S2_OUTPUT, "selected_stack": stack_value}
-        state.s3_output = MOCK_S3_OUTPUT
+        state.s4_output = MOCK_S3_OUTPUT
 
         with patch("factory.core.execution.ExecutionModeManager") as MockExec:
             mock_exec = MagicMock()
             mock_exec.execute_task = AsyncMock(return_value={"exit_code": 0, "stdout": "OK"})
             MockExec.return_value = mock_exec
 
-            from factory.pipeline.s4_build import s4_build_node
+            from factory.pipeline.s5_build import s5_build_node
             if requires_gui:
                 # Patch where build_with_chain is imported inside _build_gui
                 with patch("factory.pipeline.s4_build._build_gui", new_callable=AsyncMock) as mock_gui:
@@ -344,12 +344,12 @@ class TestS4Build:
                         "errors": [],
                         "provider": "github_actions",
                     }
-                    result = await s4_build_node(state)
+                    result = await s5_build_node(state)
             else:
-                result = await s4_build_node(state)
+                result = await s5_build_node(state)
 
-        assert result.s4_output is not None
-        assert "build_success" in result.s4_output
+        assert result.s5_output is not None
+        assert "build_success" in result.s5_output
 
 
 # ─── S6 Deploy Scorecard ─────────────────────────────────────────────
@@ -365,7 +365,7 @@ class TestS6Deploy:
 
         state = make_state()
         state.s2_output = {**MOCK_S2_OUTPUT, "target_platforms": ["android"]}
-        state.s4_output = MOCK_BUILD_OUTPUT
+        state.s5_output = MOCK_BUILD_OUTPUT
 
         with patch("factory.delivery.android_delivery_chain.deliver_android", new_callable=AsyncMock) as mock_deliver:
             mock_deliver.return_value = AndroidDeliveryResult(
@@ -381,7 +381,7 @@ class TestS6Deploy:
                 details={},
             )
 
-            from factory.pipeline.s6_deploy import _deploy_android
+            from factory.pipeline.s7_deploy import _deploy_android
             result = await _deploy_android(state, TechStack.REACT_NATIVE, MagicMock())
 
         assert result["success"] is True
@@ -394,7 +394,7 @@ class TestS6Deploy:
 
         state = make_state()
         state.s2_output = {**MOCK_S2_OUTPUT, "target_platforms": ["ios"]}
-        state.s4_output = MOCK_BUILD_OUTPUT
+        state.s5_output = MOCK_BUILD_OUTPUT
 
         with patch("factory.delivery.ios_delivery_chain.deliver_ios", new_callable=AsyncMock) as mock_deliver:
             mock_deliver.return_value = iOSDeliveryResult(
@@ -409,7 +409,7 @@ class TestS6Deploy:
                 details={},
             )
 
-            from factory.pipeline.s6_deploy import _deploy_ios
+            from factory.pipeline.s7_deploy import _deploy_ios
             result = await _deploy_ios(state, TechStack.REACT_NATIVE, MagicMock())
 
         assert result["success"] is True

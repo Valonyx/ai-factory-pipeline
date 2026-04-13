@@ -1,8 +1,8 @@
 """
-AI Factory Pipeline v5.6 — S7 Verify Node
+AI Factory Pipeline v5.6 — S8 Verify Node
 
 Implements:
-  - §4.8 S7 Verify (smoke tests on deployed app)
+  - §4.8 S8 Verify (smoke tests on deployed app)
   - Web: HTTP health check
   - Mobile: App Store processing status
   - Legal: Final compliance verification via Scout
@@ -33,16 +33,16 @@ from factory.core.execution import ExecutionModeManager
 from factory.core.user_space import enforce_user_space
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
-logger = logging.getLogger("factory.pipeline.s7_verify")
+logger = logging.getLogger("factory.pipeline.s8_verify")
 
 
 # ═══════════════════════════════════════════════════════════════════
-# §4.8 S7 Verify Node
+# §4.8 S8 Verify Node
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pipeline_node(Stage.S7_VERIFY)
-async def s7_verify_node(state: PipelineState) -> PipelineState:
+@pipeline_node(Stage.S8_VERIFY)
+async def s8_verify_node(state: PipelineState) -> PipelineState:
     """S7: Verify — smoke tests on deployed app.
 
     Spec: §4.8
@@ -52,7 +52,7 @@ async def s7_verify_node(state: PipelineState) -> PipelineState:
 
     Cost target: <$0.20
     """
-    deployments = (state.s6_output or {}).get("deployments", {})
+    deployments = (state.s7_output or {}).get("deployments", {})
     checks: list[dict] = []
 
     # ── Web verification ──
@@ -84,14 +84,14 @@ async def s7_verify_node(state: PipelineState) -> PipelineState:
     all_passed = all(c.get("passed", False) for c in checks)
 
     state.project_metadata["verify_passed"] = all_passed
-    state.s7_output = {
+    state.s8_output = {
         "passed": all_passed,
         "checks": checks,
         "check_count": len(checks),
     }
 
     logger.info(
-        f"[{state.project_id}] S7 Verify: "
+        f"[{state.project_id}] S8 Verify: "
         f"passed={all_passed}, checks={len(checks)}"
     )
     return state
@@ -211,7 +211,7 @@ async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
         f"Return: pass/fail with specific guideline references."
     )
     _guidelines_prompt = await enrich_prompt(
-        "s7_verify", _guidelines_base, state,
+        "s8_verify", _guidelines_base, state,
         scout=True,
         scout_query=(
             f"Current Apple App Store and Google Play Store review guidelines 2025-2026 "
@@ -245,4 +245,4 @@ async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
 
 
 # Register with DAG (replaces stub)
-register_stage_node("s7_verify", s7_verify_node)
+register_stage_node("s8_verify", s8_verify_node)

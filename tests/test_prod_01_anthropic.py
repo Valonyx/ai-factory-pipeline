@@ -314,7 +314,7 @@ class TestCostTracking:
 
     def test_cost_accumulates_in_state(self):
         state = PipelineState(project_id="test", operator_id="op1")
-        state.current_stage = Stage.S3_CODEGEN
+        state.current_stage = Stage.S4_CODEGEN
 
         # Simulate two Engineer calls
         category = "codegen_engineer"

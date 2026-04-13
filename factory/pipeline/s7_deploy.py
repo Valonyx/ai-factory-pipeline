@@ -1,8 +1,8 @@
 """
-AI Factory Pipeline v5.6 — S6 Deploy Node
+AI Factory Pipeline v5.6 — S7 Deploy Node
 
 Implements:
-  - §4.7 S6 Deploy (push to hosting, app stores, API endpoints)
+  - §4.7 S7 Deploy (push to hosting, app stores, API endpoints)
   - §4.7.1 Android deployment (Google Play API, Airlock fallback)
   - §4.7.2 iOS deployment (Transporter CLI, Airlock fallback)
   - §4.7.3 Platform icon generation (v5.4.1 Patch 1)
@@ -33,7 +33,7 @@ from factory.telegram.notifications import notify_operator, send_telegram_messag
 from factory.telegram.airlock import airlock_deliver
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
-logger = logging.getLogger("factory.pipeline.s6_deploy")
+logger = logging.getLogger("factory.pipeline.s7_deploy")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -98,12 +98,12 @@ IOS_SUBMISSION_STEPS = [
 
 
 # ═══════════════════════════════════════════════════════════════════
-# §4.7 S6 Deploy Node
+# §4.7 S7 Deploy Node
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pipeline_node(Stage.S6_DEPLOY)
-async def s6_deploy_node(state: PipelineState) -> PipelineState:
+@pipeline_node(Stage.S7_DEPLOY)
+async def s7_deploy_node(state: PipelineState) -> PipelineState:
     """S6: Deploy — push artifacts to hosting, app stores, or API endpoints.
 
     Spec: §4.7
@@ -113,7 +113,7 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
     Cost target: <$0.30
     """
     blueprint_data = state.s2_output or {}
-    artifacts = (state.s4_output or {}).get("artifacts", {})
+    artifacts = (state.s5_output or {}).get("artifacts", {})
     stack_value = blueprint_data.get("selected_stack", "flutterflow")
     target_platforms = blueprint_data.get("target_platforms", ["ios", "android"])
 
@@ -124,7 +124,7 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
 
     exec_mgr = ExecutionModeManager(state)
     deploy_results: dict = {}
-    source_only = (state.s4_output or {}).get("source_only", False)
+    source_only = (state.s5_output or {}).get("source_only", False)
 
     # ══════════════════════════════════════════
     # SOURCE-ONLY PATH: no binary was built — deliver source code zip
@@ -132,13 +132,13 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
     if source_only:
         source_result = await _deliver_source_zip(state, stack)
         deploy_results["source_code"] = source_result
-        state.s6_output = {
+        state.s7_output = {
             "deployments": deploy_results,
             "all_success": source_result.get("success", False),
             "source_only": True,
         }
         logger.info(
-            f"[{state.project_id}] S6 Deploy (source-only): "
+            f"[{state.project_id}] S7 Deploy (source-only): "
             f"delivered={source_result.get('success')}"
         )
         return state
@@ -184,7 +184,7 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
         ios_result = await _deploy_ios(state, stack, exec_mgr)
         deploy_results["ios"] = ios_result
 
-    state.s6_output = {
+    state.s7_output = {
         "deployments": deploy_results,
         "all_success": all(
             d.get("success", False)
@@ -194,9 +194,9 @@ async def s6_deploy_node(state: PipelineState) -> PipelineState:
     }
 
     logger.info(
-        f"[{state.project_id}] S6 Deploy: "
+        f"[{state.project_id}] S7 Deploy: "
         f"platforms={list(deploy_results.keys())}, "
-        f"all_success={state.s6_output['all_success']}"
+        f"all_success={state.s7_output['all_success']}"
     )
     return state
 
@@ -224,7 +224,7 @@ async def _deliver_source_zip(
 
     workspace = _get_project_workspace(state.project_id)
     app_name = (state.s0_output or {}).get("app_name", state.project_id)
-    files_written = (state.s4_output or {}).get("files_written", 0)
+    files_written = (state.s5_output or {}).get("files_written", 0)
 
     if not os.path.isdir(workspace) or files_written == 0:
         await send_telegram_message(
@@ -369,7 +369,7 @@ async def _deploy_android(
     Force via: ANDROID_DELIVERY_PROVIDER=playstore|firebase|airlock
     """
     blueprint_data = state.s2_output or {}
-    artifacts = (state.s4_output or {}).get("artifacts", {})
+    artifacts = (state.s5_output or {}).get("artifacts", {})
     package_name = state.project_metadata.get(
         "package_name",
         blueprint_data.get("package_name", ""),
@@ -440,7 +440,7 @@ async def _deploy_ios(
     Force via: IOS_DELIVERY_PROVIDER=appstore|fastlane|firebase|airlock
     """
     blueprint_data = state.s2_output or {}
-    artifacts = (state.s4_output or {}).get("artifacts", {})
+    artifacts = (state.s5_output or {}).get("artifacts", {})
     bundle_id = state.project_metadata.get(
         "bundle_id",
         blueprint_data.get("bundle_id", ""),
@@ -492,4 +492,4 @@ async def _deploy_ios(
 
 
 # Register with DAG (replaces stub)
-register_stage_node("s6_deploy", s6_deploy_node)
+register_stage_node("s7_deploy", s7_deploy_node)

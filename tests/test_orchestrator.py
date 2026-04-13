@@ -14,17 +14,17 @@ class TestDAG:
         assert len(STAGE_SEQUENCE) == 9
         names = [s[0] for s in STAGE_SEQUENCE]
         assert names[0] == "s0_intake"
-        assert names[-1] == "s8_handoff"
+        assert names[-1] == "s9_handoff"
 
 
 class TestRouting:
     def test_test_pass(self, fresh_state):
         fresh_state.project_metadata["tests_passed"] = True
-        assert route_after_test(fresh_state) == "s6_deploy"
+        assert route_after_test(fresh_state) == "s7_deploy"
 
     def test_test_fail_retry(self, fresh_state):
         fresh_state.project_metadata["tests_passed"] = False
-        assert route_after_test(fresh_state) == "s3_codegen"
+        assert route_after_test(fresh_state) == "s4_codegen"
 
     def test_test_fail_exhausted(self, fresh_state):
         fresh_state.project_metadata["tests_passed"] = False
@@ -33,11 +33,11 @@ class TestRouting:
 
     def test_verify_pass(self, fresh_state):
         fresh_state.project_metadata["verify_passed"] = True
-        assert route_after_verify(fresh_state) == "s8_handoff"
+        assert route_after_verify(fresh_state) == "s9_handoff"
 
     def test_verify_fail_redeploy(self, fresh_state):
         fresh_state.project_metadata["verify_passed"] = False
-        assert route_after_verify(fresh_state) == "s6_deploy"
+        assert route_after_verify(fresh_state) == "s7_deploy"
 
     def test_halted_routes_halt(self, halted_state):
         assert route_after_test(halted_state) == "halt"
@@ -70,5 +70,5 @@ class TestFullPipeline:
     async def test_run_pipeline(self, fresh_state, mock_ai, mock_deploy_window):
         mock_ai.return_value = '{"stub": true}'
         result = await run_pipeline(fresh_state)
-        assert result.current_stage in (Stage.S8_HANDOFF, Stage.HALTED)
+        assert result.current_stage in (Stage.S9_HANDOFF, Stage.HALTED)
         assert len(result.stage_history) >= 9

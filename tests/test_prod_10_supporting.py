@@ -105,7 +105,7 @@ def state():
         "auth_method": "phone",
         "deploy_region": "me-central1",
     }
-    s.s3_output = {
+    s.s4_output = {
         "generated_files": {
             "App.tsx": "// consent checkbox here\nexport default () => null",
             "package.json": '{"dependencies": {"react": "18"}}',
@@ -269,10 +269,10 @@ class TestLegalEngine:
         """LEGAL_CHECKS_BY_STAGE covers 5 stages."""
         assert len(LEGAL_CHECKS_BY_STAGE) == 5
         assert Stage.S2_BLUEPRINT in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S3_CODEGEN in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S4_BUILD in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S6_DEPLOY in LEGAL_CHECKS_BY_STAGE
-        assert Stage.S8_HANDOFF in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S4_CODEGEN in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S5_BUILD in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S7_DEPLOY in LEGAL_CHECKS_BY_STAGE
+        assert Stage.S9_HANDOFF in LEGAL_CHECKS_BY_STAGE
 
     def test_all_check_names_9(self):
         """get_all_check_names returns 9 unique checks."""

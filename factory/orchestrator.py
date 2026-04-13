@@ -39,20 +39,20 @@ logger = logging.getLogger("factory.orchestrator")
 
 # Stage index for % complete calculation (0-based)
 _STAGE_ORDER = [
-    "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S3_CODEGEN",
-    "S4_BUILD", "S5_TEST", "S6_DEPLOY", "S7_VERIFY", "S8_HANDOFF",
+    "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S4_CODEGEN",
+    "S5_BUILD", "S6_TEST", "S7_DEPLOY", "S8_VERIFY", "S9_HANDOFF",
 ]
 
 _STAGE_ARTIFACTS: dict[str, list[str]] = {
     "S0_INTAKE":    ["app_name", "app_description"],
     "S1_LEGAL":     ["legal_dossier_pdf_path", "overall_risk", "data_classification"],
     "S2_BLUEPRINT": ["blueprint_pdf_path", "selected_stack"],
-    "S3_CODEGEN":   ["github_repo", "files_generated"],
-    "S4_BUILD":     ["build_status", "build_artifacts"],
-    "S5_TEST":      ["test_summary", "all_passed"],
-    "S6_DEPLOY":    ["deployment_url", "deployment_status"],
-    "S7_VERIFY":    ["passed", "health_check_url"],
-    "S8_HANDOFF":   ["handoff_doc_path", "program_docs"],
+    "S4_CODEGEN":   ["github_repo", "files_generated"],
+    "S5_BUILD":     ["build_status", "build_artifacts"],
+    "S6_TEST":      ["test_summary", "all_passed"],
+    "S7_DEPLOY":    ["deployment_url", "deployment_status"],
+    "S8_VERIFY":    ["passed", "health_check_url"],
+    "S9_HANDOFF":   ["handoff_doc_path", "program_docs"],
 }
 
 
@@ -157,12 +157,12 @@ async def _persist_snapshot(state: PipelineState) -> None:
 from factory.pipeline.s0_intake import s0_intake_node
 from factory.pipeline.s1_legal import s1_legal_node
 from factory.pipeline.s2_blueprint import s2_blueprint_node
-from factory.pipeline.s3_codegen import s3_codegen_node
-from factory.pipeline.s4_build import s4_build_node
-from factory.pipeline.s5_test import s5_test_node
-from factory.pipeline.s6_deploy import s6_deploy_node
-from factory.pipeline.s7_verify import s7_verify_node
-from factory.pipeline.s8_handoff import s8_handoff_node
+from factory.pipeline.s4_codegen import s4_codegen_node
+from factory.pipeline.s5_build import s5_build_node
+from factory.pipeline.s6_test import s6_test_node
+from factory.pipeline.s7_deploy import s7_deploy_node
+from factory.pipeline.s8_verify import s8_verify_node
+from factory.pipeline.s9_handoff import s9_handoff_node
 
 
 async def halt_handler_node(state: PipelineState) -> PipelineState:
@@ -189,14 +189,14 @@ def route_after_test(state: PipelineState) -> str:
     if state.current_stage == Stage.HALTED:
         return "halt"
     # Check s5_output first (direct stage output), then project_metadata fallback
-    s5 = state.s5_output or {}
+    s5 = state.s6_output or {}
     test_passed = s5.get("all_passed", state.project_metadata.get("tests_passed", False))
     if test_passed:
-        return "s6_deploy"
+        return "s7_deploy"
     if should_retry(state):
         increment_retry(state)
         logger.info(f"[{state.project_id}] Test failed → retry cycle {state.retry_count}")
-        return "s3_codegen"
+        return "s4_codegen"
     logger.error(f"[{state.project_id}] Test failed, max retries exhausted")
     return "halt"
 
@@ -206,14 +206,14 @@ def route_after_verify(state: PipelineState) -> str:
         return "halt"
     # Check s7_output first, then project_metadata fallback.
     # S7 writes "passed" (not "verified") — check both keys.
-    s7 = state.s7_output or {}
+    s7 = state.s8_output or {}
     verify_passed = s7.get("passed", s7.get("verified", state.project_metadata.get("verify_passed", False)))
     if verify_passed:
-        return "s8_handoff"
+        return "s9_handoff"
     deploy_retries = state.retry_count
     if deploy_retries < 2:
         increment_retry(state)
-        return "s6_deploy"
+        return "s7_deploy"
     return "halt"
 
 
@@ -221,12 +221,12 @@ STAGE_SEQUENCE = [
     ("s0_intake", s0_intake_node),
     ("s1_legal", s1_legal_node),
     ("s2_blueprint", s2_blueprint_node),
-    ("s3_codegen", s3_codegen_node),
-    ("s4_build", s4_build_node),
-    ("s5_test", s5_test_node),
-    ("s6_deploy", s6_deploy_node),
-    ("s7_verify", s7_verify_node),
-    ("s8_handoff", s8_handoff_node),
+    ("s4_codegen", s4_codegen_node),
+    ("s5_build", s5_build_node),
+    ("s6_test", s6_test_node),
+    ("s7_deploy", s7_deploy_node),
+    ("s8_verify", s8_verify_node),
+    ("s9_handoff", s9_handoff_node),
 ]
 
 
@@ -245,54 +245,54 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
         route = route_after_test(state)
         if route == "halt":
             return await halt_handler_node(state)
-        if route == "s3_codegen":
-            state = await s3_codegen_node(state)
+        if route == "s4_codegen":
+            state = await s4_codegen_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S3_CODEGEN")
-            state = await s4_build_node(state)
+            await _notify_stage_complete(state, "S4_CODEGEN")
+            state = await s5_build_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S4_BUILD")
-            state = await s5_test_node(state)
+            await _notify_stage_complete(state, "S5_BUILD")
+            state = await s6_test_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S5_TEST")
+            await _notify_stage_complete(state, "S6_TEST")
             continue
-        if route == "s6_deploy":
+        if route == "s7_deploy":
             break
 
-    state = await s6_deploy_node(state)
+    state = await s7_deploy_node(state)
     if state.current_stage == Stage.HALTED:
         return await halt_handler_node(state)
-    await _notify_stage_complete(state, "S6_DEPLOY")
+    await _notify_stage_complete(state, "S7_DEPLOY")
 
-    state = await s7_verify_node(state)
+    state = await s8_verify_node(state)
     if state.current_stage == Stage.HALTED:
         return await halt_handler_node(state)
-    await _notify_stage_complete(state, "S7_VERIFY")
+    await _notify_stage_complete(state, "S8_VERIFY")
 
     while True:
         route = route_after_verify(state)
         if route == "halt":
             return await halt_handler_node(state)
-        if route == "s6_deploy":
-            state = await s6_deploy_node(state)
+        if route == "s7_deploy":
+            state = await s7_deploy_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S6_DEPLOY")
-            state = await s7_verify_node(state)
+            await _notify_stage_complete(state, "S7_DEPLOY")
+            state = await s8_verify_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S7_VERIFY")
+            await _notify_stage_complete(state, "S8_VERIFY")
             continue
-        if route == "s8_handoff":
+        if route == "s9_handoff":
             break
 
-    state = await s8_handoff_node(state)
+    state = await s9_handoff_node(state)
     if state.current_stage == Stage.HALTED:
         return await halt_handler_node(state)
-    await _notify_stage_complete(state, "S8_HANDOFF")
+    await _notify_stage_complete(state, "S9_HANDOFF")
 
     logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
     return state

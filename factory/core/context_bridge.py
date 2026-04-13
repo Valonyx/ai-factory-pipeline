@@ -34,9 +34,9 @@ if TYPE_CHECKING:
 
 # Stages where context injection adds value (not the very first call)
 _CONTEXT_STAGES = {
-    "S1_LEGAL", "S2_BLUEPRINT", "S3_CODEGEN",
-    "S4_BUILD", "S5_TEST", "S6_DEPLOY",
-    "S7_VERIFY", "S8_HANDOFF",
+    "S1_LEGAL", "S2_BLUEPRINT", "S4_CODEGEN",
+    "S5_BUILD", "S6_TEST", "S7_DEPLOY",
+    "S8_VERIFY", "S9_HANDOFF",
     "WAR_ROOM", "HALTED",
 }
 
@@ -113,16 +113,16 @@ def build_context_block(state: "PipelineState") -> str:
             lines.append(f"│ Auth       : {auth}")
 
     # ── Code generation summary ──
-    if state.s3_output:
-        files = state.s3_output.get("generated_files", {})
+    if state.s4_output:
+        files = state.s4_output.get("generated_files", {})
         if files:
             count = len(files)
             key = [f for f in list(files.keys())[:6]]
             lines.append(f"│ Code       : {count} files generated ({', '.join(key)})")
 
     # ── Test results ──
-    if state.s5_output:
-        s5 = state.s5_output
+    if state.s6_output:
+        s5 = state.s6_output
         passed = s5.get("passed_tests", 0)
         total = s5.get("total_tests", 0)
         if total:
@@ -175,7 +175,7 @@ def inject_context(prompt: str, state: "PipelineState") -> str:
         state.s0_output is not None
         or state.s1_output is not None
         or state.s2_output is not None
-        or state.s3_output is not None
+        or state.s4_output is not None
         or getattr(state, "war_room_active", False)
         or stage_name in _CONTEXT_STAGES
     )
@@ -212,7 +212,7 @@ async def inject_context_async(
         state.s0_output is not None
         or state.s1_output is not None
         or state.s2_output is not None
-        or state.s3_output is not None
+        or state.s4_output is not None
         or getattr(state, "war_room_active", False)
         or stage_name in _CONTEXT_STAGES
     )

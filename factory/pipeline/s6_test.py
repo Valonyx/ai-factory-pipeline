@@ -1,8 +1,8 @@
 """
-AI Factory Pipeline v5.6 — S5 Test Node
+AI Factory Pipeline v5.6 — S6 Test Node
 
 Implements:
-  - §4.6 S5 Test (generate + run + analyze tests)
+  - §4.6 S6 Test (generate + run + analyze tests)
   - §4.6.1 Pre-Deploy Operator Acknowledgment Gate (FIX-08)
   - §4.6.2 Deploy decision waiting with timeout
   - War Room feedback on test failures
@@ -31,7 +31,7 @@ from factory.core.execution import ExecutionModeManager
 from factory.core.user_space import enforce_user_space
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
-logger = logging.getLogger("factory.pipeline.s5_test")
+logger = logging.getLogger("factory.pipeline.s6_test")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -53,12 +53,12 @@ AUTOPILOT_DEPLOY_TIMEOUT = int(os.getenv("AUTOPILOT_DEPLOY_TIMEOUT", "900"))  # 
 
 
 # ═══════════════════════════════════════════════════════════════════
-# §4.6 S5 Test Node
+# §4.6 S6 Test Node
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pipeline_node(Stage.S5_TEST)
-async def s5_test_node(state: PipelineState) -> PipelineState:
+@pipeline_node(Stage.S6_TEST)
+async def s6_test_node(state: PipelineState) -> PipelineState:
     """S5: Test — generate and run tests, analyze results.
 
     Spec: §4.6
@@ -70,7 +70,7 @@ async def s5_test_node(state: PipelineState) -> PipelineState:
     Cost target: <$0.50
     """
     blueprint_data = state.s2_output or {}
-    files = (state.s3_output or {}).get("generated_files", {})
+    files = (state.s4_output or {}).get("generated_files", {})
     stack_value = blueprint_data.get("selected_stack", "flutterflow")
 
     try:
@@ -84,7 +84,7 @@ async def s5_test_node(state: PipelineState) -> PipelineState:
     test_files_exist = any("test" in k.lower() for k in files.keys())
     if not test_files_exist:
         files = await _generate_test_suite(state, blueprint_data, files, stack)
-        state.s3_output["generated_files"] = files
+        state.s4_output["generated_files"] = files
 
     # ── Step 2: Run tests ──
     test_cmd = TEST_COMMANDS.get(stack, "echo 'No test runner'")
@@ -99,7 +99,7 @@ async def s5_test_node(state: PipelineState) -> PipelineState:
 
     # ── Step 3: Analyze results ──
     test_output = await _analyze_test_results(state, result)
-    state.s5_output = test_output
+    state.s6_output = test_output
     state.project_metadata["tests_passed"] = test_output.get("passed", False)
 
     # ── Step 4: Pre-deploy gate (FIX-08) ──
@@ -107,14 +107,14 @@ async def s5_test_node(state: PipelineState) -> PipelineState:
         deploy_approved = await pre_deploy_gate(state)
         if not deploy_approved:
             # Operator cancelled — mark as not passed to route back
-            state.s5_output["passed"] = False
-            state.s5_output["deploy_cancelled"] = True
+            state.s6_output["passed"] = False
+            state.s6_output["deploy_cancelled"] = True
             logger.info(
                 f"[{state.project_id}] Deploy cancelled by operator"
             )
 
     logger.info(
-        f"[{state.project_id}] S5 Test: "
+        f"[{state.project_id}] S6 Test: "
         f"passed={test_output.get('passed')}, "
         f"total={test_output.get('total_tests', 0)}, "
         f"failed={test_output.get('failed_tests', 0)}"
@@ -153,7 +153,7 @@ async def _generate_test_suite(
         f"- Integration test for auth flow (if applicable)\n\n"
         f"Return JSON (no markdown): {{\"file_path\": \"file_content\", ...}}"
     )
-    _test_prompt = await enrich_prompt("s5_test", _test_base, state, scout=False)
+    _test_prompt = await enrich_prompt("s6_test", _test_base, state, scout=False)
     test_result = await call_ai(
         role=AIRole.ENGINEER,
         prompt=_test_prompt,
@@ -247,7 +247,7 @@ async def pre_deploy_gate(state: PipelineState) -> bool:
 
     project_name = (state.s0_output or {}).get("app_name", state.project_id)
     stack = state.selected_stack.value if state.selected_stack else "unknown"
-    test_summary = state.s5_output or {}
+    test_summary = state.s6_output or {}
     passed = test_summary.get("passed_tests", 0)
     total = test_summary.get("total_tests", 0)
     failed = test_summary.get("failed_tests", 0)
@@ -392,7 +392,7 @@ async def _log_deploy_consent(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "method": method,
         "stack": state.selected_stack.value if state.selected_stack else "unknown",
-        "test_results": state.s5_output,
+        "test_results": state.s6_output,
     }
     logger.info(
         f"[FIX-08] DeploymentConsent: "
@@ -413,7 +413,7 @@ async def _log_deploy_consent(
                 "details": {
                     "method": method,
                     "stack": state.selected_stack.value if state.selected_stack else "unknown",
-                    "stage": "s5_test",
+                    "stage": "s6_test",
                 },
             }).execute()
     except Exception as e:
@@ -421,4 +421,4 @@ async def _log_deploy_consent(
 
 
 # Register with DAG (replaces stub)
-register_stage_node("s5_test", s5_test_node)
+register_stage_node("s6_test", s6_test_node)

@@ -56,12 +56,12 @@ _STAGE_BUDGET_LIMITS: dict = {
     "S0_INTAKE":    0.50,
     "S1_LEGAL":     1.00,
     "S2_BLUEPRINT": 2.00,
-    "S3_CODEGEN":   5.00,
-    "S4_BUILD":     3.00,
-    "S5_TEST":      2.00,
-    "S6_DEPLOY":    1.00,
-    "S7_VERIFY":    1.00,
-    "S8_HANDOFF":   0.50,
+    "S4_CODEGEN":   5.00,
+    "S5_BUILD":     3.00,
+    "S6_TEST":      2.00,
+    "S7_DEPLOY":    1.00,
+    "S8_VERIFY":    1.00,
+    "S9_HANDOFF":   0.50,
 }
 
 

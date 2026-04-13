@@ -40,17 +40,17 @@ LEGAL_CHECKS_BY_STAGE: dict[Stage, dict[str, list[str]]] = {
         "pre":  ["ministry_of_commerce_licensing"],
         "post": ["blueprint_legal_compliance"],
     },
-    Stage.S3_CODEGEN: {
+    Stage.S4_CODEGEN: {
         "post": ["pdpl_consent_checkboxes", "data_residency_compliance"],
     },
-    Stage.S4_BUILD: {
+    Stage.S5_BUILD: {
         "post": ["no_prohibited_sdks"],
     },
-    Stage.S6_DEPLOY: {
+    Stage.S7_DEPLOY: {
         "pre":  ["cst_time_of_day_restrictions"],
         "post": ["deployment_region_compliance"],
     },
-    Stage.S8_HANDOFF: {
+    Stage.S9_HANDOFF: {
         "post": ["all_legal_docs_generated", "final_compliance_sign_off"],
     },
 }
@@ -204,15 +204,16 @@ def transition_to(state: PipelineState, stage: Stage) -> None:
 
 
 _STAGE_PROGRESS: dict[Stage, str] = {
-    Stage.S0_INTAKE:    "📥 *S0 Intake* — requirements parsed and project initialized",
-    Stage.S1_LEGAL:     "⚖️ *S1 Legal* — compliance checks passed",
-    Stage.S2_BLUEPRINT: "🏗 *S2 Blueprint* — architecture and design system ready",
-    Stage.S3_CODEGEN:   "💻 *S3 CodeGen* — source files generated",
-    Stage.S4_BUILD:     "🔨 *S4 Build* — artefacts compiled",
-    Stage.S5_TEST:      "🧪 *S5 Tests* — all test suites passed",
-    Stage.S6_DEPLOY:    "🚀 *S6 Deploy* — app deployed successfully",
-    Stage.S7_VERIFY:    "✅ *S7 Verify* — post-deploy checks passed",
-    Stage.S8_HANDOFF:   "📦 *S8 Handoff* — assets and docs delivered",
+    Stage.S0_INTAKE:    "📥 *S0 Intake* (1/10) — requirements parsed and project initialized",
+    Stage.S1_LEGAL:     "⚖️ *S1 Legal* (2/10) — compliance checks passed",
+    Stage.S2_BLUEPRINT: "🏗 *S2 Blueprint* (3/10) — architecture and SE documentation ready",
+    Stage.S3_DESIGN:    "🎨 *S3 Design* (4/10) — UI/UX design system approved",
+    Stage.S4_CODEGEN:   "💻 *S4 CodeGen* (5/10) — source files generated",
+    Stage.S5_BUILD:     "🔨 *S5 Build* (6/10) — artefacts compiled",
+    Stage.S6_TEST:      "🧪 *S6 Test* (7/10) — all test suites passed",
+    Stage.S7_DEPLOY:    "🚀 *S7 Deploy* (8/10) — app deployed successfully",
+    Stage.S8_VERIFY:    "✅ *S8 Verify* (9/10) — post-deploy checks passed",
+    Stage.S9_HANDOFF:   "📦 *S9 Handoff* (10/10) — assets and docs delivered",
 }
 
 
@@ -274,26 +275,26 @@ MAX_VERIFY_RETRIES = 2
 
 
 def route_after_test(state: PipelineState) -> str:
-    """Route after S5 Test.
+    """Route after S6 Test.
 
-    Spec: §2.7.1
-    Pass → S6 Deploy (via pre-deploy gate)
-    Fail (retries remaining) → S3 CodeGen (fix loop)
+    Spec: §2.7.1 (v5.8)
+    Pass → S7 Deploy (via pre-deploy gate)
+    Fail (retries remaining) → S4 CodeGen (fix loop)
     Fail (retries exhausted) → Halt
     """
-    test_output = state.s5_output or {}
+    test_output = state.s6_output or {}
     all_passed = test_output.get("passed", False)
 
     if all_passed:
-        return "s6_deploy"
+        return "s7_deploy"
 
     retry_count = state.retry_count or 0
     if retry_count < MAX_TEST_RETRIES:
         state.retry_count = retry_count + 1
         logger.warning(
-            f"[{state.project_id}] Tests failed — retry {state.retry_count}/{MAX_TEST_RETRIES} → S3"
+            f"[{state.project_id}] Tests failed — retry {state.retry_count}/{MAX_TEST_RETRIES} → S4"
         )
-        return "s3_codegen"
+        return "s4_codegen"
 
     logger.error(
         f"[{state.project_id}] Tests failed after {MAX_TEST_RETRIES} retries → HALT"
@@ -307,26 +308,26 @@ def route_after_test(state: PipelineState) -> str:
 
 
 def route_after_verify(state: PipelineState) -> str:
-    """Route after S7 Verify.
+    """Route after S8 Verify.
 
-    Spec: §2.7.1
-    Pass → S8 Handoff
-    Fail (retries remaining) → S6 Deploy (redeploy)
+    Spec: §2.7.1 (v5.8)
+    Pass → S9 Handoff
+    Fail (retries remaining) → S7 Deploy (redeploy)
     Fail (retries exhausted) → Halt
     """
-    verify_output = state.s7_output or {}
+    verify_output = state.s8_output or {}
     all_passed = verify_output.get("passed", False)
 
     if all_passed:
-        return "s8_handoff"
+        return "s9_handoff"
 
     verify_retries = state.project_metadata.get("verify_retries", 0)
     if verify_retries < MAX_VERIFY_RETRIES:
         state.project_metadata["verify_retries"] = verify_retries + 1
         logger.warning(
-            f"[{state.project_id}] Verify failed — retry → S6"
+            f"[{state.project_id}] Verify failed — retry → S7"
         )
-        return "s6_deploy"
+        return "s7_deploy"
 
     logger.error(
         f"[{state.project_id}] Verify failed after {MAX_VERIFY_RETRIES} retries → HALT"
@@ -370,30 +371,31 @@ def build_pipeline_graph():
         # Entry point
         graph.set_entry_point("s0_intake")
 
-        # Linear edges: S0→S1→S2→S3→S4→S5
+        # Linear edges: S0→S1→S2→S3→S4→S5→S6
         graph.add_edge("s0_intake", "s1_legal")
         graph.add_edge("s1_legal", "s2_blueprint")
-        graph.add_edge("s2_blueprint", "s3_codegen")
-        graph.add_edge("s3_codegen", "s4_build")
-        graph.add_edge("s4_build", "s5_test")
+        graph.add_edge("s2_blueprint", "s3_design")
+        graph.add_edge("s3_design", "s4_codegen")
+        graph.add_edge("s4_codegen", "s5_build")
+        graph.add_edge("s5_build", "s6_test")
 
-        # Conditional: S5 → S6 | S3 | halt
-        graph.add_conditional_edges("s5_test", route_after_test, {
-            "s6_deploy": "s6_deploy",
-            "s3_codegen": "s3_codegen",
+        # Conditional: S6 → S7 | S4 | halt
+        graph.add_conditional_edges("s6_test", route_after_test, {
+            "s7_deploy": "s7_deploy",
+            "s4_codegen": "s4_codegen",
             "halt": "halt_handler",
         })
 
-        graph.add_edge("s6_deploy", "s7_verify")
+        graph.add_edge("s7_deploy", "s8_verify")
 
-        # Conditional: S7 → S8 | S6 | halt
-        graph.add_conditional_edges("s7_verify", route_after_verify, {
-            "s8_handoff": "s8_handoff",
-            "s6_deploy": "s6_deploy",
+        # Conditional: S8 → S9 | S7 | halt
+        graph.add_conditional_edges("s8_verify", route_after_verify, {
+            "s9_handoff": "s9_handoff",
+            "s7_deploy": "s7_deploy",
             "halt": "halt_handler",
         })
 
-        graph.add_edge("s8_handoff", END)
+        graph.add_edge("s9_handoff", END)
         graph.add_edge("halt_handler", END)
 
         compiled = graph.compile()
@@ -417,10 +419,10 @@ class SimpleExecutor:
     """
 
     async def ainvoke(self, state: PipelineState) -> PipelineState:
-        """Execute the pipeline sequentially."""
+        """Execute the pipeline sequentially (v5.8: 10 stages)."""
         stage_sequence = [
-            "s0_intake", "s1_legal", "s2_blueprint",
-            "s3_codegen", "s4_build", "s5_test",
+            "s0_intake", "s1_legal", "s2_blueprint", "s3_design",
+            "s4_codegen", "s5_build", "s6_test",
         ]
 
         for name in stage_sequence:
@@ -435,20 +437,20 @@ class SimpleExecutor:
                     state = await fn_halt(state)
                 return state
 
-        # Route after S5
+        # Route after S6 Test
         route = route_after_test(state)
         if route == "halt":
             fn_halt = _stage_nodes.get("halt_handler")
             if fn_halt:
                 state = await fn_halt(state)
             return state
-        elif route == "s3_codegen":
+        elif route == "s4_codegen":
             # Simplified: just halt on retry for SimpleExecutor
             logger.info("SimpleExecutor: test retry not supported, halting")
             return state
 
-        # S6→S7→S8
-        for name in ["s6_deploy", "s7_verify"]:
+        # S7→S8
+        for name in ["s7_deploy", "s8_verify"]:
             fn = _stage_nodes.get(name)
             if fn:
                 state = await fn(state)
@@ -458,7 +460,7 @@ class SimpleExecutor:
                     state = await fn_halt(state)
                 return state
 
-        # Route after S7
+        # Route after S8 Verify
         route = route_after_verify(state)
         if route == "halt":
             fn_halt = _stage_nodes.get("halt_handler")
@@ -466,10 +468,10 @@ class SimpleExecutor:
                 state = await fn_halt(state)
             return state
 
-        # S8
-        fn_s8 = _stage_nodes.get("s8_handoff")
-        if fn_s8:
-            state = await fn_s8(state)
+        # S9
+        fn_s9 = _stage_nodes.get("s9_handoff")
+        if fn_s9:
+            state = await fn_s9(state)
 
         return state
 

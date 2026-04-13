@@ -190,13 +190,13 @@ class HeartbeatMonitor:
         """Background task running during pipeline execution.
 
         Spec: §2.4.2
-        Runs until S8_HANDOFF or HALTED.
+        Runs until S9_HANDOFF or HALTED.
         """
         self._running = True
         logger.info(f"[{self.state.project_id}] Heartbeat monitor started")
 
         while self._running:
-            if self.state.current_stage in (Stage.S8_HANDOFF, Stage.HALTED):
+            if self.state.current_stage in (Stage.S9_HANDOFF, Stage.HALTED):
                 break
 
             alive = await self.ping()

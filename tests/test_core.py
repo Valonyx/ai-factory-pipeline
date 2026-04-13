@@ -55,7 +55,7 @@ class TestPipelineState:
     def test_all_stages(self):
         stages = list(Stage)
         assert Stage.S0_INTAKE in stages
-        assert Stage.S8_HANDOFF in stages
+        assert Stage.S9_HANDOFF in stages
         assert Stage.HALTED in stages
 
 

@@ -1,22 +1,28 @@
 """
-AI Factory Pipeline v5.6 — S2 Blueprint Node
+AI Factory Pipeline v5.8 — S2 Blueprint Node
 
 Implements:
   - §4.3 S2 Blueprint + Stack Selection + Design
+  - Phase 0: S1 legal dossier ingestion
   - Phase 1: Stack selection (Copilot 4-way or Autopilot auto)
   - Phase 2: Architecture design (Strategist)
-  - Phase 3: Blueprint generation (Strategist)
+  - Phase 3: Blueprint assembly
+  - Phase 3.5: IEEE 20-doc blueprint suite (Scout→Strategist→Engineer + verification)
   - Phase 4: Design system (Vibe Check)
   - Phase 5: Compliance artifact generation (FIX-07)
+  - Phase 8: Stack Selection ADR (project-scoped, deduplicated)
+  - Phase 10: Mother Memory — blueprint decisions
 
-Spec Authority: v5.6 §4.3, §4.3.1, §3.4
+Spec Authority: v5.8 §4.3, §4.3.1, §3.4
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from factory.core.state import (
@@ -223,6 +229,11 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
         return await _s2_modify_blueprint(state, requirements)
 
     # ══════════════════════════════════════
+    # Phase 0: Ingest S1 Legal Dossier
+    # ══════════════════════════════════════
+    legal_constraints = await _ingest_s1_dossier(state, legal_output)
+
+    # ══════════════════════════════════════
     # Phase 1: Stack Selection
     # ══════════════════════════════════════
     if state.autonomy_mode == AutonomyMode.COPILOT:
@@ -315,6 +326,19 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
         "services": architecture.get("services", {}),
         "env_vars": architecture.get("env_vars", {}),
     }
+
+    # ══════════════════════════════════════
+    # Phase 3.5: IEEE 20-Document Blueprint Suite
+    # ══════════════════════════════════════
+    ieee_docs = await _generate_ieee_blueprint_suite(
+        state, requirements, legal_output, legal_constraints, blueprint_data,
+    )
+    if ieee_docs:
+        blueprint_data["ieee_docs"] = {k: v[:200] for k, v in ieee_docs.items()}  # summaries only in state
+        blueprint_data["ieee_doc_count"] = len(ieee_docs)
+        logger.info(
+            f"[{state.project_id}] IEEE suite: {len(ieee_docs)} documents generated"
+        )
 
     # ══════════════════════════════════════
     # Phase 4: Design System (Vibe Check)
@@ -410,13 +434,538 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     except Exception as _bp_err:
         logger.warning(f"[{state.project_id}] Blueprint PDF failed (non-fatal): {_bp_err}")
 
+    # ══════════════════════════════════════
+    # Phase 10: Mother Memory — Blueprint Nodes
+    # ══════════════════════════════════════
+    await _write_blueprint_to_mother_memory(state, blueprint_data, selected_stack)
+
     logger.info(
         f"[{state.project_id}] S2 complete: "
         f"stack={selected_stack.value}, "
         f"screens={len(architecture.get('screens', []))}, "
-        f"collections={len(architecture.get('data_model', []))}"
+        f"collections={len(architecture.get('data_model', []))}, "
+        f"ieee_docs={len(ieee_docs)}"
     )
     return state
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.3 Phase 0 — S1 Legal Dossier Ingestion
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _ingest_s1_dossier(
+    state: PipelineState,
+    legal_output: dict,
+) -> dict:
+    """Extract actionable legal constraints from S1 output for Blueprint use.
+
+    Spec: v5.8 §4.3 Phase 0
+
+    Returns a dict of constraints that Blueprint phases must respect:
+    - blocked_features: list of feature IDs S2 must not design
+    - required_consents: list of consent points to wire into screens
+    - data_residency: "KSA" | "GCC" | "global"
+    - payment_sandbox: bool — True if payments must stay in SANDBOX mode
+    - pdpl_obligations: list of PDPL-specific data handling requirements
+    - inapp_texts: dict of UI text strings from S1 Quick Fix
+    """
+    constraints: dict = {
+        "blocked_features": legal_output.get("blocked_features", []),
+        "required_consents": legal_output.get("required_consents", []),
+        "data_residency": legal_output.get("data_residency", "KSA"),
+        "payment_sandbox": legal_output.get("payment_mode", "SANDBOX") == "SANDBOX",
+        "pdpl_obligations": legal_output.get("pdpl_obligations", []),
+        "risk_level": legal_output.get("risk_level", "MEDIUM"),
+        "inapp_texts": legal_output.get("inapp_texts", {}),
+        "compliance_matrix": legal_output.get("compliance_matrix", []),
+    }
+
+    blocked = constraints["blocked_features"]
+    if blocked:
+        logger.info(
+            f"[{state.project_id}] S1→S2: {len(blocked)} blocked features "
+            f"will be excluded from architecture: {blocked[:3]}"
+        )
+    else:
+        logger.info(
+            f"[{state.project_id}] S1→S2: dossier ingested — "
+            f"risk={constraints['risk_level']}, "
+            f"sandbox={constraints['payment_sandbox']}, "
+            f"residency={constraints['data_residency']}"
+        )
+
+    return constraints
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.3 Phase 3.5 — IEEE 20-Document Blueprint Suite
+# ═══════════════════════════════════════════════════════════════════
+
+# 20 IEEE-standard document types for a complete app blueprint
+IEEE_DOC_SPECS: list[dict] = [
+    # ── Tier 1: Business / Product ───────────────────────────────
+    {
+        "id": "prd",
+        "name": "Product Requirements Document",
+        "abbr": "PRD",
+        "prompt_focus": "user stories, acceptance criteria, priority (MoSCoW), personas",
+        "role": "strategist",
+        "priority": 1,
+    },
+    {
+        "id": "brd",
+        "name": "Business Requirements Document",
+        "abbr": "BRD",
+        "prompt_focus": "business objectives, stakeholders, success metrics, ROI, KSA market context",
+        "role": "strategist",
+        "priority": 1,
+    },
+    {
+        "id": "srs",
+        "name": "Software Requirements Specification",
+        "abbr": "SRS (IEEE 830)",
+        "prompt_focus": "functional + non-functional requirements, constraints, system interfaces",
+        "role": "engineer",
+        "priority": 1,
+    },
+    # ── Tier 2: Architecture ──────────────────────────────────────
+    {
+        "id": "sad",
+        "name": "Software Architecture Document",
+        "abbr": "SAD",
+        "prompt_focus": "C4 model (Context/Container/Component), patterns, tech decisions, ADRs",
+        "role": "strategist",
+        "priority": 2,
+    },
+    {
+        "id": "api_spec",
+        "name": "API Specification",
+        "abbr": "API Spec (OpenAPI 3.1)",
+        "prompt_focus": "endpoints, request/response schemas, auth, rate limits, error codes",
+        "role": "engineer",
+        "priority": 2,
+    },
+    {
+        "id": "data_model",
+        "name": "Data Model Specification",
+        "abbr": "Data Model",
+        "prompt_focus": "entity-relationship diagram (text), collections/tables, indexes, relationships",
+        "role": "engineer",
+        "priority": 2,
+    },
+    {
+        "id": "security_arch",
+        "name": "Security Architecture Document",
+        "abbr": "SecArch",
+        "prompt_focus": "threat model, OWASP Top 10, KSA PDPL data handling, auth flows, encryption",
+        "role": "strategist",
+        "priority": 2,
+    },
+    # ── Tier 3: Operations ────────────────────────────────────────
+    {
+        "id": "deploy_arch",
+        "name": "Deployment Architecture",
+        "abbr": "DeployArch",
+        "prompt_focus": "infra topology, CI/CD pipeline, environments (dev/staging/prod), IaC",
+        "role": "engineer",
+        "priority": 3,
+    },
+    {
+        "id": "monitoring_plan",
+        "name": "Monitoring & Observability Plan",
+        "abbr": "ObsPlan",
+        "prompt_focus": "metrics, logs, traces, alerting thresholds, SLOs/SLAs, dashboards",
+        "role": "engineer",
+        "priority": 3,
+    },
+    {
+        "id": "dr_plan",
+        "name": "Disaster Recovery Plan",
+        "abbr": "DRP",
+        "prompt_focus": "RTO/RPO, backup strategy, failover procedures, runbooks",
+        "role": "strategist",
+        "priority": 3,
+    },
+    {
+        "id": "perf_requirements",
+        "name": "Performance Requirements Specification",
+        "abbr": "PerfReq",
+        "prompt_focus": "load targets, p50/p95/p99 latencies, throughput, scalability limits",
+        "role": "engineer",
+        "priority": 3,
+    },
+    # ── Tier 4: Testing ───────────────────────────────────────────
+    {
+        "id": "test_plan",
+        "name": "Test Plan",
+        "abbr": "TestPlan (IEEE 829)",
+        "prompt_focus": "test strategy, scope, unit/integration/E2E/UAT, test data, pass criteria",
+        "role": "engineer",
+        "priority": 4,
+    },
+    {
+        "id": "qa_matrix",
+        "name": "QA Requirements Matrix",
+        "abbr": "QA Matrix",
+        "prompt_focus": "traceability matrix mapping requirements to test cases",
+        "role": "engineer",
+        "priority": 4,
+    },
+    # ── Tier 5: UX / Design ───────────────────────────────────────
+    {
+        "id": "ux_spec",
+        "name": "UI/UX Specification",
+        "abbr": "UX Spec",
+        "prompt_focus": "screen flows, navigation map, component inventory, interaction patterns",
+        "role": "strategist",
+        "priority": 5,
+    },
+    {
+        "id": "accessibility_spec",
+        "name": "Accessibility Specification",
+        "abbr": "A11y Spec (WCAG 2.2 AA)",
+        "prompt_focus": "WCAG 2.2 AA requirements, colour contrast, touch targets, screen reader support",
+        "role": "engineer",
+        "priority": 5,
+    },
+    # ── Tier 6: Integrations ──────────────────────────────────────
+    {
+        "id": "integration_spec",
+        "name": "Integration Specification",
+        "abbr": "IntegSpec",
+        "prompt_focus": "third-party services, SDKs, webhooks, event contracts, payment gateways",
+        "role": "engineer",
+        "priority": 6,
+    },
+    {
+        "id": "localisation_plan",
+        "name": "Localisation & Internationalisation Plan",
+        "abbr": "L10n Plan",
+        "prompt_focus": "Arabic RTL support, KSA locale, string extraction, date/currency formats",
+        "role": "engineer",
+        "priority": 6,
+    },
+    # ── Tier 7: Compliance / Legal ────────────────────────────────
+    {
+        "id": "privacy_impact",
+        "name": "Privacy Impact Assessment",
+        "abbr": "PIA (PDPL)",
+        "prompt_focus": "PDPL Art. 5-16 compliance, data flows, consent mechanisms, DPA requirements",
+        "role": "strategist",
+        "priority": 7,
+    },
+    # ── Tier 8: Change / Knowledge ────────────────────────────────
+    {
+        "id": "change_mgmt",
+        "name": "Change Management Plan",
+        "abbr": "CMP",
+        "prompt_focus": "change request process, version control strategy, ADR governance",
+        "role": "strategist",
+        "priority": 8,
+    },
+    {
+        "id": "glossary",
+        "name": "Project Glossary",
+        "abbr": "Glossary",
+        "prompt_focus": "domain terms, acronyms, KSA-specific terminology, Arabic-English equivalents",
+        "role": "engineer",
+        "priority": 8,
+    },
+]
+
+_IEEE_ROLE_MAP = {
+    "strategist": AIRole.STRATEGIST,
+    "engineer": AIRole.ENGINEER,
+}
+_IEEE_SCOUT_VERIFY_PROMPT = (
+    "You are the Scout verifying a blueprint document section.\n\n"
+    "Document: {doc_name}\n"
+    "Content (first 3000 chars):\n{content}\n\n"
+    "Requirements context:\n{reqs_summary}\n\n"
+    "Return EXACTLY one of:\n"
+    "- 'OK' if the document is complete and aligns with requirements\n"
+    "- 'REVISION_NEEDED: <specific issue in one sentence>' if it needs fixing\n\n"
+    "No other text."
+)
+
+
+async def _generate_ieee_blueprint_suite(
+    state: PipelineState,
+    requirements: dict,
+    legal_output: dict,
+    legal_constraints: dict,
+    blueprint_data: dict,
+) -> dict[str, str]:
+    """Generate the IEEE 20-document blueprint suite.
+
+    Spec: v5.8 §4.3 Phase 3.5
+
+    Flow per document:
+      Strategist/Engineer writes → Scout verifies → revise if needed (max 3 rounds)
+
+    All documents saved to /tmp/factory_projects/{project_id}/blueprint/
+    Returns dict: {doc_id: full_content}
+    """
+    app_name = blueprint_data.get("app_name", state.project_id)
+    stack = blueprint_data.get("selected_stack", "unknown")
+    screens = blueprint_data.get("screens", [])
+    data_model = blueprint_data.get("data_model", [])
+    api_endpoints = blueprint_data.get("api_endpoints", [])
+
+    reqs_summary = (
+        f"App: {app_name}\n"
+        f"Category: {requirements.get('app_category', 'other')}\n"
+        f"Stack: {stack}\n"
+        f"Platforms: {requirements.get('target_platforms', [])}\n"
+        f"Features (must): {requirements.get('features_must', [])[:10]}\n"
+        f"Blocked features: {legal_constraints.get('blocked_features', [])}\n"
+        f"Risk level: {legal_constraints.get('risk_level', 'MEDIUM')}\n"
+        f"Screens: {[s.get('name') for s in screens[:8]]}\n"
+        f"Data collections: {[c.get('collection') for c in data_model[:6]]}\n"
+        f"API endpoints: {len(api_endpoints)}"
+    )
+
+    # Project-scoped output directory
+    blueprint_dir = Path(f"/tmp/factory_projects/{state.project_id}/blueprint")
+    blueprint_dir.mkdir(parents=True, exist_ok=True)
+
+    docs: dict[str, str] = {}
+    sorted_specs = sorted(IEEE_DOC_SPECS, key=lambda d: d["priority"])
+
+    for spec in sorted_specs:
+        doc_id = spec["id"]
+        doc_name = spec["name"]
+        abbr = spec["abbr"]
+        focus = spec["prompt_focus"]
+        role = _IEEE_ROLE_MAP.get(spec["role"], AIRole.ENGINEER)
+
+        logger.info(
+            f"[{state.project_id}] IEEE [{doc_id}]: generating {abbr}"
+        )
+
+        # Build doc-specific context
+        extra_context = ""
+        if doc_id == "security_arch":
+            extra_context = (
+                f"Compliance obligations: {legal_constraints.get('pdpl_obligations', [])}\n"
+                f"Payment sandbox: {legal_constraints.get('payment_sandbox')}\n"
+                f"Data residency: {legal_constraints.get('data_residency')}"
+            )
+        elif doc_id == "privacy_impact":
+            extra_context = (
+                f"Legal dossier risk_level: {legal_output.get('risk_level', 'MEDIUM')}\n"
+                f"Compliance matrix items: {len(legal_constraints.get('compliance_matrix', []))}"
+            )
+        elif doc_id == "api_spec":
+            extra_context = (
+                f"API endpoints from architecture:\n"
+                + "\n".join(
+                    f"  {ep.get('method','GET')} {ep.get('path','/')} — {ep.get('purpose','')}"
+                    for ep in api_endpoints[:20]
+                )
+            )
+        elif doc_id == "data_model":
+            extra_context = (
+                "Collections from architecture:\n"
+                + "\n".join(
+                    f"  {c.get('collection')}: {[f['name'] for f in c.get('fields', [])[:5]]}"
+                    for c in data_model[:10]
+                )
+            )
+        elif doc_id == "localisation_plan":
+            extra_context = (
+                f"KSA market: Arabic RTL mandatory. "
+                f"Hijri calendar support required."
+            )
+
+        write_prompt = (
+            f"Write the complete {doc_name} ({abbr}) for this project.\n\n"
+            f"App context:\n{reqs_summary}\n\n"
+            f"{('Additional context:\n' + extra_context + chr(10)) if extra_context else ''}"
+            f"Focus: {focus}\n\n"
+            f"Requirements:\n"
+            f"- Professional, production-quality document\n"
+            f"- Use Markdown with clear headings (##, ###)\n"
+            f"- Include concrete, app-specific details (not generic placeholders)\n"
+            f"- KSA / PDPL compliant where applicable\n"
+            f"- Mark uncertain items as [TBD:reason]\n\n"
+            f"Return the complete document in Markdown."
+        )
+
+        content = await call_ai(
+            role=role,
+            prompt=write_prompt,
+            state=state,
+            action="plan_architecture" if role == AIRole.STRATEGIST else "write_code",
+        )
+
+        # Scout iterative verification (max 3 rounds)
+        for revision_round in range(3):
+            verify_result = await call_ai(
+                role=AIRole.SCOUT,
+                prompt=_IEEE_SCOUT_VERIFY_PROMPT.format(
+                    doc_name=doc_name,
+                    content=content[:3000],
+                    reqs_summary=reqs_summary,
+                ),
+                state=state,
+                action="general",
+            )
+
+            verdict = verify_result.strip()
+            if verdict.startswith("OK"):
+                logger.info(
+                    f"[{state.project_id}] IEEE [{doc_id}]: verified OK "
+                    f"(round {revision_round + 1})"
+                )
+                break
+
+            if verdict.startswith("REVISION_NEEDED:"):
+                issue = verdict[len("REVISION_NEEDED:"):].strip()
+                logger.info(
+                    f"[{state.project_id}] IEEE [{doc_id}]: revision needed — {issue}"
+                )
+                content = await call_ai(
+                    role=role,
+                    prompt=(
+                        f"Revise this {doc_name} to fix the following issue:\n"
+                        f"{issue}\n\n"
+                        f"Current document:\n{content[:6000]}\n\n"
+                        f"Return the complete revised document in Markdown."
+                    ),
+                    state=state,
+                    action="plan_architecture" if role == AIRole.STRATEGIST else "write_code",
+                )
+            else:
+                # Unexpected Scout response — treat as OK and move on
+                logger.warning(
+                    f"[{state.project_id}] IEEE [{doc_id}]: unexpected Scout "
+                    f"response '{verdict[:80]}' — treating as OK"
+                )
+                break
+
+        # Tag with generated-by header
+        header = (
+            f"<!-- IEEE Blueprint Suite | {abbr} -->\n"
+            f"<!-- App: {app_name} | Project: {state.project_id} -->\n"
+            f"<!-- Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d')} -->\n\n"
+        )
+        full_content = header + content
+
+        # Save to project dir
+        doc_path = blueprint_dir / f"{doc_id}.md"
+        try:
+            doc_path.write_text(full_content, encoding="utf-8")
+        except Exception as e:
+            logger.warning(
+                f"[{state.project_id}] IEEE [{doc_id}]: could not write file: {e}"
+            )
+
+        docs[doc_id] = full_content
+
+    logger.info(
+        f"[{state.project_id}] IEEE suite complete: "
+        f"{len(docs)}/20 documents in {blueprint_dir}"
+    )
+    return docs
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.3 Phase 10 — Mother Memory Blueprint Nodes
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _write_blueprint_to_mother_memory(
+    state: PipelineState,
+    blueprint_data: dict,
+    selected_stack: "TechStack",
+) -> None:
+    """Write key blueprint decisions to Mother Memory.
+
+    Spec: v5.8 §4.3 Phase 10
+
+    Stores 4 decision nodes:
+    - stack_choice: selected stack + rationale summary
+    - architecture_summary: screens, data model, API count
+    - ieee_blueprint: doc count + project dir
+    - design_system: color palette, typography, design system name
+    """
+    try:
+        from factory.memory.mother_memory import store_pipeline_decision
+
+        app_name = blueprint_data.get("app_name", state.project_id)
+        stack = selected_stack.value
+        screens = blueprint_data.get("screens", [])
+        data_model = blueprint_data.get("data_model", [])
+        api_endpoints = blueprint_data.get("api_endpoints", [])
+
+        # Node 1: Stack choice
+        await store_pipeline_decision(
+            project_id=state.project_id,
+            stage="s2_blueprint",
+            decision_type="stack_choice",
+            content=(
+                f"Stack: {stack} | App: {app_name} | "
+                f"Platforms: {blueprint_data.get('target_platforms', [])} | "
+                f"Auth: {blueprint_data.get('auth_method', 'email')} | "
+                f"Design system: {blueprint_data.get('design_system', 'material3')}"
+            ),
+            operator_id=str(state.operator_id),
+        )
+
+        # Node 2: Architecture summary
+        screen_names = [s.get("name", "?") for s in screens[:10]]
+        collection_names = [c.get("collection", "?") for c in data_model[:8]]
+        await store_pipeline_decision(
+            project_id=state.project_id,
+            stage="s2_blueprint",
+            decision_type="architecture_summary",
+            content=(
+                f"Screens ({len(screens)}): {screen_names} | "
+                f"Collections ({len(data_model)}): {collection_names} | "
+                f"API endpoints: {len(api_endpoints)} | "
+                f"Services: {list(blueprint_data.get('services', {}).keys())}"
+            ),
+            operator_id=str(state.operator_id),
+        )
+
+        # Node 3: IEEE blueprint suite
+        ieee_count = blueprint_data.get("ieee_doc_count", 0)
+        if ieee_count:
+            await store_pipeline_decision(
+                project_id=state.project_id,
+                stage="s2_blueprint",
+                decision_type="ieee_blueprint",
+                content=(
+                    f"Generated {ieee_count}/20 IEEE docs for {app_name} | "
+                    f"Path: /tmp/factory_projects/{state.project_id}/blueprint/"
+                ),
+                operator_id=str(state.operator_id),
+            )
+
+        # Node 4: Design system
+        palette = blueprint_data.get("color_palette", {})
+        await store_pipeline_decision(
+            project_id=state.project_id,
+            stage="s2_blueprint",
+            decision_type="design_system",
+            content=(
+                f"Design system: {blueprint_data.get('design_system', 'material3')} | "
+                f"Visual style: {blueprint_data.get('visual_style', 'minimal')} | "
+                f"Primary color: {palette.get('primary', '#1976D2')} | "
+                f"Font: {blueprint_data.get('typography', {}).get('font_family', 'Inter')}"
+            ),
+            operator_id=str(state.operator_id),
+        )
+
+        logger.info(
+            f"[{state.project_id}] S2→ Mother Memory: 4 blueprint nodes stored"
+        )
+    except Exception as e:
+        logger.warning(
+            f"[{state.project_id}] Mother Memory write failed (non-fatal): {e}"
+        )
 
 
 async def _generate_and_deliver_brand_assets(

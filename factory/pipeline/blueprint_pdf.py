@@ -102,13 +102,27 @@ async def write_stack_adr(
 ) -> str:
     """Write a real ADR file for the stack selection decision.
 
-    Spec: §4.3 — Stack Selection ADR under docs/adr/
+    Spec: §4.3 — Stack Selection ADR under project dir (project-scoped).
     Returns path to the written ADR file.
+
+    ADR dedup: if an ADR for this exact stack already exists in the project
+    dir, return its path without creating a new one.
     """
-    adr_dir = Path("docs") / "adr"
+    # Project-scoped ADR dir — prevents global docs/adr/ accumulation
+    project_dir = Path(f"/tmp/factory_projects/{state.project_id}")
+    adr_dir = project_dir / "docs" / "adr"
     adr_dir.mkdir(parents=True, exist_ok=True)
 
     stack = blueprint_data.get("selected_stack", "unknown")
+
+    # Dedup: skip if ADR for this stack already written for this project
+    existing_for_stack = list(adr_dir.glob(f"*-stack-selection-{stack}.md"))
+    if existing_for_stack:
+        logger.info(
+            f"[{state.project_id}] ADR for {stack} already exists — skipping"
+        )
+        return str(existing_for_stack[0])
+
     adr_id = _next_adr_id(adr_dir)
     adr_path = adr_dir / f"{adr_id:04d}-stack-selection-{stack}.md"
 

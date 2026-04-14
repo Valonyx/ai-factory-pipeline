@@ -52,6 +52,7 @@ STAGE_EMOJI: dict[str, str] = {
     "S0_INTAKE":     "📥",
     "S1_LEGAL":      "⚖️",
     "S2_BLUEPRINT":  "🏗️",
+    "S3_DESIGN":     "🎨",
     "S4_CODEGEN":    "💻",
     "S5_BUILD":      "🔨",
     "S6_TEST":       "🧪",

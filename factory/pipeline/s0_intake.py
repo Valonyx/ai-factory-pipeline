@@ -182,11 +182,11 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
         elif selection == "expand":
             requirements["operator_additions"] = "Operator requested expansion"
 
-    # ── Step 4: Master Mode selection (Copilot only) ──
-    # In AUTOPILOT mode master_mode defaults to BALANCED (set on PipelineState).
-    # In COPILOT mode we present the 4-option mode menu before proceeding.
+    # ── Step 4: Master Mode selection ──
+    # COPILOT mode: present 4-option menu and wait for operator choice.
+    # AUTOPILOT mode: notify operator of active mode (CLI --master-mode flag or default BALANCED).
+    app_name_for_prompt = requirements.get("app_name", "your app")
     if state.autonomy_mode == AutonomyMode.COPILOT:
-        app_name_for_prompt = requirements.get("app_name", "your app")
         try:
             from factory.telegram.decisions import present_decision
             mode_choice = await present_decision(
@@ -207,13 +207,30 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
                 f"[{state.project_id}] S0: Mode selection failed ({e}), "
                 f"defaulting to BALANCED"
             )
+    else:
+        # AUTOPILOT: notify operator of the active mode so every run is transparent
+        try:
+            from factory.telegram.notifications import send_telegram_message
+            mm = state.master_mode
+            await send_telegram_message(
+                state.operator_id,
+                f"{mm.emoji} *Execution mode: {mm.label}*\n"
+                f"Use /switch_mode to change before S1 Legal begins.",
+            )
+        except Exception:
+            pass
+
     # Propagate to metadata so downstream stages can read without importing state
     requirements["master_mode"] = state.master_mode.value
 
     state.s0_output = requirements
-    # Propagate app name so workspace directory uses it (not UUID)
-    if requirements.get("app_name") and not state.idea_name:
-        state.idea_name = requirements["app_name"]
+    # Propagate app name so workspace directory and Telegram display use it (not UUID)
+    if requirements.get("app_name"):
+        if not state.idea_name:
+            state.idea_name = requirements["app_name"]
+        # Fix #8: write back into project_metadata so bot.py completion message
+        # uses app_name instead of falling back to project_id
+        state.project_metadata["app_name"] = requirements["app_name"]
 
     # Store insight for future projects
     from factory.core.stage_enrichment import store_stage_insight

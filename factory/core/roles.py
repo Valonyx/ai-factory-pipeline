@@ -180,7 +180,7 @@ async def call_ai(
     if role == AIRole.SCOUT:
         response, cost = await _call_perplexity_safe(prompt, contract, state)
     else:
-        response, cost = await _call_anthropic(prompt, contract)
+        response, cost = await _call_anthropic(prompt, contract, state, action)
 
     # ── Step 6: Track cost against circuit breaker (§3.6) ──
     phase = state.current_stage.value
@@ -256,60 +256,167 @@ _MODEL_COSTS: dict[str, tuple[float, float]] = {
 
 
 async def _call_anthropic(
-    prompt: str, contract: RoleContract,
+    prompt: str,
+    contract: "RoleContract",
+    state: Optional["PipelineState"] = None,
+    action: str = "general",
 ) -> tuple[str, float]:
-    """Call AI provider using the cascading provider chain.
+    """Call AI provider using ModeRouter + cascading provider chain.
 
-    Spec: §2.2.2
-    Tries each provider in priority order until one succeeds.
-    Chain (dev phase): anthropic → gemini → groq → openrouter → mock
-    Chain (production): anthropic first, falls back on quota/error.
+    Spec: §2.2.2, v5.8 §Phase1.5
+    Provider selection is driven by the active MasterMode via ModeRouter:
+      BASIC    — free providers only (gemini → groq → openrouter → cerebras)
+      BALANCED — paid for CRITICAL calls, cheapest paid for STANDARD, free for BULK
+      CUSTOM   — operator-specified provider preference, balanced fallback
+      TURBO    — highest-performance provider (anthropic opus first); upgrades
+                 all anthropic calls to claude-opus-4-6
 
-    Provider chain auto-switches on 429/quota errors and auto-restores
-    when a higher-priority provider's quota resets.
+    QuotaTracker (v5.8) records every call for monthly quota enforcement.
+    Old ProviderChain kept in sync for backwards-compatibility with ScoutOrchestrator.
     """
     from factory.integrations.provider_chain import (
         ai_chain, is_quota_error, is_auth_error, parse_retry_delay,
     )
+    from factory.core.mode_router import (
+        MasterMode, AI_PROVIDERS, ChainContext, CallCriticality, ModeRouter,
+    )
+    from factory.core.quota_tracker import get_quota_tracker
 
-    # CI / test mock shortcut
+    # CI / test mock shortcut — preserve existing test infrastructure
     if os.getenv("AI_PROVIDER", "").lower() == "mock":
         return (f"[MOCK:{contract.role.value}] {prompt[:80]}", 0.0001)
 
-    # Try providers in chain order until one succeeds
-    tried: list[str] = []
-    for _ in range(len(ai_chain.chain)):
-        provider = ai_chain.get_active()
-        if provider in tried:
-            break
-        tried.append(provider)
+    # ── Resolve active master mode + context from pipeline state ──
+    _CRITICALITY_MAP: dict[str, CallCriticality] = {
+        "write_code":        CallCriticality.CRITICAL,
+        "plan_architecture": CallCriticality.CRITICAL,
+        "decide_legal":      CallCriticality.CRITICAL,
+        "general":           CallCriticality.STANDARD,
+    }
+
+    master_mode = MasterMode.BALANCED
+    project_spend = 0.0
+    project_id = ""
+    stage_name = ""
+    if state is not None:
+        master_mode = getattr(state, "master_mode", MasterMode.BALANCED)
+        project_spend = getattr(state, "total_cost_usd", 0.0)
+        project_id = getattr(state, "project_id", "")
+        stage_name = (
+            state.current_stage.value
+            if getattr(state, "current_stage", None) else ""
+        )
+
+    qt = get_quota_tracker()
+    router = ModeRouter(
+        mode=master_mode,
+        quota_tracker=qt,
+        current_project_spend=project_spend,
+        current_monthly_spend=project_spend,
+    )
+    ctx = ChainContext(
+        chain_name="ai",
+        criticality=_CRITICALITY_MAP.get(action, CallCriticality.STANDARD),
+        stage=stage_name,
+        action=action,
+        project_id=project_id,
+        estimated_tokens=max(len(prompt) // 4, 100),
+    )
+
+    # ── ModeRouter-driven provider loop ──
+    current_provider = await router.select(AI_PROVIDERS, ctx)
+    tried: set[str] = set()
+
+    while current_provider and current_provider.name not in tried:
+        tried.add(current_provider.name)
+        provider_name = current_provider.name
+
+        # TURBO mode: upgrade anthropic calls to opus for maximum output quality
+        effective_contract = contract
+        if master_mode == MasterMode.TURBO and provider_name == "anthropic":
+            try:
+                effective_contract = RoleContract(
+                    role=contract.role,
+                    model="claude-opus-4-6",
+                    can_read_web=contract.can_read_web,
+                    can_write_code=contract.can_write_code,
+                    can_write_files=contract.can_write_files,
+                    can_plan_architecture=contract.can_plan_architecture,
+                    can_decide_legal=contract.can_decide_legal,
+                    can_manage_war_room=contract.can_manage_war_room,
+                    max_output_tokens=contract.max_output_tokens,
+                )
+            except Exception:
+                pass  # keep original contract on any error
 
         try:
-            result = await _call_single_ai_provider(provider, prompt, contract)
-            ai_chain.mark_success(provider)
+            result = await _call_single_ai_provider(
+                provider_name, prompt, effective_contract
+            )
+            text, cost = result
+
+            # Record usage in v5.8 QuotaTracker (non-fatal, async)
+            tokens_est = max(len(prompt) // 4 + len(text) // 4, 10)
+            try:
+                await qt.record_usage(
+                    provider_name, tokens=tokens_est, cost_usd=cost
+                )
+            except Exception:
+                pass  # quota recording never blocks the pipeline
+
+            # Keep old ProviderChain in sync for ScoutOrchestrator compatibility
+            ai_chain.mark_success(provider_name)
             if len(tried) > 1:
-                logger.info(f"AI call succeeded on fallback provider: {provider}")
+                logger.info(
+                    f"[ModeRouter/{master_mode.value}] AI call succeeded on: "
+                    f"{provider_name} (after {len(tried) - 1} fallback(s))"
+                )
             return result
 
         except Exception as e:
             err = str(e)
             if is_quota_error(err):
                 reset_in = parse_retry_delay(err)
-                ai_chain.mark_quota_exhausted(provider, reset_in)
+                ai_chain.mark_quota_exhausted(provider_name, reset_in)
                 logger.warning(
-                    f"[provider-chain] {provider} quota exhausted — "
-                    f"trying next provider"
+                    f"[ModeRouter/{master_mode.value}] {provider_name} quota "
+                    f"exhausted — requesting next provider from router"
                 )
+                next_p = await router.on_quota_exhausted(
+                    current_provider, AI_PROVIDERS, ctx
+                )
+                if next_p.name == provider_name:
+                    # Router signalled halt (BASIC: all free exhausted)
+                    break
+                current_provider = next_p
             elif is_auth_error(err):
-                ai_chain.mark_error(provider, f"auth error: {err[:80]}")
-                logger.error(f"[provider-chain] {provider} auth failed — skipping")
+                ai_chain.mark_error(provider_name, f"auth: {err[:80]}")
+                logger.error(
+                    f"[ModeRouter] {provider_name} auth failed — trying next"
+                )
+                remaining = [p for p in AI_PROVIDERS if p.name not in tried]
+                if not remaining:
+                    break
+                current_provider = await router.select(remaining, ctx)
             else:
-                ai_chain.mark_error(provider, err[:80])
-                logger.warning(f"[provider-chain] {provider} error: {err[:80]}")
+                ai_chain.mark_error(provider_name, err[:80])
+                logger.warning(
+                    f"[ModeRouter] {provider_name} error: {err[:80]} — trying next"
+                )
+                remaining = [p for p in AI_PROVIDERS if p.name not in tried]
+                if not remaining:
+                    break
+                current_provider = await router.select(remaining, ctx)
 
     # All providers exhausted
-    logger.error("[provider-chain] All AI providers exhausted — returning mock")
-    return (f"[ALL-PROVIDERS-EXHAUSTED] {prompt[:80]}", 0.0)
+    mode_hint = (
+        " Use /switch_mode to change execution mode."
+        if master_mode == MasterMode.BASIC else ""
+    )
+    logger.error(
+        f"[ModeRouter/{master_mode.value}] All AI providers exhausted.{mode_hint}"
+    )
+    return (f"[all-providers-exhausted] {prompt[:80]}", 0.0)
 
 
 async def _call_single_ai_provider(

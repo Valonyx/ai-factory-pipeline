@@ -252,12 +252,19 @@ def pipeline_node(stage: Stage):
             await persist_state(state)
 
             # Send per-stage progress notification to operator
+            # v5.8: prefix every notification with active MasterMode emoji
             if state.operator_id:
                 try:
                     from factory.telegram.notifications import send_telegram_message
                     msg = _STAGE_PROGRESS.get(stage)
                     if msg:
-                        await send_telegram_message(state.operator_id, msg)
+                        try:
+                            mode_prefix = f"{state.master_mode.emoji} "
+                        except Exception:
+                            mode_prefix = ""
+                        await send_telegram_message(
+                            state.operator_id, mode_prefix + msg
+                        )
                 except Exception:
                     pass  # Never let notification failure break the pipeline
 

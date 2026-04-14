@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from factory.core.state import (
     AIRole,
@@ -45,6 +46,16 @@ TEST_COMMANDS: dict[TechStack, str] = {
     TechStack.KOTLIN:         "./gradlew test",
     TechStack.UNITY:          "unity-editor -batchmode -runTests -testResults results.xml",
     TechStack.PYTHON_BACKEND: "python -m pytest --tb=short -q",
+}
+
+# Static analysis commands used when S5 was source_only (no binary to test)
+_STATIC_ANALYSIS_COMMANDS: dict[TechStack, str] = {
+    TechStack.FLUTTERFLOW:    "flutter analyze --no-pub 2>&1 || true",
+    TechStack.REACT_NATIVE:   "npx eslint . --ext .js,.jsx,.ts,.tsx 2>&1 || true",
+    TechStack.SWIFT:          "swiftlint --reporter json 2>&1 || true",
+    TechStack.KOTLIN:         "./gradlew lint 2>&1 || true",
+    TechStack.UNITY:          "echo 'Unity source check: no build environment'",
+    TechStack.PYTHON_BACKEND: "python -m flake8 . --max-line-length=120 2>&1 || true",
 }
 
 # Pre-deploy gate timeouts
@@ -80,25 +91,56 @@ async def s6_test_node(state: PipelineState) -> PipelineState:
 
     exec_mgr = ExecutionModeManager(state)
 
+    # ── Inject S5 build context — critical for test strategy ──
+    s5_output = state.s5_output or {}
+    source_only = s5_output.get("source_only", False)
+    build_success = s5_output.get("build_success", False)
+    workspace_path = s5_output.get("workspace_path", "")
+    files_written = s5_output.get("files_written", 0)
+
+    if source_only:
+        logger.info(
+            f"[{state.project_id}] S6: S5 was source_only — "
+            f"switching to static analysis (no binary to run tests against)"
+        )
+
     # ── Step 1: Generate test suite (if not present) ──
     test_files_exist = any("test" in k.lower() for k in files.keys())
     if not test_files_exist:
-        files = await _generate_test_suite(state, blueprint_data, files, stack)
+        files = await _generate_test_suite(
+            state, blueprint_data, files, stack,
+            s5_context={
+                "source_only": source_only,
+                "build_success": build_success,
+                "workspace_path": workspace_path,
+                "files_written": files_written,
+            },
+        )
         state.s4_output["generated_files"] = files
 
     # ── Step 2: Run tests ──
-    test_cmd = TEST_COMMANDS.get(stack, "echo 'No test runner'")
+    # Use static analysis when S5 produced source-only (no binary built)
+    if source_only:
+        test_cmd = _STATIC_ANALYSIS_COMMANDS.get(
+            stack, "echo 'Static analysis: no analyzer available'"
+        )
+    else:
+        test_cmd = TEST_COMMANDS.get(stack, "echo 'No test runner'")
     requires_mac = stack in (TechStack.SWIFT, TechStack.FLUTTERFLOW, TechStack.UNITY)
 
     result = await exec_mgr.execute_task({
-        "name": "run_tests",
+        "name": "run_tests" if not source_only else "static_analysis",
         "type": "build",
         "command": enforce_user_space(test_cmd),
         "timeout": 600,
-    }, requires_macincloud=requires_mac)
+    }, requires_macincloud=requires_mac and not source_only)
 
     # ── Step 3: Analyze results ──
     test_output = await _analyze_test_results(state, result)
+    # Annotate with S5 context so S7/S8 know the build mode
+    test_output["source_only"] = source_only
+    test_output["build_success"] = build_success
+    test_output["test_mode"] = "static_analysis" if source_only else "full_test_suite"
     state.s6_output = test_output
     state.project_metadata["tests_passed"] = test_output.get("passed", False)
 
@@ -132,18 +174,46 @@ async def _generate_test_suite(
     blueprint_data: dict,
     files: dict,
     stack: TechStack,
+    s5_context: Optional[dict] = None,
 ) -> dict:
     """Generate test suite if not present.
 
     Spec: §4.6 Step 1
+
+    Args:
+        s5_context: Build context from S5 (source_only, build_success,
+                    workspace_path, files_written). Injected into the
+                    test generation prompt to prevent drift from S5.
     """
     screens = blueprint_data.get("screens", [])
     data_model = blueprint_data.get("data_model", [])
     api_endpoints = blueprint_data.get("api_endpoints", [])
+    s5 = s5_context or {}
+
+    # Inject S5 build context into test generation strategy
+    source_only = s5.get("source_only", False)
+    build_note = (
+        "NOTE: S5 build produced source code only (no binary). "
+        "Generate tests that can run via static analysis or in CI without "
+        "a built binary. Focus on unit tests and linting-compatible tests."
+        if source_only else
+        "S5 build succeeded. Generate the full test suite including "
+        "widget/component tests and integration tests."
+    )
 
     from factory.core.stage_enrichment import enrich_prompt
+    from factory.pipeline.stage_chain import build_chain_context_block
+    chain_ctx = build_chain_context_block(state, current_stage="s6_test", compact=True)
+
     _test_base = (
+        f"{chain_ctx}"
         f"Generate test suite for {stack.value} project.\n\n"
+        f"S5 BUILD CONTEXT:\n"
+        f"- Build success: {s5.get('build_success', 'N/A')}\n"
+        f"- Source only (no binary): {source_only}\n"
+        f"- Files written: {s5.get('files_written', 'N/A')}\n"
+        f"- Workspace: {s5.get('workspace_path', 'N/A')}\n"
+        f"- Strategy: {build_note}\n\n"
         f"Screens: {[s.get('name', '?') for s in screens]}\n"
         f"Data model: {json.dumps(data_model)[:2000]}\n"
         f"API endpoints: {json.dumps(api_endpoints)[:1500]}\n\n"

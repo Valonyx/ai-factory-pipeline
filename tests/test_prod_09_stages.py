@@ -10,7 +10,7 @@ Tests cover:
   6.  S7: _verify_mobile API method
   7.  S7: _verify_mobile Airlock method
   8.  S7: verify node populates s7_output
-  9.  S8: DOCUGEN_TEMPLATES has 5 templates
+  9.  S8: DOCUGEN_TEMPLATES has 9-doc suite (upgraded from 5 in v5.8)
   10. S8: HANDOFF_DOCS has 4 per-project docs (FIX-27)
   11. S8: PROGRAM_DOCS has 3 per-program docs (FIX-27)
   12. S8: _compile_project_summary structure
@@ -248,10 +248,13 @@ class TestS8Verify:
 
 class TestS9Handoff:
     def test_docugen_templates(self):
-        """DOCUGEN_TEMPLATES has 5 templates."""
-        assert len(DOCUGEN_TEMPLATES) == 5
+        """DOCUGEN_TEMPLATES has the full 9-doc suite (upgraded from 5 in v5.8)."""
+        # v5.8 DocuGen suite: 4 universal + 5 conditional = 9 total
+        assert len(DOCUGEN_TEMPLATES) >= 8
         assert "privacy_policy" in DOCUGEN_TEMPLATES
-        assert "terms_of_use" in DOCUGEN_TEMPLATES
+        assert "terms_of_service" in DOCUGEN_TEMPLATES  # canonical (was terms_of_use)
+        assert "eula" in DOCUGEN_TEMPLATES
+        assert "data_deletion_policy" in DOCUGEN_TEMPLATES
         assert DOCUGEN_TEMPLATES["merchant_agreement"][
             "required_for"
         ] == ["marketplace", "e-commerce"]

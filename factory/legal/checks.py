@@ -399,8 +399,12 @@ async def check_legal_docs(state: PipelineState) -> dict:
     Spec: §2.7.3 — S8 post
     """
     docs = state.legal_documents or {}
-    required = ["privacy_policy", "terms_of_use"]
-    missing = [r for r in required if r not in docs]
+    # Accept either the canonical key (terms_of_service) or legacy alias (terms_of_use)
+    required = ["privacy_policy", "terms_of_service"]
+    missing = [
+        r for r in required
+        if r not in docs and r.replace("_service", "_use") not in docs
+    ]
 
     if missing:
         return {

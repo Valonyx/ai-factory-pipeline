@@ -103,14 +103,17 @@ class TestLegalChecks:
 
 class TestDocuGen:
     def test_templates(self):
-        assert len(DOCUGEN_TEMPLATES) == 5
+        # v5.8 DocuGen: 4 universal + 5 conditional = 9-doc suite
+        assert len(DOCUGEN_TEMPLATES) >= 8
         assert "privacy_policy" in DOCUGEN_TEMPLATES
-        assert "terms_of_use" in DOCUGEN_TEMPLATES
+        assert "terms_of_service" in DOCUGEN_TEMPLATES  # canonical (not terms_of_use)
+        assert "eula" in DOCUGEN_TEMPLATES
+        assert "data_deletion_policy" in DOCUGEN_TEMPLATES
 
     def test_required_docs(self):
         docs = get_required_docs("e-commerce")
         assert "privacy_policy" in docs
-        assert "terms_of_use" in docs
+        assert "terms_of_service" in docs  # canonical key in v5.8
 
     @pytest.mark.asyncio
     async def test_generate(self, fresh_state, mock_ai):

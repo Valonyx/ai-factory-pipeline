@@ -112,21 +112,84 @@ def build_context_block(state: "PipelineState") -> str:
         if auth:
             lines.append(f"│ Auth       : {auth}")
 
-    # ── Code generation summary ──
+    # ── Design (S3) ──
+    if state.s3_output:
+        s3 = state.s3_output
+        design_type = s3.get("design_type", "")
+        if design_type:
+            lines.append(f"│ Design type: {design_type}")
+        mockups = s3.get("mockup_paths", [])
+        if mockups:
+            lines.append(f"│ Mockups    : {len(mockups)} screens")
+        spec_docs = list(s3.get("specialist_docs", {}).keys())
+        if spec_docs:
+            lines.append(f"│ Spec docs  : {', '.join(spec_docs[:4])}")
+
+    # ── Code generation summary (S4) ──
     if state.s4_output:
         files = state.s4_output.get("generated_files", {})
         if files:
             count = len(files)
-            key = [f for f in list(files.keys())[:6]]
+            key = list(files.keys())[:6]
             lines.append(f"│ Code       : {count} files generated ({', '.join(key)})")
+        tech = state.s4_output.get("tech_items_wired", [])
+        if tech:
+            tech_names = [
+                (t.get("name", str(t)) if isinstance(t, dict) else str(t))
+                for t in tech[:6]
+            ]
+            lines.append(f"│ Tech wired : {', '.join(tech_names)}")
 
-    # ── Test results ──
+    # ── Build results (S5) ──
+    if state.s5_output:
+        s5 = state.s5_output
+        build_ok = s5.get("build_success", False)
+        source_only = s5.get("source_only", False)
+        files_written = s5.get("files_written", 0)
+        if build_ok:
+            lines.append(f"│ Build      : ✓ success ({files_written} files)")
+        elif source_only:
+            lines.append(f"│ Build      : source-only ({files_written} files — no binary)")
+        else:
+            lines.append(f"│ Build      : ✗ failed")
+        ws = s5.get("workspace_path", "")
+        if ws:
+            lines.append(f"│ Workspace  : {ws}")
+
+    # ── Test results (S6) ──
     if state.s6_output:
         s5 = state.s6_output
         passed = s5.get("passed_tests", 0)
         total = s5.get("total_tests", 0)
         if total:
             lines.append(f"│ Tests      : {passed}/{total} passing")
+
+    # ── Deploy results (S7) ──
+    if state.s7_output:
+        s7 = state.s7_output
+        all_ok = s7.get("all_success", False)
+        src_only = s7.get("source_only", False)
+        deployments = s7.get("deployments", {})
+        platforms = list(deployments.keys())
+        if all_ok:
+            lines.append(f"│ Deploy     : ✓ success | {', '.join(platforms)}")
+        elif src_only:
+            lines.append(f"│ Deploy     : source-zip sent | {', '.join(platforms)}")
+        else:
+            lines.append(f"│ Deploy     : ✗ failed | {', '.join(platforms)}")
+        for platform, info in deployments.items():
+            if isinstance(info, dict) and info.get("url"):
+                lines.append(f"│ URL        : {platform} → {info['url']}")
+
+    # ── Verify results (S8) ──
+    if state.s8_output:
+        s8 = state.s8_output
+        verify_ok = s8.get("passed", False)
+        check_count = s8.get("check_count", 0)
+        lines.append(
+            f"│ Verify     : {'✓ passed' if verify_ok else '✗ failed'}"
+            f" ({check_count} checks)"
+        )
 
     # ── Budget ──
     spent = getattr(state, "total_cost_usd", 0.0)
@@ -175,7 +238,11 @@ def inject_context(prompt: str, state: "PipelineState") -> str:
         state.s0_output is not None
         or state.s1_output is not None
         or state.s2_output is not None
+        or state.s3_output is not None
         or state.s4_output is not None
+        or state.s5_output is not None
+        or state.s7_output is not None
+        or state.s8_output is not None
         or getattr(state, "war_room_active", False)
         or stage_name in _CONTEXT_STAGES
     )
@@ -212,7 +279,11 @@ async def inject_context_async(
         state.s0_output is not None
         or state.s1_output is not None
         or state.s2_output is not None
+        or state.s3_output is not None
         or state.s4_output is not None
+        or state.s5_output is not None
+        or state.s7_output is not None
+        or state.s8_output is not None
         or getattr(state, "war_room_active", False)
         or stage_name in _CONTEXT_STAGES
     )

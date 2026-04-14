@@ -1,21 +1,38 @@
 """
-AI Factory Pipeline v5.6 — S3 Code Generation Node
+AI Factory Pipeline v5.8 — S4 Code Generation Node
 
 Implements:
   - §4.4 S4 CodeGen (full generation + retry fix mode)
-  - Engineer generates all code files from Blueprint
-  - Quick Fix validates generated code
+  - Phase 0: Tech inventory — discover, check wired status, Scout-verify, classify
+  - Phase 0.5: Operator Telegram wiring requests (cost + instructions) for unwired tech
+  - Phase 1: Code generation enriched with design tokens (S3) + legal texts (S1)
+  - Phase 1.5: Per-screen expansion to 100+ files
+  - Phase 2: Security rules
+  - Phase 3: CI/CD configuration
+  - Phase 4: Quick Fix validation
+  - Phase 5: Mother Memory codegen nodes
   - §4.4.2 CI/CD configuration generation
   - War Room targeted fix on retry (§2.2.8)
 
-Spec Authority: v5.6 §4.4, §4.4.2
+Automation levels:
+  FULL_AI       — AI generates all code automatically
+  AI_GUIDED     — AI generates code; requires a wired service (env vars present)
+  HUMAN_REQUIRED — needs operator action (account, API key, payment)
+  NOT_AUTOMATABLE — physical hardware / proprietary / manual process only
+
+Spec Authority: v5.8 §4.4, §4.4.2
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 from factory.core.state import (
@@ -28,6 +45,1166 @@ from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
 logger = logging.getLogger("factory.pipeline.s4_codegen")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.4 Tech Inventory System
+# ═══════════════════════════════════════════════════════════════════
+
+class AutomationLevel(str, Enum):
+    FULL_AI          = "full_ai"          # AI generates everything, no service needed
+    AI_GUIDED        = "ai_guided"        # AI generates code when service is wired
+    HUMAN_REQUIRED   = "human_required"   # account/key/payment needed first
+    NOT_AUTOMATABLE  = "not_automatable"  # physical/proprietary; AI provides instructions
+
+
+@dataclass
+class TechItem:
+    id: str
+    name: str
+    category: str               # "database", "auth", "payments", "push", "analytics", etc.
+    why_needed: str
+    env_vars: list[str]         # env var names that confirm it's wired
+    wired: bool = False
+    capability: AutomationLevel = AutomationLevel.AI_GUIDED
+    cost_estimate: str = "Unknown"
+    monthly_cost: str = ""
+    setup_url: str = ""
+    setup_instructions: str = ""
+    alternatives: list[str] = field(default_factory=list)
+    scout_verified: bool = False
+    skip: bool = False          # operator chose to skip
+
+
+# Catalog of known services with their check env vars and defaults
+# Used as a starting point; Strategist adds project-specific extras.
+_KNOWN_TECH_CATALOG: dict[str, dict] = {
+    # ── Core/Framework ────────────────────────────────────────────
+    "flutterflow": {
+        "category": "framework", "env_vars": [],
+        "capability": AutomationLevel.FULL_AI,
+        "cost_estimate": "Free (Community) / $30+/mo (Pro)",
+        "setup_url": "https://flutterflow.io",
+    },
+    "react_native": {
+        "category": "framework", "env_vars": [],
+        "capability": AutomationLevel.FULL_AI,
+        "cost_estimate": "Free (open source)",
+        "setup_url": "https://reactnative.dev",
+    },
+    "swift": {
+        "category": "framework", "env_vars": [],
+        "capability": AutomationLevel.FULL_AI,
+        "cost_estimate": "Free (requires Apple Developer: $99/year for distribution)",
+        "setup_url": "https://developer.apple.com/programs/",
+    },
+    "kotlin": {
+        "category": "framework", "env_vars": [],
+        "capability": AutomationLevel.FULL_AI,
+        "cost_estimate": "Free (Google Play: $25 one-time)",
+        "setup_url": "https://play.google.com/console",
+    },
+    "unity": {
+        "category": "framework", "env_vars": [],
+        "capability": AutomationLevel.FULL_AI,
+        "cost_estimate": "Free (Personal) / $185/mo (Pro)",
+        "setup_url": "https://unity.com/pricing",
+    },
+    # ── Database / Backend ─────────────────────────────────────────
+    "supabase": {
+        "category": "database",
+        "env_vars": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (500MB) / $25/mo (Pro)",
+        "setup_url": "https://supabase.com",
+    },
+    "firebase": {
+        "category": "database",
+        "env_vars": ["FIREBASE_PROJECT_ID", "FIREBASE_CREDENTIALS"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (Spark) / Pay-as-you-go (Blaze)",
+        "setup_url": "https://console.firebase.google.com",
+    },
+    "mongodb_atlas": {
+        "category": "database",
+        "env_vars": ["MONGODB_URI"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (512MB) / $57+/mo (Dedicated)",
+        "setup_url": "https://mongodb.com/atlas",
+    },
+    "postgresql": {
+        "category": "database",
+        "env_vars": ["DATABASE_URL"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (self-hosted) / $15+/mo (managed)",
+        "setup_url": "https://neon.tech or https://railway.app",
+    },
+    # ── Authentication ─────────────────────────────────────────────
+    "supabase_auth": {
+        "category": "auth",
+        "env_vars": ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Included with Supabase",
+        "setup_url": "https://supabase.com/docs/guides/auth",
+    },
+    "firebase_auth": {
+        "category": "auth",
+        "env_vars": ["FIREBASE_PROJECT_ID"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free up to 10k/month, then $0.0055/MAU",
+        "setup_url": "https://firebase.google.com/docs/auth",
+    },
+    # ── Payments (KSA) ─────────────────────────────────────────────
+    "moyasar": {
+        "category": "payments",
+        "env_vars": ["MOYASAR_API_KEY", "MOYASAR_SECRET_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "2.25% + SAR 1 per transaction (no setup fee)",
+        "monthly_cost": "Transaction-based only",
+        "setup_url": "https://moyasar.com/ar/signup",
+        "alternatives": ["tap_payments", "payfort"],
+    },
+    "tap_payments": {
+        "category": "payments",
+        "env_vars": ["TAP_SECRET_KEY", "TAP_PUBLISHABLE_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "2.75% per transaction (domestic); CR required",
+        "setup_url": "https://tap.company/en-sa",
+        "alternatives": ["moyasar"],
+    },
+    "stc_pay": {
+        "category": "payments",
+        "env_vars": ["STC_PAY_MERCHANT_ID", "STC_PAY_API_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "Free for customers; merchant fees negotiated",
+        "setup_url": "https://b.stcpay.com.sa",
+        "alternatives": ["moyasar"],
+    },
+    "tamara": {
+        "category": "payments",
+        "env_vars": ["TAMARA_API_KEY", "TAMARA_MERCHANT_URL"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "~4–6% merchant fee (BNPL)",
+        "setup_url": "https://merchants.tamara.co",
+        "alternatives": ["tabby"],
+    },
+    "apple_pay": {
+        "category": "payments",
+        "env_vars": ["APPLE_PAY_MERCHANT_ID"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "No fee (uses existing payment processor)",
+        "setup_url": "https://developer.apple.com/apple-pay/",
+        "alternatives": [],
+    },
+    # ── Push Notifications ─────────────────────────────────────────
+    "fcm": {
+        "category": "push",
+        "env_vars": ["FIREBASE_PROJECT_ID", "FCM_SERVER_KEY"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (unlimited)",
+        "setup_url": "https://firebase.google.com/docs/cloud-messaging",
+    },
+    "onesignal": {
+        "category": "push",
+        "env_vars": ["ONESIGNAL_APP_ID", "ONESIGNAL_API_KEY"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (10k subs) / $9+/mo",
+        "setup_url": "https://onesignal.com",
+    },
+    # ── SMS / OTP ──────────────────────────────────────────────────
+    "twilio": {
+        "category": "sms",
+        "env_vars": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "$0.0079/SMS (US); KSA rates vary ~$0.05/SMS",
+        "setup_url": "https://twilio.com",
+        "alternatives": ["unifonic", "taqnyat"],
+    },
+    "unifonic": {
+        "category": "sms",
+        "env_vars": ["UNIFONIC_ACCOUNT_SID", "UNIFONIC_SENDER_ID"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "~0.05–0.08 SAR/SMS (KSA); account approval required",
+        "setup_url": "https://unifonic.com",
+        "alternatives": ["twilio", "taqnyat"],
+    },
+    # ── Storage ────────────────────────────────────────────────────
+    "supabase_storage": {
+        "category": "storage",
+        "env_vars": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "1GB free, $0.021/GB/mo after",
+        "setup_url": "https://supabase.com/docs/guides/storage",
+    },
+    "aws_s3": {
+        "category": "storage",
+        "env_vars": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_S3_BUCKET"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "$0.023/GB/mo + data transfer costs",
+        "setup_url": "https://aws.amazon.com/s3/",
+    },
+    "cloudinary": {
+        "category": "storage",
+        "env_vars": ["CLOUDINARY_URL"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (25 credits) / $89+/mo",
+        "setup_url": "https://cloudinary.com",
+    },
+    # ── Analytics ─────────────────────────────────────────────────
+    "firebase_analytics": {
+        "category": "analytics",
+        "env_vars": ["FIREBASE_PROJECT_ID"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free",
+        "setup_url": "https://firebase.google.com/docs/analytics",
+    },
+    "mixpanel": {
+        "category": "analytics",
+        "env_vars": ["MIXPANEL_TOKEN"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (20M events/mo) / $28+/mo",
+        "setup_url": "https://mixpanel.com",
+    },
+    # ── Maps ──────────────────────────────────────────────────────
+    "google_maps": {
+        "category": "maps",
+        "env_vars": ["GOOGLE_MAPS_API_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "$200 free credit/mo; $7/1000 map loads after",
+        "setup_url": "https://console.cloud.google.com",
+    },
+    # ── AI / ML ───────────────────────────────────────────────────
+    "openai": {
+        "category": "ai",
+        "env_vars": ["OPENAI_API_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "GPT-4o: $2.50/1M input tokens; GPT-4o-mini: $0.15/1M",
+        "setup_url": "https://platform.openai.com",
+        "alternatives": ["anthropic", "gemini"],
+    },
+    "anthropic": {
+        "category": "ai",
+        "env_vars": ["ANTHROPIC_API_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "Sonnet 4.6: $3/1M input; Haiku 4.5: $0.25/1M",
+        "setup_url": "https://console.anthropic.com",
+    },
+    # ── CI/CD & Build ─────────────────────────────────────────────
+    "github_actions": {
+        "category": "ci_cd",
+        "env_vars": ["GITHUB_TOKEN"],
+        "capability": AutomationLevel.AI_GUIDED,
+        "cost_estimate": "Free (public repos, 2000 min/mo private)",
+        "setup_url": "https://github.com/features/actions",
+    },
+    "apple_developer": {
+        "category": "distribution",
+        "env_vars": ["APPLE_DEVELOPER_TEAM_ID", "APPLE_CERT_P12"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "$99/year (Individual) / $299/year (Enterprise)",
+        "setup_url": "https://developer.apple.com/programs/",
+    },
+    "google_play_console": {
+        "category": "distribution",
+        "env_vars": ["GOOGLE_PLAY_JSON_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "$25 one-time registration",
+        "setup_url": "https://play.google.com/console",
+    },
+    # ── Email ─────────────────────────────────────────────────────
+    "sendgrid": {
+        "category": "email",
+        "env_vars": ["SENDGRID_API_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "Free (100/day) / $19.95+/mo",
+        "setup_url": "https://sendgrid.com",
+        "alternatives": ["resend", "mailgun"],
+    },
+    "resend": {
+        "category": "email",
+        "env_vars": ["RESEND_API_KEY"],
+        "capability": AutomationLevel.HUMAN_REQUIRED,
+        "cost_estimate": "Free (3000/mo) / $20+/mo",
+        "setup_url": "https://resend.com",
+    },
+}
+
+
+def _check_wired_status(item_id: str, env_vars: list[str], state: PipelineState) -> bool:
+    """Check if a tech item is already wired.
+
+    Wired means: all required env vars are present in os.environ
+    OR in state.project_metadata (operator may have stored keys there).
+    """
+    if not env_vars:
+        return True  # No env vars required → always wired (e.g. open-source framework)
+
+    meta = state.project_metadata or {}
+    for var in env_vars:
+        in_env  = bool(os.environ.get(var))
+        in_meta = bool(meta.get(var) or meta.get(var.lower()))
+        if not (in_env or in_meta):
+            return False
+    return True
+
+
+async def _scout_verify_tech_item(
+    state: PipelineState,
+    item: TechItem,
+) -> TechItem:
+    """Scout verifies a tech item: confirms it's available in KSA, gets current pricing.
+
+    Updates item.cost_estimate, item.setup_instructions, item.scout_verified.
+    Non-fatal: if Scout fails, returns item unchanged.
+    """
+    try:
+        research = await call_ai(
+            role=AIRole.SCOUT,
+            prompt=(
+                f"Research '{item.name}' ({item.category}) for a KSA-based app project.\n\n"
+                f"Return ONLY a JSON object with these fields:\n"
+                f'{{\n'
+                f'  "available_in_ksa": true/false,\n'
+                f'  "current_pricing": "one-line pricing summary",\n'
+                f'  "monthly_cost_usd": "estimate or null",\n'
+                f'  "setup_steps": ["step 1", "step 2", "step 3"],\n'
+                f'  "required_documents": ["CR", "IBAN", "..."] or [],\n'
+                f'  "ksa_alternative": "name of better KSA alternative or null",\n'
+                f'  "api_ready": true/false\n'
+                f'}}\n\n'
+                f"Known info: {item.cost_estimate}"
+            ),
+            state=state,
+            action="general",
+        )
+
+        # Extract JSON from Scout response
+        start = research.find("{")
+        end   = research.rfind("}") + 1
+        if start >= 0 and end > start:
+            data = json.loads(research[start:end])
+
+            if data.get("current_pricing"):
+                item.cost_estimate = data["current_pricing"]
+            if data.get("monthly_cost_usd"):
+                item.monthly_cost = data["monthly_cost_usd"]
+
+            steps = data.get("setup_steps", [])
+            if steps:
+                item.setup_instructions = "\n".join(
+                    f"  {i+1}. {s}" for i, s in enumerate(steps)
+                )
+
+            ksa_alt = data.get("ksa_alternative")
+            if ksa_alt and ksa_alt not in item.alternatives:
+                item.alternatives.insert(0, ksa_alt)
+
+            item.scout_verified = True
+
+    except Exception as e:
+        logger.warning(
+            f"[{state.project_id}] Scout verify failed for {item.name}: {e}"
+        )
+
+    return item
+
+
+async def _run_tech_inventory(
+    state: PipelineState,
+    blueprint_data: dict,
+    requirements: dict,
+) -> list[TechItem]:
+    """Full tech inventory: discover → check wired → Scout-verify → classify.
+
+    Spec: v5.8 §4.4 Phase 0
+
+    Returns list of TechItem objects, each with wired status and capability level.
+    """
+    stack_value = blueprint_data.get("selected_stack", "flutterflow")
+    app_name    = blueprint_data.get("app_name", state.project_id)
+    services    = blueprint_data.get("services", {})
+    env_vars_bp = blueprint_data.get("env_vars", {})
+    features    = requirements.get("features_must", [])
+    auth_method = blueprint_data.get("auth_method", "email")
+    has_payments = requirements.get("has_payments", False) or "payment" in str(features).lower()
+    has_maps    = "map" in str(features).lower() or "location" in str(features).lower()
+    has_push    = "notification" in str(features).lower() or "push" in str(features).lower()
+    has_ai_feat = "ai" in str(features).lower() or "chat" in str(features).lower()
+
+    # ── Step 1: Strategist identifies all needed tech for this specific project ──
+    logger.info(f"[{state.project_id}] Tech inventory: Strategist identifying required tech")
+    strategist_raw = await call_ai(
+        role=AIRole.STRATEGIST,
+        prompt=(
+            f"List ALL tech services, APIs, SDKs, and providers required to "
+            f"fully implement '{app_name}'.\n\n"
+            f"Stack: {stack_value}\n"
+            f"Features: {features[:15]}\n"
+            f"Auth method: {auth_method}\n"
+            f"Services from blueprint: {services}\n"
+            f"Env vars specified: {list(env_vars_bp.keys())[:20]}\n"
+            f"Has payments: {has_payments}\n"
+            f"Has maps: {has_maps}\n"
+            f"Has push notifications: {has_push}\n"
+            f"Has AI features: {has_ai_feat}\n\n"
+            f"Return ONLY a JSON array:\n"
+            f'[\n'
+            f'  {{\n'
+            f'    "id": "snake_case_id",\n'
+            f'    "name": "Service Name",\n'
+            f'    "category": "database|auth|payments|push|analytics|maps|storage|email|sms|ai|ci_cd|framework|other",\n'
+            f'    "why_needed": "one sentence explaining why this app needs it",\n'
+            f'    "env_vars": ["ENV_VAR_NAME"],\n'
+            f'    "required": true\n'
+            f'  }}\n'
+            f']\n\n'
+            f"Only include services that are truly necessary. "
+            f"Be specific — use exact service names (e.g. Moyasar, not just Payments)."
+        ),
+        state=state,
+        action="plan_architecture",
+    )
+
+    # Parse Strategist output
+    discovered: list[dict] = []
+    try:
+        start = strategist_raw.find("[")
+        end   = strategist_raw.rfind("]") + 1
+        if start >= 0 and end > start:
+            discovered = json.loads(strategist_raw[start:end])
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(f"[{state.project_id}] Tech inventory: Strategist parse failed — using known catalog")
+
+    # ── Step 2: Build TechItem list — merge discovered with known catalog ──
+    items: list[TechItem] = []
+    seen_ids: set[str] = set()
+
+    for raw in discovered:
+        item_id = raw.get("id", "").lower().replace("-", "_")
+        if not item_id or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+
+        # Use catalog defaults if known; otherwise use Strategist-provided values
+        catalog = _KNOWN_TECH_CATALOG.get(item_id, {})
+        item = TechItem(
+            id           = item_id,
+            name         = raw.get("name", item_id),
+            category     = raw.get("category", catalog.get("category", "other")),
+            why_needed   = raw.get("why_needed", ""),
+            env_vars     = raw.get("env_vars") or catalog.get("env_vars", []),
+            capability   = catalog.get("capability", AutomationLevel.AI_GUIDED),
+            cost_estimate= catalog.get("cost_estimate", "Unknown — research needed"),
+            setup_url    = catalog.get("setup_url", ""),
+            alternatives = catalog.get("alternatives", []),
+        )
+        items.append(item)
+
+    # Ensure the selected stack itself is in the list
+    if stack_value not in seen_ids:
+        catalog = _KNOWN_TECH_CATALOG.get(stack_value, {})
+        items.insert(0, TechItem(
+            id=stack_value, name=stack_value.replace("_", " ").title(),
+            category="framework", why_needed="Selected app development stack",
+            env_vars=catalog.get("env_vars", []),
+            capability=catalog.get("capability", AutomationLevel.FULL_AI),
+            cost_estimate=catalog.get("cost_estimate", "See docs"),
+            setup_url=catalog.get("setup_url", ""),
+        ))
+        seen_ids.add(stack_value)
+
+    # ── Step 3: Check wired status for each item ──
+    for item in items:
+        item.wired = _check_wired_status(item.id, item.env_vars, state)
+
+    # ── Step 4: Scout-verify unwired HUMAN_REQUIRED items (costs + instructions) ──
+    # Only verify items that need operator action — to save cost
+    verify_targets = [
+        i for i in items
+        if not i.wired and i.capability in (
+            AutomationLevel.HUMAN_REQUIRED,
+            AutomationLevel.AI_GUIDED,
+        )
+    ]
+    for item in verify_targets[:8]:  # cap at 8 Scout calls
+        item = await _scout_verify_tech_item(state, item)
+
+    wired_count    = sum(1 for i in items if i.wired)
+    unwired_count  = sum(1 for i in items if not i.wired)
+    logger.info(
+        f"[{state.project_id}] Tech inventory: {len(items)} items — "
+        f"{wired_count} wired, {unwired_count} need attention"
+    )
+    return items
+
+
+async def _handle_unwired_tech(
+    state: PipelineState,
+    items: list[TechItem],
+) -> list[TechItem]:
+    """Send Telegram wiring requests for each unwired HUMAN_REQUIRED tech item.
+
+    Spec: v5.8 §4.4 Phase 0.5
+
+    For each unwired HUMAN_REQUIRED item:
+    1. Send Telegram message with: what, why, cost, signup URL, wiring instructions
+    2. Present 3-option menu: Done / Skip / Use Alternative
+    3. If Done: prompt for API key/env var values and store in state.project_metadata
+    4. If Skip: mark item.skip = True (pipeline continues with AI stub)
+    5. If Use Alternative: present alternatives list and repeat
+
+    For AI_GUIDED unwired items: send a softer warning (non-blocking).
+    For NOT_AUTOMATABLE: send detailed instructions + AI will write a manual guide.
+    """
+    try:
+        from factory.telegram.decisions import present_decision, wait_for_operator_reply
+        from factory.telegram.notifications import send_telegram_message
+    except Exception as e:
+        logger.warning(f"[{state.project_id}] Telegram unavailable for wiring requests: {e}")
+        return items
+
+    human_required_unwired = [
+        i for i in items
+        if not i.wired and not i.skip
+        and i.capability == AutomationLevel.HUMAN_REQUIRED
+    ]
+    ai_guided_unwired = [
+        i for i in items
+        if not i.wired and not i.skip
+        and i.capability == AutomationLevel.AI_GUIDED
+    ]
+    not_automatable = [
+        i for i in items
+        if i.capability == AutomationLevel.NOT_AUTOMATABLE
+    ]
+
+    # ── Soft warning for AI_GUIDED unwired ──
+    if ai_guided_unwired:
+        names = ", ".join(i.name for i in ai_guided_unwired[:5])
+        await send_telegram_message(
+            state.operator_id,
+            f"⚠️ *Missing service credentials*\n\n"
+            f"The following services are needed but their API keys are not wired:\n"
+            f"{names}\n\n"
+            f"Code will be generated with placeholder env vars. "
+            f"Wire them in your environment to enable full functionality.",
+            parse_mode="Markdown",
+        )
+
+    # ── NOT_AUTOMATABLE notice ──
+    if not_automatable:
+        names = ", ".join(i.name for i in not_automatable[:3])
+        await send_telegram_message(
+            state.operator_id,
+            f"📋 *Manual implementation required*\n\n"
+            f"{names} cannot be fully automated.\n"
+            f"AI will generate a detailed implementation guide with step-by-step "
+            f"instructions for you to follow.",
+            parse_mode="Markdown",
+        )
+
+    # ── HUMAN_REQUIRED — interactive wiring loop ──
+    for item in human_required_unwired:
+        env_var_list = "\n".join(f"  • `{v}`" for v in item.env_vars) if item.env_vars else "  (none)"
+        setup_steps  = item.setup_instructions or "  (Scout research in progress — see setup URL)"
+        alternatives_text = ""
+        if item.alternatives:
+            alternatives_text = (
+                f"\n\n*Alternatives:* {', '.join(item.alternatives[:3])}"
+            )
+
+        await send_telegram_message(
+            state.operator_id,
+            f"🔧 *Action required: {item.name}*\n\n"
+            f"📦 *Category:* {item.category}\n"
+            f"❓ *Why needed:* {item.why_needed}\n"
+            f"💰 *Cost:* {item.cost_estimate}\n"
+            f"{'💵 *Monthly estimate:* ' + item.monthly_cost + chr(10) if item.monthly_cost else ''}"
+            f"🔗 *Signup/Setup URL:* {item.setup_url or 'See documentation'}\n\n"
+            f"*Setup steps:*\n{setup_steps}\n\n"
+            f"*Env vars to wire after setup:*\n{env_var_list}"
+            f"{alternatives_text}",
+            parse_mode="Markdown",
+        )
+
+        options = [
+            {"label": "Done — I've set it up", "value": "done"},
+            {"label": "Skip — generate stub code", "value": "skip"},
+        ]
+        if item.alternatives:
+            options.append({
+                "label": f"Use alternative ({item.alternatives[0]})",
+                "value": f"alt:{item.alternatives[0]}",
+            })
+
+        try:
+            choice = await present_decision(
+                state=state,
+                decision_type="tech_wiring",
+                question=f"How would you like to proceed with *{item.name}*?",
+                options=options,
+                recommended=0,
+            )
+        except Exception:
+            choice = "skip"
+
+        if choice == "done":
+            # Re-check wired status
+            item.wired = _check_wired_status(item.id, item.env_vars, state)
+            if not item.wired and item.env_vars:
+                # Ask operator to paste the keys
+                await send_telegram_message(
+                    state.operator_id,
+                    f"Please paste your *{item.name}* credentials.\n"
+                    f"Send them as:\n"
+                    + "\n".join(f"`{v}=your_value_here`" for v in item.env_vars),
+                    parse_mode="Markdown",
+                )
+                try:
+                    raw_keys = await wait_for_operator_reply(state, timeout_seconds=600)
+                    # Parse KEY=value lines
+                    for line in raw_keys.strip().splitlines():
+                        if "=" in line:
+                            k, _, v = line.partition("=")
+                            k = k.strip()
+                            v = v.strip()
+                            if k in item.env_vars:
+                                state.project_metadata[k] = v
+                                os.environ[k] = v
+                    item.wired = _check_wired_status(item.id, item.env_vars, state)
+                    if item.wired:
+                        await send_telegram_message(
+                            state.operator_id,
+                            f"✅ *{item.name}* wired successfully!",
+                            parse_mode="Markdown",
+                        )
+                except Exception:
+                    pass
+
+        elif choice == "skip":
+            item.skip = True
+            await send_telegram_message(
+                state.operator_id,
+                f"⏭ *{item.name}* skipped — placeholder code will be generated.",
+                parse_mode="Markdown",
+            )
+
+        elif choice and choice.startswith("alt:"):
+            alt_name = choice[4:]
+            item.skip = True
+            await send_telegram_message(
+                state.operator_id,
+                f"🔄 Noted: will use *{alt_name}* instead of *{item.name}*. "
+                f"Code will be adapted.",
+                parse_mode="Markdown",
+            )
+            # Record the alternative preference in metadata
+            state.project_metadata[f"tech_alt_{item.id}"] = alt_name
+
+    return items
+
+
+async def _generate_tech_summary_message(
+    state: PipelineState, items: list[TechItem],
+) -> None:
+    """Send a tech stack summary to the operator before code generation starts."""
+    try:
+        from factory.telegram.notifications import send_telegram_message
+
+        wired      = [i for i in items if i.wired]
+        skipped    = [i for i in items if i.skip]
+        full_ai    = [i for i in items if i.capability == AutomationLevel.FULL_AI]
+        not_auto   = [i for i in items if i.capability == AutomationLevel.NOT_AUTOMATABLE]
+
+        lines = ["🛠 *Tech Stack Summary*\n"]
+        lines.append(f"✅ Wired ({len(wired)}): " + ", ".join(i.name for i in wired[:6]))
+        if skipped:
+            lines.append(f"⏭ Skipped ({len(skipped)}): " + ", ".join(i.name for i in skipped[:4]))
+        if full_ai:
+            lines.append(f"🤖 Full AI ({len(full_ai)}): " + ", ".join(i.name for i in full_ai[:4]))
+        if not_auto:
+            lines.append(f"📋 Manual guide ({len(not_auto)}): " + ", ".join(i.name for i in not_auto[:3]))
+        lines.append(f"\n🚀 Starting code generation...")
+
+        await send_telegram_message(
+            state.operator_id,
+            "\n".join(lines),
+            parse_mode="Markdown",
+        )
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Design Token & Legal Text Injection
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _extract_design_tokens(state: PipelineState) -> dict:
+    """Extract design tokens from S3 output for injection into codegen.
+
+    Returns a flat dict of token-name → value.
+    """
+    s3 = state.s3_output or {}
+    vibe = s3.get("vibe") or s3.get("design_system") or {}
+    palette = vibe.get("color_palette") or s3.get("color_palette") or {}
+    typography = vibe.get("typography") or s3.get("typography") or {}
+    spacing = vibe.get("spacing") or s3.get("spacing") or {}
+
+    tokens: dict = {}
+    for k, v in palette.items():
+        tokens[f"color-{k.replace('_', '-')}"] = v
+    for k, v in typography.items():
+        tokens[f"typography-{k.replace('_', '-')}"] = v
+    for k, v in spacing.items():
+        tokens[f"spacing-{k.replace('_', '-')}"] = v
+
+    tokens["visual-style"]   = vibe.get("visual_style", "minimal")
+    tokens["design-system"]  = vibe.get("design_system", "material3")
+    tokens["layout-patterns"] = str(vibe.get("layout_patterns", ["cards", "bottom_nav"]))
+    return tokens
+
+
+def _build_token_injection(tokens: dict) -> str:
+    """Format design tokens as a prompt injection block."""
+    if not tokens:
+        return ""
+    lines = ["Design tokens from S3 (MUST be used in generated code):"]
+    for k, v in list(tokens.items())[:30]:
+        lines.append(f"  {k}: {v}")
+    return "\n".join(lines)
+
+
+def _extract_legal_texts(state: PipelineState) -> dict:
+    """Extract in-app legal texts from S1 output for injection into codegen."""
+    s1 = state.s1_output or {}
+    return s1.get("inapp_texts") or {}
+
+
+def _build_legal_injection(legal_texts: dict) -> str:
+    """Format legal texts as a prompt injection block."""
+    if not legal_texts:
+        return ""
+    lines = [
+        "In-app legal texts from S1 (MUST be embedded in relevant screens/components):",
+    ]
+    for k, v in legal_texts.items():
+        lines.append(f"  {k}: {str(v)[:200]}")
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Per-Screen 100+ File Expansion
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _expand_to_100_files(
+    state: PipelineState,
+    files: dict[str, str],
+    stack: TechStack,
+    blueprint_data: dict,
+    design_tokens: dict,
+    legal_texts: dict,
+    tech_items: list,
+) -> dict[str, str]:
+    """Expand generated files to 100+ by generating per-screen code + support files.
+
+    Spec: v5.8 §4.4 Phase 1.5
+
+    Generates for each screen not already in files:
+      - Full screen/view/activity file
+      - Corresponding ViewModel/Store/State file
+      - Test stub file
+
+    Also generates:
+      - Design tokens file (constants/theme)
+      - Legal texts constants file
+      - Environment config template
+      - Implementation guide for NOT_AUTOMATABLE tech
+    """
+    screens    = blueprint_data.get("screens", [])
+    app_name   = blueprint_data.get("app_name", state.project_id)
+    data_model = blueprint_data.get("data_model", [])
+    auth       = blueprint_data.get("auth_method", "email")
+    token_ctx  = _build_token_injection(design_tokens)
+    legal_ctx  = _build_legal_injection(legal_texts)
+
+    new_files: dict[str, str] = {}
+
+    # ── Per-screen file generation ──
+    for screen in screens[:15]:
+        sname      = screen.get("name", "Screen")
+        spurpose   = screen.get("purpose", "")
+        scomponents= screen.get("components", [])
+        sbindings  = screen.get("data_bindings", [])
+
+        # Determine target file paths per stack
+        if stack == TechStack.FLUTTERFLOW:
+            slug    = sname.lower().replace(" ", "_")
+            screen_path = f"lib/screens/{slug}_screen.dart"
+            vm_path     = f"lib/viewmodels/{slug}_viewmodel.dart"
+            test_path   = f"test/{slug}_screen_test.dart"
+        elif stack == TechStack.REACT_NATIVE:
+            slug    = sname.replace(" ", "")
+            screen_path = f"src/screens/{slug}Screen.tsx"
+            vm_path     = f"src/store/{slug.lower()}Store.ts"
+            test_path   = f"src/__tests__/{slug}Screen.test.tsx"
+        elif stack == TechStack.SWIFT:
+            slug    = sname.replace(" ", "")
+            screen_path = f"Sources/Views/{slug}View.swift"
+            vm_path     = f"Sources/ViewModels/{slug}ViewModel.swift"
+            test_path   = f"Tests/{slug}ViewTests.swift"
+        elif stack == TechStack.KOTLIN:
+            slug    = sname.replace(" ", "")
+            package = blueprint_data.get("package_name", "com.factory.app").replace(".", "/")
+            screen_path = f"app/src/main/java/{package}/ui/{slug.lower()}/{slug}Fragment.kt"
+            vm_path     = f"app/src/main/java/{package}/ui/{slug.lower()}/{slug}ViewModel.kt"
+            test_path   = f"app/src/test/java/{package}/ui/{slug.lower()}/{slug}ViewModelTest.kt"
+        elif stack == TechStack.UNITY:
+            slug    = sname.replace(" ", "")
+            screen_path = f"Assets/Scripts/UI/{slug}UIController.cs"
+            vm_path     = f"Assets/Scripts/Data/{slug}Data.cs"
+            test_path   = f"Assets/Tests/{slug}Tests.cs"
+        elif stack == TechStack.PYTHON_BACKEND:
+            slug    = sname.lower().replace(" ", "_")
+            screen_path = f"routers/{slug}.py"
+            vm_path     = f"services/{slug}_service.py"
+            test_path   = f"tests/test_{slug}.py"
+        else:
+            continue
+
+        # Skip if already generated
+        if screen_path in files:
+            continue
+
+        screen_code = await call_ai(
+            role=AIRole.ENGINEER,
+            prompt=(
+                f"Write the complete {stack.value} file for screen '{sname}'.\n\n"
+                f"File path: {screen_path}\n"
+                f"App: {app_name}\n"
+                f"Purpose: {spurpose}\n"
+                f"Components: {scomponents}\n"
+                f"Data bindings: {[b.get('collection') for b in sbindings[:5]]}\n"
+                f"Auth method: {auth}\n\n"
+                f"{token_ctx}\n\n"
+                f"{legal_ctx}\n\n"
+                f"Requirements:\n"
+                f"- Production-quality, complete implementation\n"
+                f"- Apply design tokens for all colors, fonts, spacing\n"
+                f"- Include state management (loading, error, empty states)\n"
+                f"- Proper null safety / type safety\n"
+                f"- Import all needed packages\n\n"
+                f"Return ONLY the raw file content — no markdown fences, no explanation."
+            ),
+            state=state,
+            action="write_code",
+        )
+        new_files[screen_path] = _strip_fences(screen_code)
+
+        # ViewModel/Store/Service
+        if vm_path not in files:
+            vm_code = await call_ai(
+                role=AIRole.ENGINEER,
+                prompt=(
+                    f"Write the {stack.value} ViewModel/Store/Service for '{sname}' screen.\n\n"
+                    f"File path: {vm_path}\n"
+                    f"App: {app_name}\n"
+                    f"Data collections used: {[b.get('collection') for b in sbindings[:5]]}\n"
+                    f"Auth method: {auth}\n\n"
+                    f"Include: state fields, async data loading, error handling, "
+                    f"CRUD operations for the data bindings.\n"
+                    f"Return ONLY the raw file content — no markdown, no fences."
+                ),
+                state=state,
+                action="write_code",
+            )
+            new_files[vm_path] = _strip_fences(vm_code)
+
+        # Test stub (quick, no AI needed for stub)
+        if test_path not in files:
+            new_files[test_path] = _generate_test_stub(
+                stack, sname, screen_path, vm_path, app_name,
+            )
+
+    # ── Design tokens constants file ──
+    if design_tokens:
+        tokens_file = await call_ai(
+            role=AIRole.ENGINEER,
+            prompt=(
+                f"Generate a design tokens constants file for {stack.value}.\n\n"
+                f"Tokens:\n{json.dumps(design_tokens, indent=2)[:3000]}\n\n"
+                f"Requirements:\n"
+                f"- Use the appropriate format for {stack.value}\n"
+                f"- Flutter: lib/constants/design_tokens.dart (const Color, TextStyle, etc.)\n"
+                f"- React Native: src/theme/tokens.ts (exported const object)\n"
+                f"- Swift: Sources/Design/DesignTokens.swift (UIColor extension)\n"
+                f"- Kotlin: app/.../ui/theme/DesignTokens.kt (object with Color)\n"
+                f"- Unity: Assets/Scripts/UI/DesignTokens.cs (static class)\n"
+                f"- Python: No design tokens (backend only)\n\n"
+                f"Return ONLY the raw file content."
+            ),
+            state=state,
+            action="write_code",
+        )
+        token_file_path = {
+            TechStack.FLUTTERFLOW:    "lib/constants/design_tokens.dart",
+            TechStack.REACT_NATIVE:   "src/theme/tokens.ts",
+            TechStack.SWIFT:          "Sources/Design/DesignTokens.swift",
+            TechStack.KOTLIN:         "app/src/main/java/com/factory/app/ui/theme/DesignTokens.kt",
+            TechStack.UNITY:          "Assets/Scripts/UI/DesignTokens.cs",
+            TechStack.PYTHON_BACKEND: None,
+        }.get(stack)
+        if token_file_path:
+            new_files[token_file_path] = _strip_fences(tokens_file)
+
+    # ── Legal texts constants file ──
+    if legal_texts:
+        legal_const_path = {
+            TechStack.FLUTTERFLOW:    "lib/constants/legal_texts.dart",
+            TechStack.REACT_NATIVE:   "src/constants/legalTexts.ts",
+            TechStack.SWIFT:          "Sources/Constants/LegalTexts.swift",
+            TechStack.KOTLIN:         "app/src/main/java/com/factory/app/constants/LegalTexts.kt",
+            TechStack.UNITY:          "Assets/Scripts/Constants/LegalTexts.cs",
+            TechStack.PYTHON_BACKEND: "constants/legal_texts.py",
+        }.get(stack)
+        if legal_const_path and legal_const_path not in files:
+            legal_code = await call_ai(
+                role=AIRole.ENGINEER,
+                prompt=(
+                    f"Generate a legal texts constants file for {stack.value}.\n\n"
+                    f"Legal texts:\n{json.dumps(legal_texts, indent=2)[:2000]}\n\n"
+                    f"Return ONLY the raw file content — constants for all the texts listed."
+                ),
+                state=state,
+                action="write_code",
+            )
+            new_files[legal_const_path] = _strip_fences(legal_code)
+
+    # ── Environment config template ──
+    env_vars_needed = {}
+    for item in tech_items:
+        for var in item.env_vars:
+            env_vars_needed[var] = f"# {item.name} — {item.why_needed}"
+
+    if env_vars_needed:
+        env_example = "\n".join(
+            f"{var}=  {comment}" for var, comment in env_vars_needed.items()
+        )
+        new_files[".env.example"] = (
+            f"# Environment variables for {app_name}\n"
+            f"# Generated by AI Factory Pipeline v5.8\n"
+            f"# Copy to .env and fill in your values\n\n"
+            + env_example + "\n"
+        )
+
+    # ── Implementation guide for NOT_AUTOMATABLE tech ──
+    not_auto = [i for i in tech_items if i.capability == AutomationLevel.NOT_AUTOMATABLE]
+    if not_auto:
+        guide_content = await call_ai(
+            role=AIRole.STRATEGIST,
+            prompt=(
+                f"Write a detailed implementation guide for components that require "
+                f"manual implementation for '{app_name}'.\n\n"
+                f"Components:\n"
+                + "\n".join(f"- {i.name}: {i.why_needed}" for i in not_auto) +
+                f"\n\nFor each:\n"
+                f"1. Exact steps to implement\n"
+                f"2. How AI can assist (generate configs, scaffold, test)\n"
+                f"3. How to test and validate\n"
+                f"4. Integration points with the generated code\n\n"
+                f"Return professional Markdown."
+            ),
+            state=state,
+            action="plan_architecture",
+        )
+        new_files["docs/MANUAL_IMPLEMENTATION_GUIDE.md"] = guide_content
+
+    # ── Data model files ──
+    for collection in data_model[:8]:
+        cname = collection.get("collection", "item").replace(" ", "_").lower()
+        cfields = collection.get("fields", [])
+        model_path = {
+            TechStack.FLUTTERFLOW:    f"lib/models/{cname}.dart",
+            TechStack.REACT_NATIVE:   f"src/types/{cname}.ts",
+            TechStack.SWIFT:          f"Sources/Models/{cname.title()}.swift",
+            TechStack.KOTLIN:         f"app/src/main/java/com/factory/app/data/models/{cname.title()}.kt",
+            TechStack.UNITY:          f"Assets/Scripts/Data/{cname.title()}Data.cs",
+            TechStack.PYTHON_BACKEND: f"models/{cname}.py",
+        }.get(stack)
+        if model_path and model_path not in files and model_path not in new_files:
+            model_code = await call_ai(
+                role=AIRole.ENGINEER,
+                prompt=(
+                    f"Write the {stack.value} model/type for '{cname}'.\n\n"
+                    f"Fields: {json.dumps(cfields, indent=2)[:1000]}\n\n"
+                    f"Requirements:\n"
+                    f"- Include toJson/fromJson (or Codable, or Serializable)\n"
+                    f"- Proper null safety\n"
+                    f"- Timestamp fields as DateTime/Date/Timestamp\n\n"
+                    f"Return ONLY the raw file content."
+                ),
+                state=state,
+                action="write_code",
+            )
+            new_files[model_path] = _strip_fences(model_code)
+
+    # ── README ──
+    if "README.md" not in files and "README.md" not in new_files:
+        wired_names = [i.name for i in tech_items if i.wired]
+        new_files["README.md"] = (
+            f"# {app_name}\n\n"
+            f"Generated by AI Factory Pipeline v5.8\n\n"
+            f"## Tech Stack\n"
+            f"- Framework: {stack.value}\n"
+            f"- Services: {', '.join(wired_names[:8])}\n\n"
+            f"## Setup\n\n"
+            f"1. Copy `.env.example` to `.env` and fill in your API keys\n"
+            f"2. Install dependencies (see stack-specific instructions below)\n"
+            f"3. Run the app\n\n"
+            f"## Environment Variables\n\n"
+            f"See `.env.example` for all required variables.\n\n"
+            f"## Manual Steps\n\n"
+            f"See `docs/MANUAL_IMPLEMENTATION_GUIDE.md` for components requiring manual setup.\n"
+        )
+
+    merged = {**files, **new_files}
+    logger.info(
+        f"[{state.project_id}] File expansion: {len(files)} → {len(merged)} files "
+        f"(+{len(new_files)} new)"
+    )
+    return merged
+
+
+def _generate_test_stub(
+    stack: TechStack,
+    screen_name: str,
+    screen_path: str,
+    vm_path: str,
+    app_name: str,
+) -> str:
+    """Generate a minimal test stub for a screen without an AI call."""
+    slug = screen_name.replace(" ", "")
+    if stack == TechStack.FLUTTERFLOW:
+        return (
+            f"// Test for {screen_name} — {app_name}\n"
+            f"import 'package:flutter_test/flutter_test.dart';\n"
+            f"import '../{screen_path}';\n\n"
+            f"void main() {{\n"
+            f"  group('{screen_name}', () {{\n"
+            f"    testWidgets('renders without error', (tester) async {{\n"
+            f"      // TODO: add widget test\n"
+            f"    }});\n"
+            f"  }});\n"
+            f"}}\n"
+        )
+    elif stack == TechStack.REACT_NATIVE:
+        return (
+            f"// Test for {screen_name} — {app_name}\n"
+            f"import React from 'react';\n"
+            f"import {{ render }} from '@testing-library/react-native';\n"
+            f"import {slug}Screen from '../../screens/{slug}Screen';\n\n"
+            f"describe('{screen_name}', () => {{\n"
+            f"  it('renders correctly', () => {{\n"
+            f"    // TODO: add test\n"
+            f"  }});\n"
+            f"}});\n"
+        )
+    elif stack == TechStack.SWIFT:
+        return (
+            f"// Test for {screen_name} — {app_name}\n"
+            f"import XCTest\n"
+            f"@testable import App\n\n"
+            f"final class {slug}ViewTests: XCTestCase {{\n"
+            f"    func test{slug}ViewExists() throws {{\n"
+            f"        // TODO: add SwiftUI snapshot test\n"
+            f"    }}\n"
+            f"}}\n"
+        )
+    elif stack == TechStack.KOTLIN:
+        return (
+            f"// Test for {screen_name} — {app_name}\n"
+            f"import org.junit.Test\n\n"
+            f"class {slug}ViewModelTest {{\n"
+            f"    @Test\n"
+            f"    fun `initial state is loading`() {{\n"
+            f"        // TODO: add ViewModel unit test\n"
+            f"    }}\n"
+            f"}}\n"
+        )
+    elif stack == TechStack.PYTHON_BACKEND:
+        slug_lower = screen_name.lower().replace(" ", "_")
+        return (
+            f"# Test for {screen_name} — {app_name}\n"
+            f"import pytest\n"
+            f"from httpx import AsyncClient\n"
+            f"from main import app\n\n"
+            f"@pytest.mark.anyio\n"
+            f"async def test_{slug_lower}_endpoint():\n"
+            f"    async with AsyncClient(app=app, base_url='http://test') as ac:\n"
+            f"        # TODO: add endpoint test\n"
+            f"        pass\n"
+        )
+    return f"// Test stub for {screen_name}\n// TODO: implement tests\n"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Mother Memory — CodeGen Nodes
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _write_codegen_to_mother_memory(
+    state: PipelineState,
+    files: dict,
+    stack: TechStack,
+    tech_items: list,
+) -> None:
+    """Write codegen decisions to Mother Memory.
+
+    Stores: tech_stack_final, file_count, wired_services.
+    """
+    try:
+        from factory.memory.mother_memory import store_pipeline_decision
+
+        wired   = [i.name for i in tech_items if i.wired]
+        skipped = [i.name for i in tech_items if i.skip]
+
+        await store_pipeline_decision(
+            project_id=state.project_id,
+            stage="s4_codegen",
+            decision_type="tech_stack_final",
+            content=(
+                f"Stack: {stack.value} | "
+                f"Total files: {len(files)} | "
+                f"Wired services: {wired[:8]} | "
+                f"Skipped: {skipped[:4]}"
+            ),
+            operator_id=str(state.operator_id),
+        )
+
+        file_categories: dict[str, int] = {}
+        for path in files:
+            ext = Path(path).suffix or "other"
+            file_categories[ext] = file_categories.get(ext, 0) + 1
+
+        await store_pipeline_decision(
+            project_id=state.project_id,
+            stage="s4_codegen",
+            decision_type="file_inventory",
+            content=(
+                f"File count: {len(files)} | "
+                f"By extension: {dict(list(file_categories.items())[:8])}"
+            ),
+            operator_id=str(state.operator_id),
+        )
+
+        logger.info(
+            f"[{state.project_id}] S4 → Mother Memory: codegen nodes stored"
+        )
+    except Exception as e:
+        logger.warning(
+            f"[{state.project_id}] S4 Mother Memory write failed (non-fatal): {e}"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -228,10 +1405,14 @@ async def _codegen_full_generation(
     """Generate all project files from Blueprint.
 
     Spec: §4.4 (first run path)
-    Step 1: Generate code files
-    Step 2: Generate security rules (if auth)
-    Step 3: Generate CI/CD configuration
-    Step 4: Quick Fix validation pass
+    Phase 0:   Tech inventory — discover, check wired, Scout-verify, classify
+    Phase 0.5: Operator Telegram wiring requests for unwired tech
+    Phase 1:   Generate code files (enriched with design tokens + legal texts)
+    Phase 1.5: Per-screen expansion to 100+ files
+    Phase 2:   Security rules
+    Phase 3:   CI/CD configuration
+    Phase 4:   Quick Fix validation
+    Phase 5:   Mother Memory codegen nodes
     """
     stack_value = blueprint_data.get("selected_stack", "flutterflow")
     try:
@@ -239,14 +1420,39 @@ async def _codegen_full_generation(
     except ValueError:
         stack = TechStack.FLUTTERFLOW
 
-    screens = blueprint_data.get("screens", [])
-    data_model = blueprint_data.get("data_model", [])
+    screens       = blueprint_data.get("screens", [])
+    data_model    = blueprint_data.get("data_model", [])
     api_endpoints = blueprint_data.get("api_endpoints", [])
-    auth_method = blueprint_data.get("auth_method", "email")
-    app_name = blueprint_data.get("app_name", state.project_id)
+    auth_method   = blueprint_data.get("auth_method", "email")
+    app_name      = blueprint_data.get("app_name", state.project_id)
+    requirements  = state.s0_output or {}
 
-    # ── Step 1: Generate code files ──
+    # ── Phase 0: Tech Inventory ──
+    tech_items = await _run_tech_inventory(state, blueprint_data, requirements)
+
+    # ── Phase 0.5: Handle Unwired Tech (Telegram operator interaction) ──
+    tech_items = await _handle_unwired_tech(state, tech_items)
+
+    # Send summary before starting generation
+    await _generate_tech_summary_message(state, tech_items)
+
+    # ── Extract design tokens (S3) and legal texts (S1) ──
+    design_tokens = _extract_design_tokens(state)
+    legal_texts   = _extract_legal_texts(state)
+    token_injection = _build_token_injection(design_tokens)
+    legal_injection = _build_legal_injection(legal_texts)
+
+    # ── Phase 1: Generate code files ──
     from factory.core.stage_enrichment import enrich_prompt
+
+    # Build wired services context for the Engineer
+    wired_services = [i.name for i in tech_items if i.wired and i.category != "framework"]
+    skipped_services = [i.name for i in tech_items if i.skip]
+    tech_context = (
+        f"Wired services (use these, credentials available): {wired_services[:10]}\n"
+        f"Skipped services (generate TODO stubs for these): {skipped_services[:5]}\n"
+    )
+
     code_prompt = _build_codegen_prompt(
         stack=stack,
         app_name=app_name,
@@ -255,6 +1461,13 @@ async def _codegen_full_generation(
         api_endpoints=api_endpoints,
         auth_method=auth_method,
         blueprint_data=blueprint_data,
+    )
+    # Inject design tokens + legal texts + tech context
+    code_prompt = (
+        code_prompt
+        + f"\n\n{tech_context}"
+        + (f"\n\n{token_injection}" if token_injection else "")
+        + (f"\n\n{legal_injection}" if legal_injection else "")
     )
     code_prompt = await enrich_prompt(
         "s4_codegen", code_prompt, state,
@@ -320,22 +1533,49 @@ async def _codegen_full_generation(
     ci_files = await _generate_ci_config(state, stack, blueprint_data)
     files.update(ci_files)
 
-    # ── Step 4: Quick Fix validation pass ──
+    # ── Phase 4: Quick Fix validation pass ──
     files = await _quick_fix_validation(state, files, stack)
+
+    # ── Phase 1.5: Per-screen expansion to 100+ files ──
+    files = await _expand_to_100_files(
+        state, files, stack, blueprint_data,
+        design_tokens, legal_texts, tech_items,
+    )
+
+    # ── Phase 5: Mother Memory codegen nodes ──
+    await _write_codegen_to_mother_memory(state, files, stack, tech_items)
+
+    # ── Build tech inventory summary for state ──
+    tech_summary = [
+        {
+            "id": i.id, "name": i.name, "category": i.category,
+            "wired": i.wired, "skip": i.skip,
+            "capability": i.capability.value,
+            "cost_estimate": i.cost_estimate,
+        }
+        for i in tech_items
+    ]
 
     state.s4_output = {
         "generated_files": files,
         "file_count": len(files),
         "stack": stack.value,
         "generation_mode": "full",
+        "tech_inventory": tech_summary,
+        "wired_services": [i.name for i in tech_items if i.wired],
+        "skipped_services": [i.name for i in tech_items if i.skip],
+        "design_tokens_injected": bool(design_tokens),
+        "legal_texts_injected": bool(legal_texts),
     }
 
-    # ── Step 5: Commit to GitHub repo ──
+    # ── Commit to GitHub repo ──
     await _commit_to_github(state, files, app_name, stack)
 
     logger.info(
         f"[{state.project_id}] S4 CodeGen complete: "
-        f"{len(files)} files generated for {stack.value}"
+        f"{len(files)} files, {len(tech_items)} tech items "
+        f"({sum(1 for i in tech_items if i.wired)} wired), "
+        f"stack={stack.value}"
     )
     return state
 

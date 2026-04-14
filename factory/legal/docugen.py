@@ -30,27 +30,62 @@ logger = logging.getLogger("factory.legal.docugen")
 # ═══════════════════════════════════════════════════════════════════
 
 DOCUGEN_TEMPLATES: dict[str, dict] = {
+    # ── Universal (required for ALL apps) ──────────────────────────────
     "privacy_policy": {
         "required_for": ["all"],
         "description": "PDPL-compliant privacy policy",
+        "priority": 1,
     },
-    "terms_of_use": {
+    "terms_of_service": {
         "required_for": ["all"],
         "description": "Terms of service / user agreement",
+        "priority": 1,
+    },
+    "eula": {
+        "required_for": ["all"],
+        "description": "End User License Agreement (EULA) — required by App Store & Google Play",
+        "priority": 2,
+    },
+    "data_deletion_policy": {
+        "required_for": ["all"],
+        "description": "Data deletion rights policy (PDPL Art. 16 — right to erasure)",
+        "priority": 2,
+    },
+    # ── Conditional — platform / business model ────────────────────────
+    "cookie_policy": {
+        "required_for": ["web"],   # also checked against target_platforms
+        "description": "Cookie and tracking technology policy (web apps)",
+        "priority": 3,
     },
     "merchant_agreement": {
         "required_for": ["marketplace", "e-commerce"],
         "description": "Merchant/seller agreement for marketplace apps",
+        "priority": 3,
     },
     "driver_contract": {
         "required_for": ["delivery", "transport", "ride-hailing"],
         "description": "Independent contractor agreement for drivers",
+        "priority": 3,
     },
     "data_processing_agreement": {
         "required_for": ["saas", "b2b"],
         "description": "DPA for B2B/SaaS data processing",
+        "priority": 3,
+    },
+    "acceptable_use_policy": {
+        "required_for": ["social", "community", "marketplace", "game"],
+        "description": "Acceptable use / community standards policy for user-generated content",
+        "priority": 3,
     },
 }
+
+# Backwards-compat alias (was "terms_of_use" in v5.6)
+DOCUGEN_TEMPLATES["terms_of_use"] = {
+    **DOCUGEN_TEMPLATES["terms_of_service"],
+    "description": "Terms of service / user agreement (alias: terms_of_use)",
+}
+# Remove duplicate so we only generate one
+del DOCUGEN_TEMPLATES["terms_of_use"]
 
 LEGAL_DISCLAIMER = (
     "⚠️ Legal documents generated for {app_name}. "
@@ -84,11 +119,23 @@ async def generate_legal_documents(
     """
     business_model = blueprint_data.get("business_model", "general")
     app_name = blueprint_data.get("app_name", state.project_id)
+    target_platforms = (state.s0_output or {}).get("target_platforms", [])
     documents: dict[str, str] = {}
 
-    for doc_type, template in DOCUGEN_TEMPLATES.items():
+    # Sort by priority so universal docs (p=1) are generated before conditional (p=3)
+    ordered = sorted(DOCUGEN_TEMPLATES.items(), key=lambda kv: kv[1].get("priority", 9))
+
+    for doc_type, template in ordered:
         required = template["required_for"]
-        if "all" not in required and business_model not in required:
+        # Universal
+        if "all" in required:
+            pass  # always generate
+        # Platform-specific (cookie_policy needs web target)
+        elif doc_type == "cookie_policy":
+            if "web" not in target_platforms:
+                continue
+        # Business-model-specific
+        elif business_model not in required:
             continue
 
         logger.info(
@@ -111,7 +158,8 @@ async def generate_legal_documents(
     )
 
     logger.info(
-        f"[{state.project_id}] DocuGen: {len(documents)} documents generated"
+        f"[{state.project_id}] DocuGen: {len(documents)} documents generated "
+        f"({', '.join(documents.keys())})"
     )
     return documents
 

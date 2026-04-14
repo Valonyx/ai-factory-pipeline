@@ -182,6 +182,83 @@ async def send_brand_assets_to_telegram(
 # ═══════════════════════════════════════════════════════════════════
 
 
+async def generate_logo_variants(
+    app_name: str,
+    description: str,
+    count: int = 3,
+    primary_color: str = "#6366f1",
+) -> list[Optional[bytes]]:
+    """Generate N logo variants with different styles/seeds.
+
+    Spec: v5.8 §4.1 — S0 logo flow (3 variants for operator pick).
+    Each variant uses a different visual style to give the operator real choice.
+
+    Returns:
+        List of raw PNG bytes (None for any variant that failed).
+    """
+    styles = [
+        "modern flat icon design, geometric shapes, bold colors, clean minimal",
+        "minimalist icon, monochrome palette, simple bold shapes, professional",
+        "colorful gradient icon, rounded corners, friendly vibrant feel, vector art",
+    ]
+
+    results: list[Optional[bytes]] = []
+    for i in range(count):
+        style = styles[i % len(styles)]
+        prompt = (
+            f"App icon for '{app_name}'. {description[:100]}. "
+            f"Style: {style}. Dominant color {primary_color}. "
+            f"No text, no letters, no numbers. Square format. "
+            f"White or transparent background. High quality. App store ready."
+        )
+        try:
+            img = await generate_image(
+                prompt=prompt,
+                width=1024,
+                height=1024,
+                seed=42 + i * 1337,
+            )
+            results.append(img)
+        except Exception as e:
+            logger.warning(f"Logo variant {i + 1} generation failed: {e}")
+            results.append(None)
+
+    return results
+
+
+async def send_logo_variants_to_telegram(
+    operator_id: str,
+    variants: list[Optional[bytes]],
+    app_name: str,
+) -> int:
+    """Send logo variant images to the operator via Telegram.
+
+    Returns the number of successfully sent variants.
+    """
+    from factory.telegram.notifications import get_bot
+    bot = get_bot()
+    if not bot:
+        logger.warning("Bot unavailable — cannot send logo variants")
+        return 0
+
+    import io as _io
+    sent = 0
+    for i, img_bytes in enumerate(variants, 1):
+        if not img_bytes:
+            continue
+        try:
+            await bot.send_photo(
+                chat_id=int(operator_id),
+                photo=_io.BytesIO(img_bytes),
+                caption=f"🎨 Variant {i} / {len([v for v in variants if v])}",
+            )
+            sent += 1
+        except Exception as e:
+            logger.warning(f"Failed to send logo variant {i}: {e}")
+
+    return sent
+
+
 def _save_asset(data: bytes, state, filename: str) -> Optional[str]:
     """Save asset bytes to the project workspace. Returns path or None."""
     try:

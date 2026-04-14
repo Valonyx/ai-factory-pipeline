@@ -423,3 +423,126 @@ def has_pending_reply(operator_id: str) -> bool:
     """
     future = _pending_replies.get(operator_id)
     return future is not None and not future.done()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §4.1 v5.8 — Platform Multi-Select (14 canonical platforms)
+# ═══════════════════════════════════════════════════════════════════
+
+ALL_PLATFORMS: list[dict] = [
+    {"id": "ios",          "label": "iOS (iPhone/iPad)"},
+    {"id": "android",      "label": "Android (Phone/Tablet)"},
+    {"id": "web",          "label": "Web (Browser/PWA)"},
+    {"id": "macos",        "label": "macOS Desktop"},
+    {"id": "windows",      "label": "Windows Desktop"},
+    {"id": "tvos",         "label": "tvOS (Apple TV)"},
+    {"id": "watchos",      "label": "watchOS (Apple Watch)"},
+    {"id": "android_tv",   "label": "Android TV"},
+    {"id": "wear_os",      "label": "Wear OS (Android Watch)"},
+    {"id": "kaios",        "label": "KaiOS (Feature Phone)"},
+    {"id": "harmonyos",    "label": "HarmonyOS (Huawei)"},
+    {"id": "tizen_tv",     "label": "Samsung Tizen TV"},
+    {"id": "tizen_watch",  "label": "Samsung Galaxy Watch"},
+    {"id": "linux",        "label": "Linux Desktop"},
+]
+
+_PLATFORM_SHORTCUTS: dict[str, list[str]] = {
+    "mobile":  ["ios", "android"],
+    "web":     ["web"],
+    "all":     ["ios", "android", "web"],
+    "full":    ["ios", "android", "web", "macos", "windows"],
+    "ios":     ["ios"],
+    "android": ["android"],
+}
+
+
+def _parse_platform_reply(reply: str, default: list[str]) -> list[str]:
+    """Parse operator's platform selection reply.
+
+    Accepts:
+      - Shortcuts: "mobile", "all", "full", "web"
+      - Comma-separated numbers: "1,2,3"
+      - Platform IDs: "ios,android"
+    """
+    reply = reply.strip().lower()
+
+    # Check named shortcuts first
+    if reply in _PLATFORM_SHORTCUTS:
+        return _PLATFORM_SHORTCUTS[reply]
+
+    # Parse comma/space-separated tokens
+    tokens = [t.strip() for t in reply.replace(" ", ",").split(",") if t.strip()]
+    result: list[str] = []
+
+    for token in tokens:
+        # Try as 1-indexed number
+        try:
+            idx = int(token) - 1
+            if 0 <= idx < len(ALL_PLATFORMS):
+                pid = ALL_PLATFORMS[idx]["id"]
+                if pid not in result:
+                    result.append(pid)
+            continue
+        except ValueError:
+            pass
+
+        # Try as platform ID or label match
+        for p in ALL_PLATFORMS:
+            if token == p["id"] or token in p["label"].lower():
+                if p["id"] not in result:
+                    result.append(p["id"])
+                break
+
+    return result if result else default
+
+
+async def present_platform_multiselect(
+    state: "PipelineState",
+    timeout_seconds: int = 3600,
+    default: list[str] | None = None,
+) -> list[str]:
+    """Present a 14-platform multi-select to the operator.
+
+    Spec: v5.8 §4.1 — S0 platform selection.
+    COPILOT: sends numbered list, waits for text reply.
+    AUTOPILOT: returns default (["ios", "android"]).
+
+    Args:
+        state: Pipeline state.
+        timeout_seconds: Wait timeout (default 1 hour).
+        default: Platforms to return on timeout / AUTOPILOT.
+
+    Returns:
+        List of selected platform IDs.
+    """
+    if default is None:
+        default = ["ios", "android"]
+
+    if state.autonomy_mode == AutonomyMode.AUTOPILOT:
+        logger.info(f"[Autopilot] Platform default: {default}")
+        return default
+
+    # Build the numbered list message
+    lines = ["📱 *Select target platforms* — reply with numbers (comma-separated):\n"]
+    for i, p in enumerate(ALL_PLATFORMS, 1):
+        lines.append(f"  {i:2}. {p['label']}")
+    lines.append(
+        "\n*Shortcuts:* `mobile` (1,2) · `all` (1-3) · `full` (1-5)\n"
+        "_Example: `1,2,3` or `mobile`_"
+    )
+
+    await notify_operator(
+        state,
+        "\n".join(lines),
+        NotificationType.DECISION_NEEDED,
+    )
+
+    reply = await wait_for_operator_reply(
+        state.operator_id,
+        timeout=timeout_seconds,
+        default=",".join(str(i + 1) for i, p in enumerate(ALL_PLATFORMS) if p["id"] in default),
+    )
+
+    selected = _parse_platform_reply(reply, default)
+    logger.info(f"[{state.project_id}] Platforms selected: {selected}")
+    return selected

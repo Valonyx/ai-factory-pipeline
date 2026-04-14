@@ -1046,6 +1046,52 @@ async def handle_callback(update: Any, context: Any):
     elif data in ("project_continue", "project_archive_new", "cancel_abort", "restore_cancel"):
         await query.edit_message_text("OK.")
 
+    elif data.startswith("logo_update:"):
+        action = data[len("logo_update:"):]
+        active = await get_active_project(user_id)
+        if not active:
+            await query.edit_message_text("No active project.")
+            return
+
+        if action == "auto":
+            await query.edit_message_text(
+                "Generating logo... (~1-2 minutes). You'll receive it when ready."
+            )
+            state = PipelineState.model_validate(active["state_json"])
+
+            async def _gen_logo():
+                try:
+                    from factory.pipeline.s0_intake import _logo_flow_auto
+                    s0_out = state.s0_output or {}
+                    logo_asset = await _logo_flow_auto(state, s0_out)
+                    if logo_asset:
+                        state.brand_assets.append(logo_asset)
+                        await update_project_state(state)
+                except Exception as e:
+                    logger.error(f"Auto logo gen error: {e}")
+                    try:
+                        from factory.telegram.notifications import send_telegram_message
+                        await send_telegram_message(
+                            user_id, f"Logo generation failed: {e}"
+                        )
+                    except Exception:
+                        pass
+
+            _bg(_gen_logo())
+
+        elif action == "upload":
+            await set_operator_state(
+                user_id, "awaiting_logo_photo",
+                {"project_id": active["project_id"]},
+            )
+            await query.edit_message_text(
+                "Send me your logo image (PNG/JPG):"
+            )
+
+        elif action == "cancel":
+            await clear_operator_state(user_id)
+            await query.edit_message_text("Logo update cancelled.")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # §5.3 Free-Text Handler
@@ -1124,6 +1170,103 @@ async def handle_message(update: Any, context: Any):
             await _suggest_app_names(update, user_id, description, attachments)
         else:
             await _start_project(update, user_id, description, attachments, app_name=name_input)
+        return
+
+    # ── Operator state: awaiting logo (from /update_logo) ──
+    if isinstance(op_state, dict) and op_state.get("state") in (
+        "awaiting_logo", "awaiting_logo_photo",
+    ):
+        ctx = op_state.get("context", {})
+        active = await get_active_project(user_id)
+
+        # Photo received → store as logo
+        if update.message and update.message.photo and active:
+            await clear_operator_state(user_id)
+            await update.message.reply_text("📥 Saving your logo...")
+            try:
+                photo = update.message.photo[-1]  # highest resolution
+                tg_file = await context.bot.get_file(photo.file_id)
+                import io as _io
+                buf = _io.BytesIO()
+                await tg_file.download_to_memory(buf)
+                logo_bytes = buf.getvalue()
+
+                state = PipelineState.model_validate(active["state_json"])
+                state.brand_assets.append({
+                    "asset_type": "logo",
+                    "logo_bytes_len": len(logo_bytes),
+                    "source": "upload",
+                })
+                if state.project_metadata.get("logo_pending"):
+                    del state.project_metadata["logo_pending"]
+                await update_project_state(state)
+                await update.message.reply_text(
+                    "✅ Logo saved! It will be used in the build."
+                )
+            except Exception as e:
+                logger.error(f"Logo upload error: {e}")
+                await update.message.reply_text(f"Failed to save logo: {e}")
+            return
+
+        # Text: "auto" → generate, "cancel" → abort
+        if text:
+            cmd = text.strip().lower()
+            await clear_operator_state(user_id)
+            if cmd in ("auto", "generate", "gen") and active:
+                await update.message.reply_text(
+                    "Generating logo... (~1-2 minutes). You'll receive it when ready."
+                )
+                state = PipelineState.model_validate(active["state_json"])
+
+                async def _gen():
+                    try:
+                        from factory.pipeline.s0_intake import _logo_flow_auto
+                        s0_out = state.s0_output or {}
+                        asset = await _logo_flow_auto(state, s0_out)
+                        if asset:
+                            state.brand_assets.append(asset)
+                            await update_project_state(state)
+                    except Exception as exc:
+                        logger.error(f"Logo auto-gen failed: {exc}")
+
+                _bg(_gen())
+            elif cmd not in ("cancel", "skip", "no"):
+                # Treat as description
+                if active:
+                    await update.message.reply_text(
+                        "Generating logo from your description... (~1-2 minutes)"
+                    )
+                    state = PipelineState.model_validate(active["state_json"])
+
+                    async def _gen_desc():
+                        try:
+                            from factory.integrations.image_gen import generate_image
+                            from factory.telegram.notifications import get_bot
+                            import io as _io
+                            prompt = f"{cmd} app icon for {state.idea_name or 'App'}"
+                            img = await generate_image(prompt=prompt, width=1024, height=1024)
+                            if img:
+                                bot_inst = get_bot()
+                                if bot_inst:
+                                    await bot_inst.send_photo(
+                                        chat_id=int(user_id),
+                                        photo=_io.BytesIO(img),
+                                        caption="🎨 Logo from your description. Use /update_logo to change.",
+                                    )
+                                state.brand_assets.append({
+                                    "asset_type": "logo",
+                                    "logo_bytes_len": len(img),
+                                    "source": "described",
+                                })
+                                await update_project_state(state)
+                        except Exception as exc:
+                            logger.error(f"Logo desc-gen failed: {exc}")
+
+                    _bg(_gen_desc())
+                else:
+                    await update.message.reply_text("Logo update cancelled.")
+            else:
+                await update.message.reply_text("Logo update cancelled.")
         return
 
     # ── Confirmation intercept (yes/no for destructive actions) ──
@@ -1378,6 +1521,60 @@ async def cmd_rename(update: Any, context: Any):
     logger.info(f"[{state.project_id}] App renamed: {old_name!r} → {new_name!r}")
 
 
+@require_auth
+async def cmd_update_logo(update: Any, context: Any):
+    """/update_logo — Update the app logo for the active project.
+
+    Shows 3 options: auto-generate, upload image, describe.
+    """
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text(
+            "No active project. Start one with /new."
+        )
+        return
+
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    "🤖 Auto-Generate", callback_data="logo_update:auto"
+                ),
+                InlineKeyboardButton(
+                    "📤 Upload Image",  callback_data="logo_update:upload"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Cancel",        callback_data="logo_update:cancel"
+                ),
+            ],
+        ]
+        markup = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            "📸 *Update App Logo*\n\n"
+            "Choose how to set your logo:",
+            reply_markup=markup,
+            parse_mode="Markdown",
+        )
+    except ImportError:
+        # Dry-run / no Telegram library — fall back to text flow
+        await set_operator_state(
+            user_id, "awaiting_logo",
+            {"project_id": active["project_id"]},
+        )
+        await update.message.reply_text(
+            "📸 *Update Logo*\n\n"
+            "• Send an image (PNG/JPG) to upload your logo\n"
+            "• Type `auto` to let AI generate one\n"
+            "• Type a description for a custom-themed icon\n"
+            "• Type `cancel` to abort",
+            parse_mode="Markdown",
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Project Launcher
 # ═══════════════════════════════════════════════════════════════════
@@ -1561,6 +1758,7 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("cancel", cmd_cancel))
         app.add_handler(CommandHandler("modify", cmd_modify))
         app.add_handler(CommandHandler("rename", cmd_rename))
+        app.add_handler(CommandHandler("update_logo", cmd_update_logo))
 
         # ── Deploy gate (FIX-08) ──
         app.add_handler(CommandHandler("deploy_confirm", cmd_deploy_confirm))

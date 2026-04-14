@@ -736,6 +736,451 @@ async def _generate_tech_summary_message(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Full Pipeline Context — S0→S1→S2→S3 Constraint Envelope for S4
+# ═══════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class PipelineContext:
+    """All upstream stage outputs distilled into a constraint envelope for S4.
+
+    S4 CodeGen must honour EVERY field here. Nothing gets re-decided.
+    """
+    # ── S0: Intake ────────────────────────────────────────────────
+    app_name: str = ""
+    app_description: str = ""
+    app_category: str = ""
+    market: str = "ksa"
+    target_platforms: list = field(default_factory=list)
+    features_must: list = field(default_factory=list)
+    features_nice: list = field(default_factory=list)
+    estimated_complexity: str = "medium"
+    has_payments: bool = False
+    has_realtime: bool = False
+    has_location: bool = False
+    has_notifications: bool = False
+    has_user_accounts: bool = True
+
+    # ── S1: Legal ─────────────────────────────────────────────────
+    blocked_features: list = field(default_factory=list)   # MUST NOT implement
+    required_consents: list = field(default_factory=list)  # MUST wire in code
+    data_classification: str = "internal"
+    risk_level: str = "MEDIUM"
+    payment_mode: str = "SANDBOX"                          # SANDBOX | LIVE
+    pdpl_obligations: list = field(default_factory=list)
+    compliance_matrix: list = field(default_factory=list)
+    inapp_texts: dict = field(default_factory=dict)        # consent banner, etc.
+    required_legal_docs: list = field(default_factory=list)
+    legal_classification: str = "internal"
+
+    # ── S2: Blueprint ─────────────────────────────────────────────
+    selected_stack: str = "flutterflow"
+    screens: list = field(default_factory=list)
+    data_model: list = field(default_factory=list)
+    api_endpoints: list = field(default_factory=list)
+    auth_method: str = "email"
+    services: dict = field(default_factory=dict)
+    env_vars_spec: dict = field(default_factory=dict)      # from blueprint env_vars
+    data_residency: str = "KSA"
+    business_model: str = "general"
+    compliance_artifacts: list = field(default_factory=list)
+    brand_assets: dict = field(default_factory=dict)       # logo_path, splash_path
+    ieee_docs_summary: dict = field(default_factory=dict)  # {doc_id: first 800 chars}
+    ieee_doc_count: int = 0
+    design_system: str = "material3"
+    color_palette: dict = field(default_factory=dict)
+    typography: dict = field(default_factory=dict)
+
+    # ── S3: Design ────────────────────────────────────────────────
+    project_type: str = "standard_app"
+    design_tokens: dict = field(default_factory=dict)
+    mockup_paths: list = field(default_factory=list)       # per-screen wireframe paths
+    platform_assets: dict = field(default_factory=dict)   # icon sizes, splash specs
+    specialist_docs: dict = field(default_factory=dict)   # GDD, art_bible, etc. (games)
+    visual_style: str = "minimal"
+    layout_patterns: list = field(default_factory=list)
+
+
+def _build_full_pipeline_context(
+    state: PipelineState,
+    blueprint_data: dict,
+) -> PipelineContext:
+    """Build the full constraint envelope from all upstream stage outputs.
+
+    S4 will never re-decide anything — it only implements what S0→S3 specified.
+    """
+    s0 = state.s0_output or {}
+    s1 = state.s1_output or {}
+    s2 = blueprint_data  # already passed in as blueprint_data
+    s3 = state.s3_output or {}
+
+    # ── IEEE docs: extract first 800 chars of each doc as a summary ──
+    raw_ieee = s2.get("ieee_docs") or {}
+    ieee_summary = {
+        doc_id: (content[:800] + "…" if len(content) > 800 else content)
+        for doc_id, content in raw_ieee.items()
+    }
+
+    # ── S3 design tokens: merge from both s3 vibe and s2 color_palette ──
+    s3_vibe = s3.get("vibe") or s3.get("design_system") or {}
+    palette = (
+        s3_vibe.get("color_palette")
+        or s3.get("color_palette")
+        or s2.get("color_palette")
+        or {}
+    )
+    typography = (
+        s3_vibe.get("typography")
+        or s3.get("typography")
+        or s2.get("typography")
+        or {}
+    )
+    design_tokens = s3.get("design_tokens") or {}
+    if not design_tokens and palette:
+        for k, v in palette.items():
+            design_tokens[f"color-{k.replace('_', '-')}"] = v
+        for k, v in typography.items():
+            design_tokens[f"typography-{k.replace('_', '-')}"] = v
+
+    # ── S3 specialist docs (games etc.): carry key doc keys only ──
+    specialist = s3.get("specialist") or {}
+    # Keep only first 600 chars of each specialist doc (cost-conscious)
+    specialist_summary = {
+        k: (str(v)[:600] + "…" if len(str(v)) > 600 else str(v))
+        for k, v in specialist.items()
+    }
+
+    ctx = PipelineContext(
+        # S0
+        app_name            = s0.get("app_name") or s2.get("app_name") or state.project_id,
+        app_description     = s0.get("app_description") or s2.get("app_description") or "",
+        app_category        = s0.get("app_category") or s2.get("app_category") or "general",
+        market              = s0.get("market", "ksa"),
+        target_platforms    = (
+            s0.get("target_platforms")
+            or s2.get("target_platforms")
+            or ["ios", "android"]
+        ),
+        features_must       = s0.get("features_must") or [],
+        features_nice       = s0.get("features_nice") or [],
+        estimated_complexity= s0.get("estimated_complexity", "medium"),
+        has_payments        = bool(s0.get("has_payments") or s2.get("payment_mode") not in (None, "NONE")),
+        has_realtime        = bool(s0.get("has_realtime") or s2.get("services", {}).get("realtime")),
+        has_location        = bool(s0.get("has_location")),
+        has_notifications   = bool(s0.get("has_notifications")),
+        has_user_accounts   = bool(s0.get("has_user_accounts", True)),
+
+        # S1
+        blocked_features    = s1.get("blocked_features") or s2.get("blocked_features") or [],
+        required_consents   = s1.get("required_consents") or [],
+        data_classification = s1.get("data_classification") or s2.get("legal_classification") or "internal",
+        risk_level          = s1.get("risk_level") or s1.get("overall_risk", "MEDIUM"),
+        payment_mode        = s1.get("payment_mode") or s2.get("payment_mode") or "SANDBOX",
+        pdpl_obligations    = s1.get("pdpl_obligations") or [],
+        compliance_matrix   = s1.get("compliance_matrix") or s2.get("compliance_matrix") or [],
+        inapp_texts         = s1.get("inapp_texts") or {},
+        required_legal_docs = s1.get("required_legal_docs") or s2.get("required_legal_docs") or [],
+        legal_classification= s1.get("data_classification") or s2.get("legal_classification") or "internal",
+
+        # S2
+        selected_stack      = s2.get("selected_stack", "flutterflow"),
+        screens             = s2.get("screens") or [],
+        data_model          = s2.get("data_model") or [],
+        api_endpoints       = s2.get("api_endpoints") or [],
+        auth_method         = s2.get("auth_method", "email"),
+        services            = s2.get("services") or {},
+        env_vars_spec       = s2.get("env_vars") or {},
+        data_residency      = s2.get("data_residency", "KSA"),
+        business_model      = s2.get("business_model", "general"),
+        compliance_artifacts= s2.get("compliance_artifacts") or [],
+        brand_assets        = s2.get("brand_assets") or {},
+        ieee_docs_summary   = ieee_summary,
+        ieee_doc_count      = s2.get("ieee_doc_count", len(ieee_summary)),
+        design_system       = s2.get("design_system") or s3_vibe.get("design_system", "material3"),
+        color_palette       = palette,
+        typography          = typography,
+
+        # S3
+        project_type        = s3.get("project_type", "standard_app"),
+        design_tokens       = design_tokens,
+        mockup_paths        = s3.get("mockup_paths") or [],
+        platform_assets     = s3.get("platform_assets") or {},
+        specialist_docs     = specialist_summary,
+        visual_style        = s3.get("visual_style") or s3_vibe.get("visual_style", "minimal"),
+        layout_patterns     = s3_vibe.get("layout_patterns") or ["cards", "bottom_nav"],
+    )
+
+    logger.info(
+        f"Pipeline context built: "
+        f"platforms={ctx.target_platforms}, "
+        f"screens={len(ctx.screens)}, "
+        f"blocked={len(ctx.blocked_features)}, "
+        f"consents={len(ctx.required_consents)}, "
+        f"ieee_docs={ctx.ieee_doc_count}, "
+        f"payment_mode={ctx.payment_mode}, "
+        f"risk={ctx.risk_level}"
+    )
+    return ctx
+
+
+def _build_constraint_block(ctx: PipelineContext) -> str:
+    """Render the full constraint envelope as a prompt injection block.
+
+    This is the single source of truth injected into EVERY codegen prompt.
+    The Engineer reads this before writing any file.
+    """
+    lines: list[str] = [
+        "═══════════════════════════════════════════════════",
+        "  PIPELINE CONSTRAINT ENVELOPE — READ BEFORE CODING",
+        "═══════════════════════════════════════════════════",
+        "",
+        f"App: {ctx.app_name} | Category: {ctx.app_category}",
+        f"Stack: {ctx.selected_stack} | Design system: {ctx.design_system}",
+        f"Platforms: {ctx.target_platforms}",
+        f"Market: {ctx.market.upper()} | Data residency: {ctx.data_residency}",
+        f"Payment mode: {ctx.payment_mode} (use test keys if SANDBOX)",
+        f"Risk level: {ctx.risk_level}",
+        f"Auth: {ctx.auth_method}",
+        "",
+    ]
+
+    # Blocked features — hard constraint
+    if ctx.blocked_features:
+        lines.append("🚫 BLOCKED FEATURES — MUST NOT implement:")
+        for f in ctx.blocked_features[:8]:
+            lines.append(f"   • {f}")
+        lines.append("")
+
+    # Required consents — must appear in code
+    if ctx.required_consents:
+        lines.append("✅ REQUIRED CONSENT SCREENS — MUST implement:")
+        for c in ctx.required_consents[:6]:
+            lines.append(f"   • {c}")
+        lines.append("")
+
+    # PDPL obligations
+    if ctx.pdpl_obligations:
+        lines.append("⚖️  PDPL OBLIGATIONS (wire into data layer):")
+        for p in ctx.pdpl_obligations[:4]:
+            lines.append(f"   • {p}")
+        lines.append("")
+
+    # In-app legal texts
+    if ctx.inapp_texts:
+        lines.append("📜 IN-APP LEGAL TEXTS (use exact strings from S1):")
+        for k, v in list(ctx.inapp_texts.items())[:5]:
+            lines.append(f"   {k}: {str(v)[:120]}")
+        lines.append("")
+
+    # Services (backend)
+    if ctx.services:
+        lines.append(f"🔧 Services: {ctx.services}")
+
+    # Key features
+    if ctx.features_must:
+        lines.append(f"⭐ Must-have features: {ctx.features_must[:10]}")
+    if ctx.features_nice:
+        lines.append(f"✨ Nice-to-have features: {ctx.features_nice[:6]}")
+
+    # Capability flags
+    flags = []
+    if ctx.has_payments:
+        flags.append(f"payments({'SANDBOX' if ctx.payment_mode == 'SANDBOX' else 'LIVE'})")
+    if ctx.has_realtime:
+        flags.append("realtime")
+    if ctx.has_location:
+        flags.append("location")
+    if ctx.has_notifications:
+        flags.append("push-notifications")
+    if flags:
+        lines.append(f"🏷  Capabilities: {', '.join(flags)}")
+
+    # Design tokens summary
+    if ctx.color_palette:
+        primary = ctx.color_palette.get("primary", "#1976D2")
+        secondary = ctx.color_palette.get("secondary", "#FF9800")
+        lines.append(f"🎨 Colors: primary={primary}, secondary={secondary}")
+    if ctx.typography:
+        lines.append(f"🔤 Typography: {ctx.typography}")
+    if ctx.visual_style:
+        lines.append(f"🖼  Visual style: {ctx.visual_style} | "
+                     f"Layout: {ctx.layout_patterns}")
+
+    # Screens
+    lines.append(f"\n📱 Screens ({len(ctx.screens)}):")
+    for s in ctx.screens[:10]:
+        lines.append(f"   • {s.get('name')} — {s.get('purpose', '')[:60]}")
+
+    # API endpoints
+    if ctx.api_endpoints:
+        lines.append(f"\n🌐 API Endpoints ({len(ctx.api_endpoints)}):")
+        for ep in ctx.api_endpoints[:8]:
+            lines.append(f"   {ep.get('method','GET')} {ep.get('path','/')} — {ep.get('purpose','')[:50]}")
+
+    # Data model
+    if ctx.data_model:
+        lines.append(f"\n🗄  Data Model ({len(ctx.data_model)} collections):")
+        for c in ctx.data_model[:6]:
+            fields = [f['name'] for f in c.get('fields', [])[:5]]
+            lines.append(f"   {c.get('collection')}: {fields}")
+
+    # Brand assets
+    if ctx.brand_assets.get("logo_path"):
+        lines.append(f"\n🖼  Logo: {ctx.brand_assets['logo_path']}")
+    if ctx.brand_assets.get("splash_path"):
+        lines.append(f"💫 Splash: {ctx.brand_assets['splash_path']}")
+
+    # IEEE docs
+    if ctx.ieee_docs_summary:
+        lines.append(f"\n📐 IEEE Blueprint docs available ({ctx.ieee_doc_count}):")
+        for doc_id in list(ctx.ieee_docs_summary.keys())[:6]:
+            lines.append(f"   • {doc_id}")
+
+    # S3 Mockups
+    if ctx.mockup_paths:
+        lines.append(f"\n📋 Wireframe mockups: {len(ctx.mockup_paths)} screens at:")
+        for p in ctx.mockup_paths[:3]:
+            lines.append(f"   {p}")
+
+    # Specialist docs (games etc.)
+    if ctx.specialist_docs:
+        lines.append(f"\n🎮 Specialist design docs: {list(ctx.specialist_docs.keys())}")
+
+    lines.append("")
+    lines.append("═══════════════════════════════════════════════════")
+    return "\n".join(lines)
+
+
+def _build_ieee_context(ctx: PipelineContext) -> str:
+    """Inject the most relevant IEEE doc sections into the prompt.
+
+    Prioritises: api_spec, data_model, security_arch, srs, sad.
+    """
+    if not ctx.ieee_docs_summary:
+        return ""
+
+    priority_docs = ["api_spec", "data_model", "security_arch", "srs", "sad"]
+    lines = ["\n── IEEE Blueprint Extracts (authoritative spec) ──"]
+    injected = 0
+    for doc_id in priority_docs:
+        if doc_id in ctx.ieee_docs_summary:
+            snippet = ctx.ieee_docs_summary[doc_id][:500]
+            lines.append(f"\n[{doc_id.upper()}]\n{snippet}")
+            injected += 1
+            if injected >= 3:
+                break
+
+    return "\n".join(lines) if injected else ""
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Drift Validation — Scout checks generated files against blueprint
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _validate_no_drift(
+    state: PipelineState,
+    files: dict[str, str],
+    ctx: PipelineContext,
+) -> dict:
+    """Scout validates that generated code does not drift from the blueprint.
+
+    Checks:
+    1. All required screens have corresponding files
+    2. Blocked features are NOT present in generated code
+    3. Consent screens exist (if required_consents is non-empty)
+    4. Payment mode is respected (no live keys in SANDBOX mode)
+    5. All must-have features are addressed
+
+    Returns a dict with drift_found (bool), issues (list), and a fix summary.
+    """
+    screen_names  = [s.get("name", "") for s in ctx.screens]
+    file_paths    = list(files.keys())
+    # Sample of code content for Scout review (first 300 chars of each file)
+    code_sample   = {
+        p: c[:300] for p, c in list(files.items())[:25]
+        if isinstance(c, str)
+    }
+
+    verdict = await call_ai(
+        role=AIRole.SCOUT,
+        prompt=(
+            f"Validate that this generated codebase aligns with its blueprint.\n\n"
+            f"BLUEPRINT REQUIREMENTS:\n"
+            f"  Required screens: {screen_names}\n"
+            f"  Must-have features: {ctx.features_must[:10]}\n"
+            f"  BLOCKED features (must NOT appear): {ctx.blocked_features}\n"
+            f"  Required consents: {ctx.required_consents}\n"
+            f"  Payment mode: {ctx.payment_mode} "
+            f"({'test/sandbox keys only' if ctx.payment_mode == 'SANDBOX' else 'live keys allowed'})\n"
+            f"  Auth method: {ctx.auth_method}\n"
+            f"  Target platforms: {ctx.target_platforms}\n\n"
+            f"GENERATED FILES ({len(file_paths)} total):\n"
+            f"{file_paths[:40]}\n\n"
+            f"CODE SAMPLE (first 300 chars of up to 25 files):\n"
+            f"{json.dumps(code_sample, indent=2)[:5000]}\n\n"
+            f"Return ONLY a JSON object:\n"
+            f'{{\n'
+            f'  "drift_found": true/false,\n'
+            f'  "missing_screens": ["screen_name"],\n'
+            f'  "blocked_feature_violations": ["feature_name"],\n'
+            f'  "missing_consents": ["consent_name"],\n'
+            f'  "payment_mode_violations": ["file_path: description"],\n'
+            f'  "missing_features": ["feature_name"],\n'
+            f'  "severity": "LOW|MEDIUM|HIGH",\n'
+            f'  "summary": "one sentence"\n'
+            f'}}'
+        ),
+        state=state,
+        action="general",
+    )
+
+    try:
+        start = verdict.find("{")
+        end   = verdict.rfind("}") + 1
+        result = json.loads(verdict[start:end]) if start >= 0 else {}
+    except (json.JSONDecodeError, TypeError):
+        result = {}
+
+    drift_found = result.get("drift_found", False)
+
+    if drift_found:
+        severity = result.get("severity", "MEDIUM")
+        summary  = result.get("summary", "Drift detected")
+        logger.warning(
+            f"[{state.project_id}] Blueprint drift detected [{severity}]: {summary}"
+        )
+
+        # Notify operator if HIGH severity
+        if severity == "HIGH":
+            try:
+                from factory.telegram.notifications import notify_operator
+                from factory.core.state import NotificationType
+                await notify_operator(
+                    state,
+                    NotificationType.WARNING,
+                    f"⚠️ *Blueprint drift detected in generated code*\n"
+                    f"Severity: {severity}\n{summary}\n\n"
+                    f"Missing screens: {result.get('missing_screens', [])}\n"
+                    f"Violations: {result.get('blocked_feature_violations', [])}",
+                )
+            except Exception:
+                pass
+
+        # Store drift in state errors
+        state.errors.append({
+            "stage": "S4_CODEGEN",
+            "type": "blueprint_drift",
+            "severity": severity,
+            "details": result,
+        })
+    else:
+        logger.info(f"[{state.project_id}] Blueprint drift check: PASS — no drift detected")
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Design Token & Legal Text Injection
 # ═══════════════════════════════════════════════════════════════════
 
@@ -806,6 +1251,7 @@ async def _expand_to_100_files(
     design_tokens: dict,
     legal_texts: dict,
     tech_items: list,
+    ctx: "Optional[PipelineContext]" = None,
 ) -> dict[str, str]:
     """Expand generated files to 100+ by generating per-screen code + support files.
 
@@ -821,13 +1267,31 @@ async def _expand_to_100_files(
       - Legal texts constants file
       - Environment config template
       - Implementation guide for NOT_AUTOMATABLE tech
+
+    ctx (PipelineContext): when provided, per-screen prompts also include the
+    constraint envelope so each file stays aligned with S0→S3 decisions.
     """
-    screens    = blueprint_data.get("screens", [])
-    app_name   = blueprint_data.get("app_name", state.project_id)
-    data_model = blueprint_data.get("data_model", [])
-    auth       = blueprint_data.get("auth_method", "email")
+    # Prefer pipeline context values when available
+    screens    = (ctx.screens if ctx else None) or blueprint_data.get("screens", [])
+    app_name   = (ctx.app_name if ctx else None) or blueprint_data.get("app_name", state.project_id)
+    data_model = (ctx.data_model if ctx else None) or blueprint_data.get("data_model", [])
+    auth       = (ctx.auth_method if ctx else None) or blueprint_data.get("auth_method", "email")
     token_ctx  = _build_token_injection(design_tokens)
     legal_ctx  = _build_legal_injection(legal_texts)
+
+    # Build a mini constraint summary for per-screen prompts
+    per_screen_constraints = ""
+    if ctx:
+        per_screen_constraints = (
+            f"Constraints from blueprint:\n"
+            f"  Payment mode: {ctx.payment_mode} "
+            f"({'use test/sandbox keys' if ctx.payment_mode == 'SANDBOX' else 'live keys allowed'})\n"
+            f"  Data residency: {ctx.data_residency}\n"
+            f"  Blocked features (must NOT appear): {ctx.blocked_features}\n"
+            f"  Required consents to wire: {ctx.required_consents}\n"
+            f"  Risk level: {ctx.risk_level}\n"
+            f"  Project type: {ctx.project_type}\n"
+        )
 
     new_files: dict[str, str] = {}
 
@@ -887,6 +1351,7 @@ async def _expand_to_100_files(
                 f"Components: {scomponents}\n"
                 f"Data bindings: {[b.get('collection') for b in sbindings[:5]]}\n"
                 f"Auth method: {auth}\n\n"
+                f"{per_screen_constraints}\n"
                 f"{token_ctx}\n\n"
                 f"{legal_ctx}\n\n"
                 f"Requirements:\n"
@@ -894,7 +1359,9 @@ async def _expand_to_100_files(
                 f"- Apply design tokens for all colors, fonts, spacing\n"
                 f"- Include state management (loading, error, empty states)\n"
                 f"- Proper null safety / type safety\n"
-                f"- Import all needed packages\n\n"
+                f"- Import all needed packages\n"
+                f"- NEVER implement blocked features listed above\n"
+                f"- Wire required consent texts where this screen collects data\n\n"
                 f"Return ONLY the raw file content — no markdown fences, no explanation."
             ),
             state=state,
@@ -1259,20 +1726,33 @@ def _build_codegen_prompt(
     api_endpoints: list,
     auth_method: str,
     blueprint_data: dict,
+    ctx: "Optional[PipelineContext]" = None,
 ) -> str:
     """Build a stack-specific, detailed codegen prompt for the Engineer.
 
     Each stack gets targeted instructions for conventions, file structure,
     and must-have patterns — reducing hallucinations and improving output quality.
+
+    When ctx is provided (Phase 6+), the full constraint envelope is prepended
+    so the Engineer never drifts from S0→S3 decisions.
     """
     screens_json = json.dumps(screens[:10], indent=2)[:2500]
     model_json = json.dumps(data_model, indent=2)[:1800]
     api_json = json.dumps(api_endpoints, indent=2)[:1200]
-    colors = json.dumps(blueprint_data.get("color_palette", {}))
-    typography = blueprint_data.get("typography", {})
-    features = blueprint_data.get("features_must", [])
+    colors = json.dumps(
+        (ctx.color_palette if ctx else None)
+        or blueprint_data.get("color_palette", {})
+    )
+    typography = (ctx.typography if ctx else None) or blueprint_data.get("typography", {})
+    features = (ctx.features_must if ctx else None) or blueprint_data.get("features_must", [])
+
+    # Build constraint envelope from full pipeline context
+    constraint_block = _build_constraint_block(ctx) if ctx else ""
+    ieee_block       = _build_ieee_context(ctx) if ctx else ""
 
     base = (
+        f"{constraint_block}\n\n"
+        f"{ieee_block}\n\n"
         f"App name: {app_name}\n"
         f"Screens: {screens_json}\n"
         f"Data model: {model_json}\n"
@@ -1287,6 +1767,7 @@ def _build_codegen_prompt(
         f'"pubspec.yaml":"name: myapp\\nversion: 1.0.0"}}\n'
         f"IMPORTANT: file content values must be raw code strings — NOT wrapped in ```fences```.\n"
         f"Include ALL necessary files (entry point, screens, models, config, manifest).\n"
+        f"IMPORTANT: Do NOT implement any BLOCKED FEATURES listed in the constraint envelope above.\n"
     )
 
     if stack == TechStack.FLUTTERFLOW:
@@ -1427,6 +1908,9 @@ async def _codegen_full_generation(
     app_name      = blueprint_data.get("app_name", state.project_id)
     requirements  = state.s0_output or {}
 
+    # ── Build full pipeline context (S0→S1→S2→S3 constraint envelope) ──
+    ctx = _build_full_pipeline_context(state, blueprint_data)
+
     # ── Phase 0: Tech Inventory ──
     tech_items = await _run_tech_inventory(state, blueprint_data, requirements)
 
@@ -1436,9 +1920,9 @@ async def _codegen_full_generation(
     # Send summary before starting generation
     await _generate_tech_summary_message(state, tech_items)
 
-    # ── Extract design tokens (S3) and legal texts (S1) ──
-    design_tokens = _extract_design_tokens(state)
-    legal_texts   = _extract_legal_texts(state)
+    # ── Design tokens and legal texts come from the pipeline context ──
+    design_tokens = ctx.design_tokens
+    legal_texts   = ctx.inapp_texts
     token_injection = _build_token_injection(design_tokens)
     legal_injection = _build_legal_injection(legal_texts)
 
@@ -1446,7 +1930,7 @@ async def _codegen_full_generation(
     from factory.core.stage_enrichment import enrich_prompt
 
     # Build wired services context for the Engineer
-    wired_services = [i.name for i in tech_items if i.wired and i.category != "framework"]
+    wired_services   = [i.name for i in tech_items if i.wired and i.category != "framework"]
     skipped_services = [i.name for i in tech_items if i.skip]
     tech_context = (
         f"Wired services (use these, credentials available): {wired_services[:10]}\n"
@@ -1461,8 +1945,9 @@ async def _codegen_full_generation(
         api_endpoints=api_endpoints,
         auth_method=auth_method,
         blueprint_data=blueprint_data,
+        ctx=ctx,                           # ← full constraint envelope injected
     )
-    # Inject design tokens + legal texts + tech context
+    # Append tech context + any additional token/legal text not already in ctx block
     code_prompt = (
         code_prompt
         + f"\n\n{tech_context}"
@@ -1540,7 +2025,12 @@ async def _codegen_full_generation(
     files = await _expand_to_100_files(
         state, files, stack, blueprint_data,
         design_tokens, legal_texts, tech_items,
+        ctx=ctx,                           # ← pass ctx so per-screen code stays aligned
     )
+
+    # ── Phase 1.6: Blueprint drift validation ──
+    drift_result = await _validate_no_drift(state, files, ctx)
+    drift_found  = drift_result.get("drift_found", False)
 
     # ── Phase 5: Mother Memory codegen nodes ──
     await _write_codegen_to_mother_memory(state, files, stack, tech_items)
@@ -1566,6 +2056,23 @@ async def _codegen_full_generation(
         "skipped_services": [i.name for i in tech_items if i.skip],
         "design_tokens_injected": bool(design_tokens),
         "legal_texts_injected": bool(legal_texts),
+        "blueprint_drift": {
+            "checked": True,
+            "drift_found": drift_found,
+            "severity": drift_result.get("severity", "LOW"),
+            "missing_screens": drift_result.get("missing_screens", []),
+            "violations": drift_result.get("blocked_feature_violations", []),
+        },
+        # Pipeline context snapshot (key fields only — not full content)
+        "pipeline_context": {
+            "target_platforms": ctx.target_platforms,
+            "blocked_features": ctx.blocked_features,
+            "payment_mode": ctx.payment_mode,
+            "data_residency": ctx.data_residency,
+            "risk_level": ctx.risk_level,
+            "ieee_doc_count": ctx.ieee_doc_count,
+            "project_type": ctx.project_type,
+        },
     }
 
     # ── Commit to GitHub repo ──

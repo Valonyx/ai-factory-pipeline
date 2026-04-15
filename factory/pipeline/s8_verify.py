@@ -201,14 +201,18 @@ async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
         return None
 
     from factory.core.stage_enrichment import enrich_prompt
+    from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
     s0 = state.s0_output or {}
-    _guidelines_base = (
+    _guidelines_base = _inject_cc(
         f"Does this app description violate Apple App Store "
         f"or Google Play guidelines?\n"
         f"App: {s0.get('app_description', '')}\n"
         f"Category: {s0.get('app_category', '')}\n"
         f"Has payments: {s0.get('has_payments', False)}\n"
-        f"Return: pass/fail with specific guideline references."
+        f"Return: pass/fail with specific guideline references.",
+        state,
+        current_stage="s8_verify",
+        compact=True,
     )
     _guidelines_prompt = await enrich_prompt(
         "s8_verify", _guidelines_base, state,

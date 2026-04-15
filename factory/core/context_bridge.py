@@ -241,6 +241,7 @@ def inject_context(prompt: str, state: "PipelineState") -> str:
         or state.s3_output is not None
         or state.s4_output is not None
         or state.s5_output is not None
+        or state.s6_output is not None
         or state.s7_output is not None
         or state.s8_output is not None
         or getattr(state, "war_room_active", False)
@@ -282,6 +283,7 @@ async def inject_context_async(
         or state.s3_output is not None
         or state.s4_output is not None
         or state.s5_output is not None
+        or state.s6_output is not None
         or state.s7_output is not None
         or state.s8_output is not None
         or getattr(state, "war_room_active", False)

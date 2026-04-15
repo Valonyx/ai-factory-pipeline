@@ -224,40 +224,42 @@ async def _iterative_classify(
         ]
         legal_req = {k: requirements.get(k) for k in legal_fields if k in requirements}
 
+        from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
+        _legal_base_prompt = (
+            f"LEGAL CLASSIFICATION — Iteration {iteration + 1}/{_MAX_ITERATIONS}.\n\n"
+            f"App: {app_name}\n"
+            f"Requirements:\n{json.dumps(legal_req, indent=2)[:3000]}\n\n"
+            f"KSA regulatory research (all iterations):\n{legal_research[:4000]}\n\n"
+            f"Previous iteration risk: {prev_risk or 'N/A'}\n\n"
+            f"Classify and decide. Return ONLY valid JSON:\n"
+            f'{{\n'
+            f'  "data_classification": "public|internal|confidential|restricted",\n'
+            f'  "regulatory_bodies": ["PDPL", "CST", "SAMA", "NDMO", "NCA"],\n'
+            f'  "compliance_matrix": {{\n'
+            f'    "PDPL": "compliant|partial|non-compliant|n/a",\n'
+            f'    "CST": "compliant|partial|non-compliant|n/a",\n'
+            f'    "SAMA": "compliant|partial|non-compliant|n/a",\n'
+            f'    "NDMO": "compliant|partial|non-compliant|n/a",\n'
+            f'    "NCA": "compliant|partial|non-compliant|n/a"\n'
+            f'  }},\n'
+            f'  "payment_mode": "SANDBOX",\n'
+            f'  "feature_risk_assessment": [\n'
+            f'    {{"feature": "...", "risk": "clear|flagged|blocked", '
+            f'"reason": "...", "action": "..."}}\n'
+            f'  ],\n'
+            f'  "required_legal_docs": ["privacy_policy", "terms_of_service", "eula", "data_deletion_policy"],\n'
+            f'  "required_licenses": ["none"],\n'
+            f'  "cross_border_data": false,\n'
+            f'  "sama_sandbox_required": false,\n'
+            f'  "overall_risk": "low|medium|high|critical",\n'
+            f'  "proceed": true,\n'
+            f'  "blocking_issues": [],\n'
+            f'  "unresolved_questions": []\n'
+            f'}}'
+        )
         decision_text = await call_ai(
             role=AIRole.STRATEGIST,
-            prompt=(
-                f"LEGAL CLASSIFICATION — Iteration {iteration + 1}/{_MAX_ITERATIONS}.\n\n"
-                f"App: {app_name}\n"
-                f"Requirements:\n{json.dumps(legal_req, indent=2)[:3000]}\n\n"
-                f"KSA regulatory research (all iterations):\n{legal_research[:4000]}\n\n"
-                f"Previous iteration risk: {prev_risk or 'N/A'}\n\n"
-                f"Classify and decide. Return ONLY valid JSON:\n"
-                f'{{\n'
-                f'  "data_classification": "public|internal|confidential|restricted",\n'
-                f'  "regulatory_bodies": ["PDPL", "CST", "SAMA", "NDMO", "NCA"],\n'
-                f'  "compliance_matrix": {{\n'
-                f'    "PDPL": "compliant|partial|non-compliant|n/a",\n'
-                f'    "CST": "compliant|partial|non-compliant|n/a",\n'
-                f'    "SAMA": "compliant|partial|non-compliant|n/a",\n'
-                f'    "NDMO": "compliant|partial|non-compliant|n/a",\n'
-                f'    "NCA": "compliant|partial|non-compliant|n/a"\n'
-                f'  }},\n'
-                f'  "payment_mode": "SANDBOX",\n'
-                f'  "feature_risk_assessment": [\n'
-                f'    {{"feature": "...", "risk": "clear|flagged|blocked", '
-                f'"reason": "...", "action": "..."}}\n'
-                f'  ],\n'
-                f'  "required_legal_docs": ["privacy_policy", "terms_of_service", "eula", "data_deletion_policy"],\n'
-                f'  "required_licenses": ["none"],\n'
-                f'  "cross_border_data": false,\n'
-                f'  "sama_sandbox_required": false,\n'
-                f'  "overall_risk": "low|medium|high|critical",\n'
-                f'  "proceed": true,\n'
-                f'  "blocking_issues": [],\n'
-                f'  "unresolved_questions": []\n'
-                f'}}'
-            ),
+            prompt=_inject_cc(_legal_base_prompt, state, current_stage="s1_legal", compact=True),
             state=state,
             action="decide_legal",
         )

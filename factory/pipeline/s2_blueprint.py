@@ -277,6 +277,10 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
             f'  "env_vars": {{"VAR_NAME": "description"}}\n'
             f'}}'
     )
+    from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
+    _arch_base_prompt = _inject_cc(
+        _arch_base_prompt, state, current_stage="s2_blueprint", compact=True,
+    )
     _arch_prompt = await enrich_prompt(
         "s2_blueprint", _arch_base_prompt, state,
         scout=True,

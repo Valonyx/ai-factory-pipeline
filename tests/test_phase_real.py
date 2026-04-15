@@ -743,12 +743,16 @@ class TestCopilotDecisions:
     @pytest.mark.asyncio
     async def test_copilot_dryruns_auto_select_on_import_error(self, fresh_state):
         """In Copilot dry-run (no python-telegram-bot), present_decision() auto-selects."""
+        import sys
         from factory.telegram.decisions import present_decision
 
         fresh_state.autonomy_mode = AutonomyMode.COPILOT
 
-        # When python-telegram-bot not available, ImportError path auto-selects recommended
-        with patch("factory.telegram.decisions.notify_operator", new_callable=AsyncMock):
+        # Force the ImportError path by hiding the telegram module from sys.modules.
+        # This simulates the environment where python-telegram-bot is not installed,
+        # causing present_decision() to immediately fall back to auto-selecting recommended.
+        with patch("factory.telegram.decisions.notify_operator", new_callable=AsyncMock), \
+             patch.dict(sys.modules, {"telegram": None}):
             result = await present_decision(
                 state=fresh_state,
                 decision_type="stack_selection",

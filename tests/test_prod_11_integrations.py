@@ -276,7 +276,7 @@ class TestAIDispatchBudget:
         ] == "claude-opus-4-6"
         assert ROLE_CONTRACTS[AIRole.ENGINEER][
             "model"
-        ] == "claude-sonnet-4-6"
+        ] == "claude-sonnet-4-5-20250929"
         assert ROLE_CONTRACTS[AIRole.QUICK_FIX][
             "model"
         ] == "claude-haiku-4-5-20251001"

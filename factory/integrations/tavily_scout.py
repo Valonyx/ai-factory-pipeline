@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Tavily Scout Provider
+AI Factory Pipeline v5.8 — Tavily Scout Provider
 
 Free-tier web search with an AI-synthesized answer field.
 Primary search Scout for development (Perplexity requires $50 balance).

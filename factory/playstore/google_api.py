@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Google Play Developer API Client
+AI Factory Pipeline v5.8 — Google Play Developer API Client
 
 PAID OPTION: Requires Google Play Developer Account ($25 one-time fee).
 Free alternatives handled by android_delivery_chain.py.

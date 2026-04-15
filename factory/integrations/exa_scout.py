@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Exa.ai Scout Provider (Fallback #4)
+AI Factory Pipeline v5.8 — Exa.ai Scout Provider (Fallback #4)
 
 Exa (formerly Metaphor) uses neural/semantic search instead of keyword matching.
 It retrieves actual full-page content — not just snippets — making it the best

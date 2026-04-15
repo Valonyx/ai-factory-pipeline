@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — State Persistence
+AI Factory Pipeline v5.8 — State Persistence
 
 Thin wrapper that persists PipelineState to Supabase + in-memory fallback.
 Real storage is handled by factory.integrations.supabase.

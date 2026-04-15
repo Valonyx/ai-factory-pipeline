@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — FastAPI Entry Point
+AI Factory Pipeline v5.8 — FastAPI Entry Point
 
 Implements:
   - §7.4.1 /health (liveness) and /health-deep (readiness)

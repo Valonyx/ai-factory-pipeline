@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Store Compliance Preflight Gate
+AI Factory Pipeline v5.8 — Store Compliance Preflight Gate
 
 Implements:
   - §7.6.0b ComplianceGateResult (Pydantic model)

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Conflict Resolver (MODIFY Mode)
+AI Factory Pipeline v5.8 — Conflict Resolver (MODIFY Mode)
 
 3-way merge for MODIFY mode: resolves conflicts between original codebase,
 generated changes, and any drift that occurred since cloning.

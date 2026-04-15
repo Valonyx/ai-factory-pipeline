@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — WCAG Contrast Utilities
+AI Factory Pipeline v5.8 — WCAG Contrast Utilities
 
 Implements:
   - §3.4.2 Contrast utility functions

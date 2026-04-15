@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — User-Space Enforcer (Zero Sudo)
+AI Factory Pipeline v5.8 — User-Space Enforcer (Zero Sudo)
 
 Implements:
   - §2.5 User-Space Enforcer (prohibited patterns + safe rewrites)

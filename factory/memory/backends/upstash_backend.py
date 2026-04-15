@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Upstash Redis Memory Backend (Fallback #2)
+AI Factory Pipeline v5.8 — Upstash Redis Memory Backend (Fallback #2)
 
 Upstash provides serverless Redis with a REST API — no SDK needed, uses httpx.
 Data is stored in sorted sets (by unix timestamp) for chronological retrieval.

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Turso SQLite Memory Backend (Fallback #3)
+AI Factory Pipeline v5.8 — Turso SQLite Memory Backend (Fallback #3)
 
 Turso provides serverless SQLite databases accessible via HTTP.
 No SDK needed — all queries sent through the Turso HTTP Data API.

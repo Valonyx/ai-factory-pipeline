@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Perplexity Sonar Client (Scout)
+AI Factory Pipeline v5.8 — Perplexity Sonar Client (Scout)
 
 Implements:
   - §3.1   Perplexity Sonar integration

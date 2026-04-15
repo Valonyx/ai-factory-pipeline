@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — War Room Escalation Ladder
+AI Factory Pipeline v5.8 — War Room Escalation Ladder
 
 Implements:
   - §2.2.4 L1 Quick Fix (Haiku — minimal syntax fix)

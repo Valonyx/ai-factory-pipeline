@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Revenue Command Handlers
+AI Factory Pipeline v5.8 — Revenue Command Handlers
 
 /invoice <client> <amount> <description> — Log an invoice
 /revenue [today|this_month|all_time]     — Show revenue summary

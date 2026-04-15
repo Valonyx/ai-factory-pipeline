@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — S6 Test Node
+AI Factory Pipeline v5.8 — S6 Test Node
 
 Implements:
   - §4.6 S6 Test (generate + run + analyze tests)

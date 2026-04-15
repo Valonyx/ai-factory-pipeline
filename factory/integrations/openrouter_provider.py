@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — OpenRouter Provider (Free Models)
+AI Factory Pipeline v5.8 — OpenRouter Provider (Free Models)
 
 OpenRouter provides access to multiple AI models via a single API.
 Several models are available for free (no credits required).

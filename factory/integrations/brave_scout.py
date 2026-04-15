@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Brave Search Scout (paid, independent web index)
+AI Factory Pipeline v5.8 — Brave Search Scout (paid, independent web index)
 
 Brave Search maintains an independent web index (not a Google/Bing reseller),
 making it valuable for unfiltered results and cross-checking against other

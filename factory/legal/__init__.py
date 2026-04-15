@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Legal Engine Module
+AI Factory Pipeline v5.8 — Legal Engine Module
 
 Continuous legal thread, DocuGen, regulatory resolution, store compliance.
 """

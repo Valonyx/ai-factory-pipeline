@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Secrets Management (GCP Secret Manager)
+AI Factory Pipeline v5.8 — Secrets Management (GCP Secret Manager)
 
 Production replacement for the env-var-only stub.
 

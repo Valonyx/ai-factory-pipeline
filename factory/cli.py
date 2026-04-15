@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — CLI for Local Testing
+AI Factory Pipeline v5.8 — CLI for Local Testing
 
 Usage:
     python -m factory.cli "Build an e-commerce app for KSA"

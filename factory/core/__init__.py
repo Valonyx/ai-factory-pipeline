@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Core Module
+AI Factory Pipeline v5.8 — Core Module
 
 Public API for the core foundation layer.
 All enums, models, contracts, and configuration live here.

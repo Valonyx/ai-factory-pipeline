@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Scout Orchestrator
+AI Factory Pipeline v5.8 — Scout Orchestrator
 
 The intelligence layer that sits between roles.py and every Scout provider.
 Replaces the naïve "try each provider until one works" waterfall with a

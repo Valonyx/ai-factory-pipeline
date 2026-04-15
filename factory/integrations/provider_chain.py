@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Multi-Provider Fallback Chain
+AI Factory Pipeline v5.8 — Multi-Provider Fallback Chain
 
 Manages cascading AI and Scout providers. When a provider hits its quota
 or fails, the chain automatically switches to the next available one.

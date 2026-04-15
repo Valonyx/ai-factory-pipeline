@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Neo4j Memory Backend (Primary)
+AI Factory Pipeline v5.8 — Neo4j Memory Backend (Primary)
 
 Wraps the existing Neo4j client (factory/integrations/neo4j.py) as a
 MemoryBackend. Neo4j is the highest-priority backend in the chain.

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Setup Module
+AI Factory Pipeline v5.8 — Setup Module
 
 Implements:
   - §7.1.2 Setup Wizard

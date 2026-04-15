@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Free Image Generation Chain
+AI Factory Pipeline v5.8 — Free Image Generation Chain
 
 Resilient chain of free/low-cost image generation providers:
   1. Pollinations.ai — completely free, no API key, no signup

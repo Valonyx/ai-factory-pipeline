@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Health Monitoring
+AI Factory Pipeline v5.8 — Health Monitoring
 
 Implements:
   - §7.4.1 Health Endpoints (/health, /health-deep)

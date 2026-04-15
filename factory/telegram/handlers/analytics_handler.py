@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — /analytics Command Handler
+AI Factory Pipeline v5.8 — /analytics Command Handler
 
 /analytics [7d|30d|90d] — Pipeline performance dashboard
 

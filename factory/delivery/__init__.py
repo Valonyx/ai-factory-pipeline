@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Delivery Module
+AI Factory Pipeline v5.8 — Delivery Module
 
 File delivery, Airlock fallback, app store uploads, handoff intelligence.
 """

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Metrics Collector (/analytics command)
+AI Factory Pipeline v5.8 — Metrics Collector (/analytics command)
 
 Tracks and reports pipeline performance metrics:
   • Pipeline runs: success rate, avg duration

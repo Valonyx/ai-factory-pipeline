@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Unified Context Bridge
+AI Factory Pipeline v5.8 — Unified Context Bridge
 
 Solves the provider-switch coherence problem: when the AI chain falls
 back from Gemini → Groq → OpenRouter etc., the new model has never

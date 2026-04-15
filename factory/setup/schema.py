@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Schema Initialization
+AI Factory Pipeline v5.8 — Schema Initialization
 
 Implements §7.1.3: Database schema setup.
 

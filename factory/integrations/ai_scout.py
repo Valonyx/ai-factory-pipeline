@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — AI Scout (Always-Free LLM Research Fallback)
+AI Factory Pipeline v5.8 — AI Scout (Always-Free LLM Research Fallback)
 
 When all external search APIs (Perplexity, Tavily, DuckDuckGo, Exa,
 Wikipedia, HackerNews) are exhausted or unavailable, the pipeline routes

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Google Gemini Free-Tier Provider
+AI Factory Pipeline v5.8 — Google Gemini Free-Tier Provider
 
 DEV ALTERNATIVE for Anthropic when API credits are unavailable.
 Switch back to Anthropic by setting AI_PROVIDER=anthropic in .env.

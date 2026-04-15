@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Firebase Project Provisioner
+AI Factory Pipeline v5.8 — Firebase Project Provisioner
 
 Auto-provisions a Firebase project for each generated app:
   • Create Firebase project (free Spark plan)

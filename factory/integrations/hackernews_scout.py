@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — HackerNews Scout Provider
+AI Factory Pipeline v5.8 — HackerNews Scout Provider
 
 HN Algolia Search API — free, no key, no quota.
 Best for: cutting-edge tech, community consensus, real-world experience

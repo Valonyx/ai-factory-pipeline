@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — UI-TARS Automation (5-Layer Stack + Free Fallbacks)
+AI Factory Pipeline v5.8 — UI-TARS Automation (5-Layer Stack + Free Fallbacks)
 
 GUI automation for FlutterFlow and Unity builds that require visual interaction.
 

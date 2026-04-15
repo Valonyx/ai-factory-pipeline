@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — War Room Orchestrator
+AI Factory Pipeline v5.8 — War Room Orchestrator
 
 Implements:
   - §2.2.4 Full escalation flow (L1→L2→L3)

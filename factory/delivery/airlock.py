@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — App Store Airlock (Binary Delivery Fallback)
+AI Factory Pipeline v5.8 — App Store Airlock (Binary Delivery Fallback)
 
 Implements:
   - §7.6.2 airlock_deliver() — Telegram binary delivery

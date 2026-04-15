@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Android Delivery Chain
+AI Factory Pipeline v5.8 — Android Delivery Chain
 
 Cascading delivery for Android builds. Tries each provider in order,
 falls back automatically. Enable paid options by setting env vars.

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Apple App Store Connect API Client
+AI Factory Pipeline v5.8 — Apple App Store Connect API Client
 
 PAID OPTION: Requires Apple Developer Account ($99/year).
 Free alternatives handled by ios_delivery_chain.py.

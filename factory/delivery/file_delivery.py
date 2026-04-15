@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — File Delivery Functions
+AI Factory Pipeline v5.8 — File Delivery Functions
 
 Implements:
   - §7.5 [C3] send_telegram_file() — size-aware delivery

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — GitHub Search Scout (Code/Repo Search, GITHUB_TOKEN)
+AI Factory Pipeline v5.8 — GitHub Search Scout (Code/Repo Search, GITHUB_TOKEN)
 
 Uses the existing GITHUB_TOKEN to search GitHub repositories, code, and topics.
 Provides real-world implementation examples, popular libraries, and community

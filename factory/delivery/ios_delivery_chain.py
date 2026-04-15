@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — iOS Delivery Chain
+AI Factory Pipeline v5.8 — iOS Delivery Chain
 
 Cascading delivery for iOS builds. Tries each provider in order and
 falls back automatically. When a paid account becomes available,

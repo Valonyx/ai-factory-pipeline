@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — App Store Upload Attempts
+AI Factory Pipeline v5.8 — App Store Upload Attempts
 
 Implements:
   - §7.6.0a Automation vs Manual Boundaries

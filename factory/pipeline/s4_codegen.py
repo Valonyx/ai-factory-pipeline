@@ -2123,7 +2123,7 @@ async def _commit_to_github(
             repo=repo_name,
             files=files,
             message=(
-                f"feat: initial generated code — AI Factory Pipeline v5.6\n\n"
+                f"feat: initial generated code — AI Factory Pipeline v5.8\n\n"
                 f"Stack: {stack.value}\n"
                 f"Files: {len(files)}\n"
                 f"Project: {state.project_id}"

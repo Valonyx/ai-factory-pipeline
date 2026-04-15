@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Intelligent Telegram Bot Brain
+AI Factory Pipeline v5.8 — Intelligent Telegram Bot Brain
 
 Powered by the multi-provider chain (anthropic → gemini → groq → openrouter → mock).
 Falls back automatically when any provider hits its quota.

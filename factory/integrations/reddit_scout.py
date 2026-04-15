@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Reddit Scout (Community Discussions, No Key, No Quota)
+AI Factory Pipeline v5.8 — Reddit Scout (Community Discussions, No Key, No Quota)
 
 Queries Reddit's public JSON search API for community insights, real-world
 experience reports, and developer discussions. No API key, no signup.

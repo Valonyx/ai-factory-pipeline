@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Operator Notification System
+AI Factory Pipeline v5.8 — Operator Notification System
 
 Implements:
   - §5.4 Notification pipeline (notify_operator)

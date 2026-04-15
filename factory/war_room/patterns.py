@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — War Room Pattern Storage
+AI Factory Pipeline v5.8 — War Room Pattern Storage
 
 Implements:
   - §2.2.4 War Room resolution logging to Neo4j

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Telegram Bot Setup
+AI Factory Pipeline v5.8 — Telegram Bot Setup
 
 Implements:
   - §5.1 Bot architecture (registration, webhook, polling)

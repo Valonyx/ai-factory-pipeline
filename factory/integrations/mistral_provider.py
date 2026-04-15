@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Mistral Provider (La Plateforme Free Tier)
+AI Factory Pipeline v5.8 — Mistral Provider (La Plateforme Free Tier)
 
 Mistral AI offers free access to their models via La Plateforme.
 No credit card required, rate-limited.

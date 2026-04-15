@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Mother Memory (Unified Persistent Memory)
+AI Factory Pipeline v5.8 — Mother Memory (Unified Persistent Memory)
 
 Everything the pipeline and the operator ever say or do is remembered here.
 This is the single source of truth for all AI providers — so when the chain

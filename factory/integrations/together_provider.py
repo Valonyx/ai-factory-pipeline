@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Together AI Provider (Free Models)
+AI Factory Pipeline v5.8 — Together AI Provider (Free Models)
 
 Together AI hosts hundreds of open-source models. Many are completely free
 with no rate limits. Requires no credit card for free models.

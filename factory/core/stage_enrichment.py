@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Stage Enrichment: Scout + Memory Context Injection
+AI Factory Pipeline v5.8 — Stage Enrichment: Scout + Memory Context Injection
 
 Every pipeline stage (S0–S8) calls `enrich_prompt()` before its main AI call.
 This pulls in two layers of context that make AI output higher quality:

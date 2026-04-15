@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — App Logo & Design Asset Generator
+AI Factory Pipeline v5.8 — App Logo & Design Asset Generator
 
 Generates logos, splash screens, and icon sets for apps using the
 free image generation chain (Pollinations → HuggingFace → Together).

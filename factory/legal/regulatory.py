@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Regulatory Body Resolution
+AI Factory Pipeline v5.8 — Regulatory Body Resolution
 
 Implements:
   - §2.8 REGULATORY_BODY_MAPPING (alias normalization)

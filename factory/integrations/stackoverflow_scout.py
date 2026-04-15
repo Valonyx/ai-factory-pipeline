@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Stack Overflow Scout (Dev Q&A, No Key, ~300 req/day)
+AI Factory Pipeline v5.8 — Stack Overflow Scout (Dev Q&A, No Key, ~300 req/day)
 
 Queries the StackExchange API for high-quality developer questions and answers.
 Anonymous access: ~300 requests/day per IP. No API key required (but adding

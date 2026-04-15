@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Pipeline Orchestrator
+AI Factory Pipeline v5.8 — Pipeline Orchestrator
 
 Implements:
   - §2.7.1 DAG construction (S0→S1→…→S8)

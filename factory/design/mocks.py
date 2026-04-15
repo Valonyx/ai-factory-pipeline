@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Visual Mock Generation
+AI Factory Pipeline v5.8 — Visual Mock Generation
 
 Implements:
   - §3.4.3 Pre-Build Visual Mocks (3 Mocks to Telegram)

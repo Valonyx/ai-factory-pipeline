@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Cerebras Provider (Free Tier)
+AI Factory Pipeline v5.8 — Cerebras Provider (Free Tier)
 
 Cerebras offers the fastest LLM inference available — up to 2,000 tokens/sec
 on Llama 3.3 70B. Free tier requires no credit card.

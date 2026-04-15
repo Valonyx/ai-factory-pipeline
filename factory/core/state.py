@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Core State Models
+AI Factory Pipeline v5.8 — Core State Models
 
 Implements:
   - §2.1.1 Core Enumerations (Stage, TechStack, ExecutionMode, AutonomyMode, AIRole)

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Monitoring Module
+AI Factory Pipeline v5.8 — Monitoring Module
 
 Budget Governor, Circuit Breaker, Cost Tracking, Health Endpoints.
 """

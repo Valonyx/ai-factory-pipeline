@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Decision Queue (4-Way Copilot Menus)
+AI Factory Pipeline v5.8 — Decision Queue (4-Way Copilot Menus)
 
 Implements:
   - §3.7 4-Way Decision Matrix (Copilot mode)

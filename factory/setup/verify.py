@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Service Connection Verifiers
+AI Factory Pipeline v5.8 — Service Connection Verifiers
 
 Implements the 5 service verification checks from the setup wizard (§7.1.2):
   1. verify_anthropic()  — Claude API ping

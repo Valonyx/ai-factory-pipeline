@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Grid Enforcer (Pydantic Validators)
+AI Factory Pipeline v5.8 — Grid Enforcer (Pydantic Validators)
 
 Implements:
   - §3.4.2 DesignSpec model with validators

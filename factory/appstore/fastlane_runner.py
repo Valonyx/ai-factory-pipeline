@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Fastlane Runner (Free Alternative)
+AI Factory Pipeline v5.8 — Fastlane Runner (Free Alternative)
 
 FREE ALTERNATIVE to direct App Store Connect API calls.
 Fastlane is open-source and handles the entire iOS upload workflow:

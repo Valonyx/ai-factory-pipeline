@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Brave Search Provider (Free Tier)
+AI Factory Pipeline v5.8 — Brave Search Provider (Free Tier)
 
 Brave Search API provides web search results without tracking.
 Free tier: 2,000 queries/month (no credit card required).

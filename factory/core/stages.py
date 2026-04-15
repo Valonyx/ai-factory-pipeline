@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Stage Gate & Pipeline Node Decorators
+AI Factory Pipeline v5.8 — Stage Gate & Pipeline Node Decorators
 
 Implements:
   - §2.1.6 @stage_gate decorator (stage validation + distributed locking)

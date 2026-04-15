@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Anthropic Dispatch Compatibility Shim
+AI Factory Pipeline v5.8 — Anthropic Dispatch Compatibility Shim
 
 Re-exports from factory.core.roles and factory.monitoring.budget_governor
 for backwards-compatibility with test imports expecting a combined module.

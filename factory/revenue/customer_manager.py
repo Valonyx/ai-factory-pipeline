@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Customer Manager (/clients command)
+AI Factory Pipeline v5.8 — Customer Manager (/clients command)
 
 Manages customer records for the operator business.
 Persisted to Supabase (revenue_clients table) + local JSON fallback.

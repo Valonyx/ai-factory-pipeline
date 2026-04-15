@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — S9 Handoff Node
+AI Factory Pipeline v5.8 — S9 Handoff Node
 
 Implements:
   - §4.9 S9 Handoff (legal docs, summary, delivery)

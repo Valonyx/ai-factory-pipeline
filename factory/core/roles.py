@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — AI Role Enforcement & Dispatcher
+AI Factory Pipeline v5.8 — AI Role Enforcement & Dispatcher
 
 Implements:
   - §2.2.1 Role Contracts (Eyes vs. Hands Doctrine)

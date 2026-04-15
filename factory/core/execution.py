@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Three-Mode Execution Layer
+AI Factory Pipeline v5.8 — Three-Mode Execution Layer
 
 Implements:
   - §2.4.1 ExecutionModeManager (Cloud/Local/Hybrid routing)

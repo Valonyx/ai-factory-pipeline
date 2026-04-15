@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Screen Parser (OmniParser V2 + Free Fallback)
+AI Factory Pipeline v5.8 — Screen Parser (OmniParser V2 + Free Fallback)
 
 Parses screenshots to detect UI elements for automated GUI builds.
 

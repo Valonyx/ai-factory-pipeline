@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Consolidated Configuration
+AI Factory Pipeline v5.8 — Consolidated Configuration
 
 Implements:
   - §8.9 Environment Variable Reference (all env vars)

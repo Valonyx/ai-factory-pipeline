@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Design Engine Module
+AI Factory Pipeline v5.8 — Design Engine Module
 
 Hunter-Gatherer design system: Vibe Check, Grid Enforcer, Visual Mocks.
 """

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Circuit Breaker (Per-Role/Phase)
+AI Factory Pipeline v5.8 — Circuit Breaker (Per-Role/Phase)
 
 Implements:
   - §3.6.1 Per-Role/Phase Enforcement

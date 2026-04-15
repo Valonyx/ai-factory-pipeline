@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Revenue Tracker
+AI Factory Pipeline v5.8 — Revenue Tracker
 
 Tracks invoices, clients, and revenue for the operator business.
 Persisted to Supabase (revenue_invoices + revenue_clients tables).

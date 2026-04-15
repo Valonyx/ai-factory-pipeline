@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — MacinCloud Client
+AI Factory Pipeline v5.8 — MacinCloud Client
 
 SSH-based Mac VM management for iOS/GUI builds that require real macOS.
 

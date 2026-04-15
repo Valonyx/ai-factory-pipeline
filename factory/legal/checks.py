@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Continuous Legal Thread
+AI Factory Pipeline v5.8 — Continuous Legal Thread
 
 Implements:
   - §2.7.3 LEGAL_CHECKS_BY_STAGE mapping

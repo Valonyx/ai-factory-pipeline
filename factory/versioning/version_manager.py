@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Version Manager
+AI Factory Pipeline v5.8 — Version Manager
 
 Manages semantic versioning for generated and modified apps:
   • Read current version from project manifests

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Groq Provider (Free Tier)
+AI Factory Pipeline v5.8 — Groq Provider (Free Tier)
 
 Groq provides extremely fast inference on open-source models.
 Free tier: 14,400 requests/day, 6,000 RPM — far more generous than Gemini.

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Codebase Ingestor (MODIFY Mode)
+AI Factory Pipeline v5.8 — Codebase Ingestor (MODIFY Mode)
 
 When pipeline_mode == MODIFY, the pipeline updates an existing app
 instead of building from scratch. This module:

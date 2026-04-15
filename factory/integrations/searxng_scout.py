@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — SearXNG Scout (Meta-Search, No Key, No Quota)
+AI Factory Pipeline v5.8 — SearXNG Scout (Meta-Search, No Key, No Quota)
 
 Routes search queries through a rotation of public SearXNG instances.
 SearXNG aggregates results from Google, Bing, DuckDuckGo, and 70+ other

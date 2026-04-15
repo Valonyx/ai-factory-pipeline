@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Integrations Module
+AI Factory Pipeline v5.8 — Integrations Module
 
 External service integrations: Supabase, GitHub, Neo4j, Anthropic, Perplexity.
 

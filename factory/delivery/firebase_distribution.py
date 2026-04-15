@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Firebase App Distribution (Free Alternative)
+AI Factory Pipeline v5.8 — Firebase App Distribution (Free Alternative)
 
 ALWAYS FREE — Firebase App Distribution distributes pre-release builds
 to testers without going through the App Store or Google Play.

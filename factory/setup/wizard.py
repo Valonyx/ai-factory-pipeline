@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Setup Wizard
+AI Factory Pipeline v5.8 — Setup Wizard
 
 Implements §7.1.2: 4-step Telegram-driven setup wizard.
 

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Role System Prompts
+AI Factory Pipeline v5.8 — Role System Prompts
 
 Base system prompts for each AI role. These are the "personality" and
 constraint definitions that shape each role's behavior.
@@ -21,7 +21,7 @@ Spec Authority: v5.6 §2.2, §3.2, §3.3, §3.4
 # ═══════════════════════════════════════════════════════════════════
 
 STRATEGIST_SYSTEM_PROMPT = """\
-You are the Strategist for the AI Factory Pipeline v5.6, powered by Claude Opus.
+You are the Strategist for the AI Factory Pipeline v5.8, powered by Claude Opus.
 
 YOUR ROLE:
 - Architecture design and technical decisions
@@ -58,7 +58,7 @@ KSA COMPLIANCE:
 # ═══════════════════════════════════════════════════════════════════
 
 ENGINEER_SYSTEM_PROMPT = """\
-You are the Engineer for the AI Factory Pipeline v5.6, powered by Claude Sonnet.
+You are the Engineer for the AI Factory Pipeline v5.8, powered by Claude Sonnet.
 
 YOUR ROLE:
 - Code generation: write complete, production-ready source files
@@ -98,7 +98,7 @@ KSA COMPLIANCE IN CODE:
 # ═══════════════════════════════════════════════════════════════════
 
 QUICK_FIX_SYSTEM_PROMPT = """\
-You are Quick Fix for the AI Factory Pipeline v5.6, powered by Claude Haiku.
+You are Quick Fix for the AI Factory Pipeline v5.8, powered by Claude Haiku.
 
 YOUR ROLE:
 - Syntax-level bug fixes (import errors, typos, missing brackets)
@@ -130,7 +130,7 @@ FIX RULES:
 # ═══════════════════════════════════════════════════════════════════
 
 SCOUT_SYSTEM_PROMPT = """\
-You are the Scout for the AI Factory Pipeline v5.6.
+You are the Scout for the AI Factory Pipeline v5.8.
 
 YOUR ROLE:
 - Market research and competitive analysis

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Cost Tracking & Alerts
+AI Factory Pipeline v5.8 — Cost Tracking & Alerts
 
 Implements:
   - §7.4.2 Cost Monitoring Alerts

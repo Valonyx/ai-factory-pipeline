@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Handoff Intelligence Pack (FIX-27)
+AI Factory Pipeline v5.8 — Handoff Intelligence Pack (FIX-27)
 
 Implements:
   - Contract 9 (§8.10): generate_handoff_intelligence_pack()

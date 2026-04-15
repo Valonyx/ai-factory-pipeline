@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — GitHub Integration
+AI Factory Pipeline v5.8 — GitHub Integration
 
 Implements:
   - §2.9.1 Write 3 of triple-write (versioned state commits)

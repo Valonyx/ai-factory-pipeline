@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Real Supabase Integration
+AI Factory Pipeline v5.8 — Real Supabase Integration
 
 Production replacement for the stub Supabase client.
 

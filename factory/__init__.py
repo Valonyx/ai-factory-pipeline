@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6
+AI Factory Pipeline v5.8
 
 Automated AI application factory — builds production-grade
 mobile and web apps from natural language descriptions.

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — War Room Module
+AI Factory Pipeline v5.8 — War Room Module
 
 L1→L2→L3 escalation ladder for error resolution.
 """

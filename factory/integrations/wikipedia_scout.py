@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Wikipedia Scout Provider
+AI Factory Pipeline v5.8 — Wikipedia Scout Provider
 
 Uses the Wikipedia REST API. Free forever, no key, no quota.
 Excellent for established facts, regulatory frameworks, standards,

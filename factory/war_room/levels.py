@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — War Room Level Definitions
+AI Factory Pipeline v5.8 — War Room Level Definitions
 
 Implements:
   - §2.2.4 WarRoomLevel enum (L1/L2/L3)

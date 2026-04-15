@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Telegram Message Formatting
+AI Factory Pipeline v5.8 — Telegram Message Formatting
 
 Implements:
   - §5.1 Message formatting and constants

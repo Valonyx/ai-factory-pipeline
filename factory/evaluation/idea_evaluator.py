@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Idea Evaluator (/evaluate command)
+AI Factory Pipeline v5.8 — Idea Evaluator (/evaluate command)
 
 Pre-run feasibility assessment before starting a full pipeline run.
 Scores ideas 0–100 across multiple dimensions and recommends whether

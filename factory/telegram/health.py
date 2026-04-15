@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Health Checks & Startup Validation
+AI Factory Pipeline v5.8 — Health Checks & Startup Validation
 
 Implements:
   - §7.3.0 Startup health checks (6-service validation) [H1]

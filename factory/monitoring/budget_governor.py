@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Budget Governor (ADR-044)
+AI Factory Pipeline v5.8 — Budget Governor (ADR-044)
 
 Implements:
   - §2.14.1 Problem Statement (80–100% cliff edge)

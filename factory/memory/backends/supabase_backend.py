@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Supabase Memory Backend (Fallback #1)
+AI Factory Pipeline v5.8 — Supabase Memory Backend (Fallback #1)
 
 Uses the existing Supabase project (hqdbiwtcozkfzzzqanrs.supabase.co)
 via its REST API (httpx — no extra SDK). Tables are auto-created on

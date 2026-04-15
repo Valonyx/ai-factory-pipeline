@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — DuckDuckGo Scout Provider
+AI Factory Pipeline v5.8 — DuckDuckGo Scout Provider
 
 No API key. No signup. IP fair-use only.
 SDK: duckduckgo-search (pip install duckduckgo-search)

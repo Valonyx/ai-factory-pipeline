@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Diff Generator (MODIFY Mode)
+AI Factory Pipeline v5.8 — Diff Generator (MODIFY Mode)
 
 Generates unified diffs between original and AI-modified files.
 Used in MODIFY mode (S3 CodeGen) to produce reviewable change sets

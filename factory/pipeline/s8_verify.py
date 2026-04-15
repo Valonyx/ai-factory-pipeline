@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — S8 Verify Node
+AI Factory Pipeline v5.8 — S8 Verify Node
 
 Implements:
   - §4.8 S8 Verify (smoke tests on deployed app)

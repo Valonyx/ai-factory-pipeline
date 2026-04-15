@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Build Provider Chain
+AI Factory Pipeline v5.8 — Build Provider Chain
 
 Provider priority for Mac-required builds (iOS, FlutterFlow, Unity):
 

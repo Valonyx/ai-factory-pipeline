@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Exa Grounding (Anti-Hallucination Layer)
+AI Factory Pipeline v5.8 — Exa Grounding (Anti-Hallucination Layer)
 
 Problem: Scout providers (Perplexity, Tavily, DuckDuckGo, AI Scout) can
 return hallucinated facts, stale citations, or confident-sounding errors —

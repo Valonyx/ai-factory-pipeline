@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Cloudflare Tunnel Client
+AI Factory Pipeline v5.8 — Cloudflare Tunnel Client
 
 Manages a cloudflared tunnel that exposes the local pipeline webhook
 to the internet without a public IP address. Enables LOCAL and HYBRID

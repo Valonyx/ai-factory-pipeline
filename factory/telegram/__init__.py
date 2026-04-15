@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Telegram Module
+AI Factory Pipeline v5.8 — Telegram Module
 
 Telegram Command Center for operator interaction.
 Includes bot setup, messaging, notifications, decisions,

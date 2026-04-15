@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — LangGraph DAG
+AI Factory Pipeline v5.8 — LangGraph DAG
 
 Implements:
   - §2.7.1 DAG Topology (S0→S8 linear + S5→S3 fix loop + S7→S6 redeploy loop)

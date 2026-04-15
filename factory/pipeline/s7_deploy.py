@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — S7 Deploy Node
+AI Factory Pipeline v5.8 — S7 Deploy Node
 
 Implements:
   - §4.7 S7 Deploy (push to hosting, app stores, API endpoints)

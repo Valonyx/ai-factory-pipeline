@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Memory Backend Base
+AI Factory Pipeline v5.8 — Memory Backend Base
 
 Defines the contract every storage backend must implement, plus the
 BackendStatus dataclass that tracks availability, quota, and sync state.

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Neo4j Integration (Mother Memory)
+AI Factory Pipeline v5.8 — Neo4j Integration (Mother Memory)
 
 Implements:
   - §2.10 Mother Memory (knowledge graph)

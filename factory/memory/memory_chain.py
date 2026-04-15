@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Mother Memory Chain Orchestrator
+AI Factory Pipeline v5.8 — Mother Memory Chain Orchestrator
 
 The MemoryChain is the single entry point for all memory reads and writes.
 It manages four backends in priority order:

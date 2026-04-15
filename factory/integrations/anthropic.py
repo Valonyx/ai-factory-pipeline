@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Real Anthropic Client
+AI Factory Pipeline v5.8 — Real Anthropic Client
 
 Production replacement for the stub Anthropic integration.
 

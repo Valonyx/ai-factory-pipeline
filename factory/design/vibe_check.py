@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Vibe Check (Autonomous Design Discovery)
+AI Factory Pipeline v5.8 — Vibe Check (Autonomous Design Discovery)
 
 Implements:
   - §3.4.1 Autonomous Vibe Check

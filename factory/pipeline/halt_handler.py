@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Halt Handler Node
+AI Factory Pipeline v5.8 — Halt Handler Node
 
 Implements:
   - §4.10 Halt handler (notify operator with diagnosis)

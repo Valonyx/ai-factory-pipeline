@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — S5 Build Node
+AI Factory Pipeline v5.8 — S5 Build Node
 
 Implements:
   - §4.5 S5 Build (compile using Cloud/Local/Hybrid mode)

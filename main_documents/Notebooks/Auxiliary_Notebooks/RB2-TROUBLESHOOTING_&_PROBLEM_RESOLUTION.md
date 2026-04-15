@@ -5119,7 +5119,7 @@ Build process attempted to use: 4.2 GB RAM
 ```
 
 **Environment:**
-- Pipeline version: 5.6.0
+- Pipeline version: 5.8.0
 - Execution mode: CLOUD
 - Platform: Android
 - Operating System: macOS 13.2
@@ -5813,7 +5813,7 @@ Future: Upgrade to 16GB RAM
 ```
 User: Casey
 Date: March 10, 2026
-Issue: "Updated pipeline from v5.5 to v5.6, now won't start"
+Issue: "Updated pipeline from v5.5 to v5.8, now won't start"
 
 Error:
 $ python -m factory.cli start
@@ -5828,7 +5828,7 @@ ModuleNotFoundError: No module named 'anthropic'
 
 **Timeline:**
 - Yesterday: Pipeline v5.5 working fine
-- Today: Updated to v5.6
+- Today: Updated to v5.8
 - Now: Won't start
 
 **Error:** Missing Python module.
@@ -5841,7 +5841,7 @@ ModuleNotFoundError: No module named 'anthropic'
 
 Casey checked changelog:
 ```
-v5.6 Changelog:
+v5.8 Changelog:
 
 NEW FEATURES:
 - Improved S4 build performance
@@ -5888,7 +5888,7 @@ python --version
 
 **Output:** Python 3.10.8
 
-**Problem:** v5.6 requires Python 3.11+
+**Problem:** v5.8 requires Python 3.11+
 
 ---
 
@@ -5929,7 +5929,7 @@ python3.11 -m factory.cli start
 
 **Output:**
 ```
-AI Factory Pipeline v5.6
+AI Factory Pipeline v5.8
 Starting services...
 ✅ Core engine started
 ✅ Telegram bot connected
@@ -5947,7 +5947,7 @@ Pipeline is RUNNING
 /status
 
 Pipeline Status: ✅ RUNNING
-Version: 5.6.0 ✅ (was 5.5.0)
+Version: 5.8.0 ✅ (was 5.5.0)
 ```
 
 ---

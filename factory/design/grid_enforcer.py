@@ -7,7 +7,7 @@ Implements:
   - WCAG AA contrast enforcement (4.5:1)
   - Font size minimum (12px) and even-number enforcement
 
-Spec Authority: v5.6 §3.4.2
+Spec Authority: v5.8 §3.4.2
 "No Ugly Apps."
 """
 

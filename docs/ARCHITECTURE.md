@@ -1,8 +1,8 @@
 ```markdown
 
-# Architecture Reference — AI Factory Pipeline v5.6
+# Architecture Reference — AI Factory Pipeline v5.8
 
-Layer-by-layer technical reference. All section references (§) point to the v5.6 specification document.
+Layer-by-layer technical reference. All section references (§) point to the v5.8 specification document.
 
 ---
 

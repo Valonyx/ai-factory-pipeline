@@ -1,4 +1,4 @@
-# AI FACTORY PIPELINE v5.6
+# AI FACTORY PIPELINE v5.8
 # MASTER IMPLEMENTATION GUIDE — PART 3
 ## NB4: Complete Execution + Daily Operations Reference
 
@@ -6,12 +6,12 @@
 
 > **Where you are:** NB3 is complete. The pipeline is live in production.
 > Cloud Run is running. Telegram responds. Two real apps have been built.
-> The repo is tagged `v5.6.0-production`.
+> The repo is tagged `v5.8.0-production`.
 >
 > **What this part covers:**
 > - NB4 (15–20 days, ~$30–50 in AI spend): GitHub Actions CI/CD,
 >   MacinCloud iOS builds, App Store delivery, Modify Mode, revenue ops,
->   final certification. Tag `v5.6.0-complete`.
+>   final certification. Tag `v5.8.0-complete`.
 > - Daily Operations Reference: Morning routine, all Telegram commands,
 >   weekly/monthly maintenance, cost optimisation.
 >
@@ -20,9 +20,9 @@
 ```bash
 cd ~/Projects/ai-factory-pipeline
 source .venv/bin/activate
-git tag | grep production       # Should show v5.6.0-production
+git tag | grep production       # Should show v5.8.0-production
 python -m pytest tests/ -v 2>&1 | tail -3  # 362+ passed, 0 failed
-curl -s $SERVICE_URL/health     # {"status":"healthy","version":"5.6.0"}
+curl -s $SERVICE_URL/health     # {"status":"healthy","version":"5.8.0"}
 ```
 
 > All three must pass. If any fail, resolve them before continuing.
@@ -83,7 +83,7 @@ Phase H — Operational Completeness (Parts 27–28, ~1 day)
 
 Phase I — Final Validation (Parts 29–30, ~1 day)
   84-criteria Production Readiness Scorecard
-  v5.6.0-complete tag
+  v5.8.0-complete tag
 ═══════════════════════════════════════════════════════
 ```
 
@@ -1034,7 +1034,7 @@ git push origin main
 ```
 Create the extended Production Readiness Scorecard for NB4 Part 29.
 
-docs/scorecard-v5.6.md: comprehensive validation document.
+docs/scorecard-v5.8.md: comprehensive validation document.
 
 It must verify these 84 criteria (trace each to a spec section):
 
@@ -1083,7 +1083,7 @@ python -m pytest tests/ -v 2>&1 | tail -5
 ```
 
 ```bash
-git add docs/scorecard-v5.6.md docs/definition-of-done-verification.md \
+git add docs/scorecard-v5.8.md docs/definition-of-done-verification.md \
         tests/integration/ tests/performance/
 git commit -m "NB4-29: 84-criteria scorecard, 7 integration tests, performance benchmarks (§8.1, §8.11)"
 git push origin main
@@ -1091,7 +1091,7 @@ git push origin main
 
 ---
 
-## STEP 38.2 — ★ Part 30: v5.6.0-complete — FINAL CERTIFICATION
+## STEP 38.2 — ★ Part 30: v5.8.0-complete — FINAL CERTIFICATION
 
 ```bash
 cd ~/Projects/ai-factory-pipeline
@@ -1102,7 +1102,7 @@ python -m pytest tests/ -v 2>&1 | tail -5
 # MUST show: 591+ passed, 0 failed
 
 # ── Scorecard completion check ──
-grep -c "✅" docs/scorecard-v5.6.md
+grep -c "✅" docs/scorecard-v5.8.md
 # MUST show 84 (or more)
 
 # ── All runbooks present and substantial ──
@@ -1135,34 +1135,34 @@ print('✅ LOCAL + HYBRID mode code present')
 # ── Final commit and tag ──
 git add -A
 git commit -m "NB4-30: ★ FINAL CERTIFICATION — 84/84 scorecard, 591+ tests, all proofs complete"
-git tag -a v5.6.0-complete -m "AI Factory Pipeline v5.6.0 — Production Complete
+git tag -a v5.8.0-complete -m "AI Factory Pipeline v5.8.0 — Production Complete
 
 All 4 notebooks implemented:
-- NB1: 85+ stub files, architecture verified (tag: v5.6.0-stub)
-- NB2: 362 tests, all stubs replaced (tag: v5.6.0)
-- NB3: System live in production, first real apps built (tag: v5.6.0-production)
-- NB4: Full delivery pipeline, Modify Mode, Revenue Ops (tag: v5.6.0-complete)
+- NB1: 85+ stub files, architecture verified (tag: v5.8.0-stub)
+- NB2: 362 tests, all stubs replaced (tag: v5.8.0)
+- NB3: System live in production, first real apps built (tag: v5.8.0-production)
+- NB4: Full delivery pipeline, Modify Mode, Revenue Ops (tag: v5.8.0-complete)
 
 84/84 Production Readiness Scorecard criteria met.
 591+ tests passing.
 System certified for production operation."
 
 git push origin main
-git push origin v5.6.0-complete
+git push origin v5.8.0-complete
 ```
 
 **USE NOTION MCP HERE:**
 ```
 "Mark all NB4 items complete in my Implementation Tracker.
 Add note: NB4 complete. All 30 parts done. 591 tests passing.
-Tagged v5.6.0-complete. Full pipeline operational: CI/CD,
+Tagged v5.8.0-complete. Full pipeline operational: CI/CD,
 iOS TestFlight, Android Play, Modify Mode, Revenue Ops."
 ```
 
 **USE MEMORY HERE:**
 ```
 "Remember: ★ NB4 COMPLETE — FULL SYSTEM CERTIFIED.
-All 4 notebooks done. 591 tests. Tag v5.6.0-complete.
+All 4 notebooks done. 591 tests. Tag v5.8.0-complete.
 System can: build 6 stacks, deploy to iOS + Android + Web,
 update existing apps (Modify Mode), track revenue.
 Cost per iOS app build: ~$1-2. Per Android: ~$0-0.20.
@@ -1171,7 +1171,7 @@ Begin daily operations using RB1 and NB5 Day 1 guide."
 
 **USE GOOGLE CALENDAR HERE:**
 ```
-"Create event: ★ AI Factory Pipeline v5.6.0-complete — 
+"Create event: ★ AI Factory Pipeline v5.8.0-complete — 
 Full system certified. All 4 notebooks done.
 Daily operations begin from today."
 ```
@@ -1199,7 +1199,7 @@ In Telegram, type:
 
 ✅ Healthy response:
 ```
-🏭 AI Factory Pipeline v5.6.0
+🏭 AI Factory Pipeline v5.8.0
 Status: ✅ RUNNING
 Mode: Autopilot
 Services: Supabase ✅ | Neo4j ✅ | GitHub ✅ | Anthropic ✅
@@ -1584,18 +1584,18 @@ Click "Resume" to restart it.
 
 ## 39.9 The Complete Implementation Journey — Final Summary
 
-You have now completed the entire AI Factory Pipeline v5.6 implementation:
+You have now completed the entire AI Factory Pipeline v5.8 implementation:
 
 ```
 IMPLEMENTATION MILESTONES
 ══════════════════════════════════════════════════════════
 ★ NB1 Part 8   — LOCAL DRY-RUN MILESTONE
                  Architecture verified. $0 spent.
-                 Tag: v5.6.0-stub
+                 Tag: v5.8.0-stub
 
 ★ NB2 PROD-17  — ALL STUBS ELIMINATED
                  362 tests passing. Real AI clients.
-                 Tag: v5.6.0
+                 Tag: v5.8.0
 
 ★ NB3 Part 7   — CLOUD RUN DEPLOYED
                  Pipeline live 24/7 in GCP me-central1.
@@ -1605,12 +1605,12 @@ IMPLEMENTATION MILESTONES
 
 ★ NB3 Part 12  — FIRST REAL APP BUILT
                  Full S0→S8 with real AI. ~$5–15 spent.
-                 Tag: v5.6.0-production
+                 Tag: v5.8.0-production
 
 ★ NB4 Part 30  — FULL SYSTEM CERTIFIED
                  84/84 scorecard. 591 tests. Binary delivery.
                  Modify Mode. Revenue Ops.
-                 Tag: v5.6.0-complete
+                 Tag: v5.8.0-complete
 ══════════════════════════════════════════════════════════
 
 CODEBASE METRICS AT COMPLETION

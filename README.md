@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6
+# AI Factory Pipeline v5.8
 
 Automated AI application factory — builds production-grade mobile and web apps from natural language descriptions, targeting the KSA market.
 
@@ -86,7 +86,7 @@ Operator Guide
 See docs/OPERATOR_GUIDE.md for the non-technical operator manual.
 
 Specification
-The authoritative source for all technical decisions is the v5.6 AI Factory Pipeline Specifications Document (11,845 lines). All code references specific sections (e.g., §2.7.1, §7.5 [C3]).
+The authoritative source for all technical decisions is the v5.8 AI Factory Pipeline Specifications Document (11,845 lines). All code references specific sections (e.g., §2.7.1, §7.5 [C3]).
 
 Development
 # Run tests

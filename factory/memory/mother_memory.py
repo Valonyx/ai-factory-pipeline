@@ -27,7 +27,7 @@ Used by:
   - pipeline stages    (store key decisions)
   - /providers command (for memory status)
 
-Spec Authority: v5.6 §2.10 (Mother Memory), §5.1–§5.3 (Telegram interface)
+Spec Authority: v5.8 §2.10 (Mother Memory), §5.1–§5.3 (Telegram interface)
 """
 
 from __future__ import annotations

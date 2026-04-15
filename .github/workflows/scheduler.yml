@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6 — Scheduled Tasks
+# AI Factory Pipeline v5.8 — Scheduled Tasks
 # Replaces GCP Cloud Scheduler — works with any hosting platform.
 #
 # SERVICE_URL GitHub secret drives both jobs.

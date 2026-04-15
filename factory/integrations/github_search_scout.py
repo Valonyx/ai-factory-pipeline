@@ -11,7 +11,7 @@ No separate signup needed — reuses the existing GITHUB_TOKEN from .env.
 Best for: finding reference implementations, popular libraries by category,
 code snippets showing API usage, framework adoption, and real project patterns.
 
-Spec Authority: v5.6 §2.2.3 (Scout provider interface)
+Spec Authority: v5.8 §2.2.3 (Scout provider interface)
 """
 
 from __future__ import annotations

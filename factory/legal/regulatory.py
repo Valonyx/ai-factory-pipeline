@@ -7,7 +7,7 @@ Implements:
   - PDPL (Personal Data Protection Law) requirements
   - Data residency rules
 
-Spec Authority: v5.6 §2.8
+Spec Authority: v5.8 §2.8
 """
 
 from __future__ import annotations

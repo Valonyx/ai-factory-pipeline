@@ -15,7 +15,7 @@ Enhancements over original:
   • include_domains param for authoritative KSA sources on legal queries
   • Quota detection that feeds back into scout_chain state
 
-Spec Authority: v5.6 §2.2.3, §3.1
+Spec Authority: v5.8 §2.2.3, §3.1
 """
 
 from __future__ import annotations

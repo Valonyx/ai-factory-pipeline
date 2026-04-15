@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6 — Real Production Wiring Report
+# AI Factory Pipeline v5.8 — Real Production Wiring Report
 
 **Date:** 2026-04-12  
 **Phases completed:** Phase 1 + Phase 2 + Phase 3  
@@ -224,4 +224,4 @@ export SKIP_LEGAL_PDF=true  # (add check in s1_legal.py if needed)
 
 ---
 
-*Report generated: 2026-04-12 — AI Factory Pipeline v5.6*
+*Report generated: 2026-04-12 — AI Factory Pipeline v5.8*

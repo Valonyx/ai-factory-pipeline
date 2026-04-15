@@ -9,7 +9,7 @@ Tracks and reports pipeline performance metrics:
 
 Persisted to Supabase (pipeline_metrics table) + local JSON fallback.
 
-Spec Authority: v5.6 §5.x (NB4 Part 26)
+Spec Authority: v5.8 §5.x (NB4 Part 26)
 """
 
 from __future__ import annotations

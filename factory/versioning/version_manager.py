@@ -8,7 +8,7 @@ Manages semantic versioning for generated and modified apps:
   • Generate changelogs
   • Tag git releases
 
-Spec Authority: v5.6 §4.0 (NB4 Part 23)
+Spec Authority: v5.8 §4.0 (NB4 Part 23)
 """
 
 from __future__ import annotations

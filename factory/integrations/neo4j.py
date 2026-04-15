@@ -8,7 +8,7 @@ Implements:
   - FIX-27 HandoffDoc persistence
   - Time-travel node masking (PostSnapshot)
 
-Spec Authority: v5.6 §2.10, §2.10.1, §2.10.2, FIX-27
+Spec Authority: v5.8 §2.10, §2.10.1, §2.10.2, FIX-27
 """
 
 from __future__ import annotations

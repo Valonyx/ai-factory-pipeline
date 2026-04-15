@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — Cloud Scheduler Setup
+# AI Factory Pipeline v5.8 — Cloud Scheduler Setup
 #
 # Creates Cloud Scheduler jobs for:
 #   1. Janitor Agent    — every 6 hours (purge expired artifacts + Neo4j nodes)
@@ -14,7 +14,7 @@
 #   - Cloud Run service already deployed
 #   - GCP_PROJECT set or gcloud default project configured
 #
-# Spec Authority: v5.6 §2.10.2 (Janitor), §7.4.1 (Health)
+# Spec Authority: v5.8 §2.10.2 (Janitor), §7.4.1 (Health)
 
 set -euo pipefail
 

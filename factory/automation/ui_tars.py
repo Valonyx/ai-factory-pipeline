@@ -17,7 +17,7 @@ Provider cascade:
 
 Force provider: GUI_AUTOMATION_PROVIDER=macincloud|github_actions|playwright
 
-Spec Authority: v5.6 §2.4.2, §4.5.2 (NB4 Parts 7-8)
+Spec Authority: v5.8 §2.4.2, §4.5.2 (NB4 Parts 7-8)
 """
 
 from __future__ import annotations

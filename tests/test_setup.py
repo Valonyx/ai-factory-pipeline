@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Setup Wizard + Schema Tests (PROD-15)
+AI Factory Pipeline v5.8 — Setup Wizard + Schema Tests (PROD-15)
 
 Tests:
   - Setup wizard step collection and service verification

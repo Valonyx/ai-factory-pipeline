@@ -23,7 +23,7 @@ Env vars:
   FIREBASE_TOKEN           — firebase-tools auth token
   FIREBASE_TESTER_GROUPS   — Comma-separated tester group names
 
-Spec Authority: v5.6 §4.7 (free distribution fallback)
+Spec Authority: v5.8 §4.7 (free distribution fallback)
 """
 
 from __future__ import annotations

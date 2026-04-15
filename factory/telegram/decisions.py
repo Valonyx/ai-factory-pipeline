@@ -14,7 +14,7 @@ recommended option.
 In Autopilot mode, decisions are made automatically — this module
 is not invoked.
 
-Spec Authority: v5.6 §3.7, §5.3
+Spec Authority: v5.8 §3.7, §5.3
 """
 
 from __future__ import annotations

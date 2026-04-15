@@ -7,7 +7,7 @@ Implements:
   - Pipeline trigger endpoint (/run)
   - Cloud Run compatible (PORT env var)
 
-Spec Authority: v5.6 §7.4.1, §5.1
+Spec Authority: v5.8 §7.4.1, §5.1
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Factory Pipeline",
     version=PIPELINE_VERSION,
-    description="Automated AI application factory — v5.6",
+    description="Automated AI application factory — v5.8",
     lifespan=lifespan,
 )
 

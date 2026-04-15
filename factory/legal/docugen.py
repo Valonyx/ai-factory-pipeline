@@ -10,7 +10,7 @@ Implements:
 All AI-generated legal documents are DRAFTS requiring mandatory
 human legal review before publication or use.
 
-Spec Authority: v5.6 §3.5
+Spec Authority: v5.8 §3.5
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ DOCUGEN_TEMPLATES: dict[str, dict] = {
     },
 }
 
-# Backwards-compat alias (was "terms_of_use" in v5.6)
+# Backwards-compat alias (was "terms_of_use" before v5.8; canonical key is "terms_of_service")
 DOCUGEN_TEMPLATES["terms_of_use"] = {
     **DOCUGEN_TEMPLATES["terms_of_service"],
     "description": "Terms of service / user agreement (alias: terms_of_use)",

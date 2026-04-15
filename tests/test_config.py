@@ -11,8 +11,8 @@ from factory.config import (
 
 class TestVersions:
     def test_version(self):
-        assert PIPELINE_VERSION == "5.6"
-        assert PIPELINE_FULL_VERSION == "5.6.0"
+        assert PIPELINE_VERSION == "5.8"
+        assert PIPELINE_FULL_VERSION == "5.8.0"
 
 
 class TestModels:
@@ -56,7 +56,7 @@ class TestDataResidency:
 class TestConfigSummary:
     def test_summary(self):
         s = get_config_summary()
-        assert s["version"] == "5.6.0"
+        assert s["version"] == "5.8.0"
         assert "models" in s
         assert "budget" in s
 

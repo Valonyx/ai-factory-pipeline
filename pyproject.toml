@@ -4,8 +4,8 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "ai-factory-pipeline"
-version = "5.6.0"
-description = "AI Factory Pipeline v5.6 — Autonomous App Factory"
+version = "5.8.0"
+description = "AI Factory Pipeline v5.8 — Autonomous App Factory"
 requires-python = ">=3.11"
 
 [project.scripts]

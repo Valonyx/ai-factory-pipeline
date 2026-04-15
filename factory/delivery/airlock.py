@@ -12,7 +12,7 @@ App Store / Play Store uploads fail. It packages the compiled
 binary and delivers it to the operator via Telegram for manual
 submission.
 
-Spec Authority: v5.6 §7.6
+Spec Authority: v5.8 §7.6
 """
 
 from __future__ import annotations

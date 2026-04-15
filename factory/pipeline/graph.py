@@ -10,7 +10,7 @@ Implements:
 
 The pipeline graph is compiled once at startup and invoked per-project.
 
-Spec Authority: v5.6 §2.7
+Spec Authority: v5.8 §2.7
 """
 
 from __future__ import annotations

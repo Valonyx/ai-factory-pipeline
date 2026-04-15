@@ -5119,7 +5119,7 @@ Example: $100 total costs ÷ $2.99 per customer = 34 customers to break even
 2. Check pipeline GitHub repo documentation
 3. Search existing GitHub issues
 4. Create new GitHub issue with details
-5. Reference specification document (v5.6)
+5. Reference specification document (v5.8)
 ```
 
 **Community Resources:**

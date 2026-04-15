@@ -18,7 +18,7 @@ Per-Program Docs (multi-stack only):
   6. Unified Deployment Guide — deploy all stacks together
   7. Program Health Dashboard Config — monitoring setup
 
-Spec Authority: v5.6 §4.9 FIX-27, Contract 9
+Spec Authority: v5.8 §4.9 FIX-27, Contract 9
 """
 
 from __future__ import annotations

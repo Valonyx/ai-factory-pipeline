@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — Fly.io Deployment
+# AI Factory Pipeline v5.8 — Fly.io Deployment
 #
 # ⚠️  NOTE: Fly.io requires billing activation (credit card) to deploy.
 #     If you don't have a CC or are in a region with payment issues,

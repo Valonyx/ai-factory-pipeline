@@ -8,7 +8,7 @@ engines simultaneously — much broader coverage than any single provider.
 No API key required. No signup. No quota.
 Rotates across 5 public instances to distribute load and ensure availability.
 
-Spec Authority: v5.6 §2.2.3 (Scout provider interface)
+Spec Authority: v5.8 §2.2.3 (Scout provider interface)
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — Koyeb Deployment (Free, No CC Required)
+# AI Factory Pipeline v5.8 — Koyeb Deployment (Free, No CC Required)
 #
 # Koyeb free tier: 1 web service, 512MB RAM, always-on (no sleep), no CC.
 # Pulls from GHCR (public image pushed by setup_ghcr.sh).

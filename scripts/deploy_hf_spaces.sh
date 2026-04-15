@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — Hugging Face Spaces Deployment (Free, No CC)
+# AI Factory Pipeline v5.8 — Hugging Face Spaces Deployment (Free, No CC)
 #
 # HF Spaces free tier: 2 vCPU, 16GB RAM, Docker support, public HTTPS URL.
 # Free forever, no credit card, sign up with email or GitHub.
@@ -194,7 +194,7 @@ sdk: docker
 pinned: false
 ---
 
-AI Factory Pipeline v5.6 — Automated AI application factory.
+AI Factory Pipeline v5.8 — Automated AI application factory.
 README
 
 cd "${TMP_DIR}/space"

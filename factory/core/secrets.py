@@ -22,7 +22,7 @@ Uses google-cloud-secret-manager v2.26.0 (verified 2026-02-27):
   - create_secret() + add_secret_version() to write
   - get_secret() metadata check for existence
 
-Spec Authority: v5.6 §2.11, §7.7.1, Appendix B, ADR-006
+Spec Authority: v5.8 §2.11, §7.7.1, Appendix B, ADR-006
 """
 
 from __future__ import annotations

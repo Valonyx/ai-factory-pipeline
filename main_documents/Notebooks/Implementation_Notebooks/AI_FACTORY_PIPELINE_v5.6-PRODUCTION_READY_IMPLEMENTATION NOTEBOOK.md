@@ -31,7 +31,7 @@
 
 ```python
 """
-AI Factory Pipeline v5.6 — Real Anthropic Client
+AI Factory Pipeline v5.8 — Real Anthropic Client
 
 Production replacement for the stub Anthropic integration.
 
@@ -49,7 +49,7 @@ Pricing verified 2025-02-27 from platform.claude.com/docs/en/about-claude/pricin
   - claude-sonnet-4-20250514:   $3.00 input / $15.00 output per MTok
   - claude-haiku-4-5-20251001:  $1.00 input /  $5.00 output per MTok
 
-Spec Authority: v5.6 §2.2, §3.2, §3.3, §3.6
+Spec Authority: v5.8 §2.2, §3.2, §3.3, §3.6
 """
 
 from __future__ import annotations
@@ -375,7 +375,7 @@ async def call_anthropic_json(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Role System Prompts
+AI Factory Pipeline v5.8 — Role System Prompts
 
 Base system prompts for each AI role. These are the "personality" and
 constraint definitions that shape each role's behavior.
@@ -389,7 +389,7 @@ Implements:
 Each stage may prepend additional context to these base prompts.
 The base prompt ensures the role stays within its contract boundaries.
 
-Spec Authority: v5.6 §2.2, §3.2, §3.3, §3.4
+Spec Authority: v5.8 §2.2, §3.2, §3.3, §3.4
 """
 
 # ═══════════════════════════════════════════════════════════════════
@@ -397,7 +397,7 @@ Spec Authority: v5.6 §2.2, §3.2, §3.3, §3.4
 # ═══════════════════════════════════════════════════════════════════
 
 STRATEGIST_SYSTEM_PROMPT = """\
-You are the Strategist for the AI Factory Pipeline v5.6, powered by Claude Opus.
+You are the Strategist for the AI Factory Pipeline v5.8, powered by Claude Opus.
 
 YOUR ROLE:
 - Architecture design and technical decisions
@@ -434,7 +434,7 @@ KSA COMPLIANCE:
 # ═══════════════════════════════════════════════════════════════════
 
 ENGINEER_SYSTEM_PROMPT = """\
-You are the Engineer for the AI Factory Pipeline v5.6, powered by Claude Sonnet.
+You are the Engineer for the AI Factory Pipeline v5.8, powered by Claude Sonnet.
 
 YOUR ROLE:
 - Code generation: write complete, production-ready source files
@@ -474,7 +474,7 @@ KSA COMPLIANCE IN CODE:
 # ═══════════════════════════════════════════════════════════════════
 
 QUICK_FIX_SYSTEM_PROMPT = """\
-You are Quick Fix for the AI Factory Pipeline v5.6, powered by Claude Haiku.
+You are Quick Fix for the AI Factory Pipeline v5.8, powered by Claude Haiku.
 
 YOUR ROLE:
 - Syntax-level bug fixes (import errors, typos, missing brackets)
@@ -506,7 +506,7 @@ FIX RULES:
 # ═══════════════════════════════════════════════════════════════════
 
 SCOUT_SYSTEM_PROMPT = """\
-You are the Scout for the AI Factory Pipeline v5.6.
+You are the Scout for the AI Factory Pipeline v5.8.
 
 YOUR ROLE:
 - Market research and competitive analysis
@@ -1189,7 +1189,7 @@ Replace `_call_perplexity_safe()` with real `openai.AsyncOpenAI(base_url="https:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Real Perplexity Client (The Scout)
+AI Factory Pipeline v5.8 — Real Perplexity Client (The Scout)
 
 Production replacement for the stub Perplexity integration.
 
@@ -1214,7 +1214,7 @@ Request fees per 1K requests (by search_context_size):
 
 Citation tokens are NOT billed for sonar and sonar-pro (2026 policy).
 
-Spec Authority: v5.6 §3.1, §2.2.3, ADR-049, FIX-19
+Spec Authority: v5.8 §3.1, §2.2.3, ADR-049, FIX-19
 """
 
 from __future__ import annotations
@@ -2462,13 +2462,13 @@ Replace Telegram notification stubs with real `python-telegram-bot` integration:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Telegram Message Formatting
+AI Factory Pipeline v5.8 — Telegram Message Formatting
 
 All Telegram messages go through a consistent formatting layer.
 Contains TELEGRAM_CONFIG, message truncation (4096 char limit),
 emoji maps, and all 6 message formatters.
 
-Spec Authority: v5.6 §5.1, §5.2, §5.4, §5.7
+Spec Authority: v5.8 §5.1, §5.2, §5.4, §5.7
 """
 
 from __future__ import annotations
@@ -2572,7 +2572,7 @@ def format_welcome_message(operator_name: str) -> str:
     Spec: §5.2 (/start)
     """
     return (
-        f"🏭 Welcome to AI Factory Pipeline v5.6, {operator_name}!\n\n"
+        f"🏭 Welcome to AI Factory Pipeline v5.8, {operator_name}!\n\n"
         f"Send an app description or use /new to start a project.\n"
         f"Type /help for all commands."
     )
@@ -2584,7 +2584,7 @@ def format_help_message() -> str:
     Spec: §5.2 (/help), §5.7 (Command Summary)
     """
     return (
-        "🏭 AI Factory v5.6\n\n"
+        "🏭 AI Factory v5.8\n\n"
         "Project: /new /status /cost /continue /cancel\n"
         "Control: /mode /autonomy\n"
         "Time Travel: /snapshots /restore State_#N\n"
@@ -2686,7 +2686,7 @@ def format_project_started(project_id: str, state: PipelineState) -> str:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Operator Notification System
+AI Factory Pipeline v5.8 — Operator Notification System
 
 Real Telegram API integration for all pipeline-to-operator communication.
 
@@ -2696,7 +2696,7 @@ Implements:
   - §7.5   send_telegram_file (binary delivery, 50MB limit [V12])
   - §7.5   send_telegram_content (string-to-file delivery)
 
-Spec Authority: v5.6 §5.1, §5.4, §7.5
+Spec Authority: v5.8 §5.1, §5.4, §7.5
 """
 
 from __future__ import annotations
@@ -2981,7 +2981,7 @@ async def send_telegram_budget_alert(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Decision Queue & Operator State
+AI Factory Pipeline v5.8 — Decision Queue & Operator State
 
 Real inline keyboard decision system for Copilot mode.
 
@@ -2992,7 +2992,7 @@ Implements:
   - §4.6.1 Deploy Gate confirmation (FIX-08)
   - §5.6   Operator state & preferences (in-memory, Supabase-ready)
 
-Spec Authority: v5.6 §5.3, §5.5, §3.7, §4.6.1
+Spec Authority: v5.8 §5.3, §5.5, §3.7, §4.6.1
 """
 
 from __future__ import annotations
@@ -3277,7 +3277,7 @@ def get_operator_preferences(operator_id: str) -> dict[str, Any]:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Telegram Bot Setup
+AI Factory Pipeline v5.8 — Telegram Bot Setup
 
 Main bot module: registration, handler wiring, lifecycle management.
 
@@ -3287,7 +3287,7 @@ Implements:
   - §5.2   16 Command Handlers (all commands from §5.7)
   - §5.3   Callback Handler + Free-Text Handler
 
-Spec Authority: v5.6 §5.1–§5.3, §5.7
+Spec Authority: v5.8 §5.1–§5.3, §5.7
 
 SDK: python-telegram-bot v21.x (verified 2026-02-27)
   - Application.builder().token(TOKEN).build()
@@ -4002,7 +4002,7 @@ class TestMessageFormatting:
     def test_welcome_message(self):
         msg = format_welcome_message("Alex")
         assert "Alex" in msg
-        assert "v5.6" in msg
+        assert "v5.8" in msg
         assert "/help" in msg
 
     def test_help_message(self):
@@ -4373,7 +4373,7 @@ Replace in-memory project state with real Supabase integration: 5 session tables
 
 ```python
 """
-AI Factory Pipeline v5.6 — Real Supabase Integration
+AI Factory Pipeline v5.8 — Real Supabase Integration
 
 Production replacement for the stub Supabase client.
 
@@ -4391,7 +4391,7 @@ Uses supabase-py SDK (verified 2026-02-27):
   - acreate_client(url, key) for async operations
   - table("name").select/insert/upsert/update/delete().execute()
 
-Spec Authority: v5.6 §2.9, §5.6, §6.7, §7.1.3, §8.3.1
+Spec Authority: v5.8 §2.9, §5.6, §6.7, §7.1.3, §8.3.1
 """
 
 from __future__ import annotations
@@ -5682,7 +5682,7 @@ Replace `get_secret()` stub with real `google-cloud-secret-manager` SDK, cached 
 
 ```python
 """
-AI Factory Pipeline v5.6 — Secrets Management (GCP Secret Manager)
+AI Factory Pipeline v5.8 — Secrets Management (GCP Secret Manager)
 
 Production replacement for the env-var-only stub.
 
@@ -5705,7 +5705,7 @@ Uses google-cloud-secret-manager v2.26.0 (verified 2026-02-27):
   - create_secret() + add_secret_version() to write
   - get_secret() metadata check for existence
 
-Spec Authority: v5.6 §2.11, §7.7.1, Appendix B, ADR-006
+Spec Authority: v5.8 §2.11, §7.7.1, Appendix B, ADR-006
 """
 
 from __future__ import annotations
@@ -6208,14 +6208,14 @@ def get_rotation_status() -> dict[str, dict[str, Any]]:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Setup Module
+AI Factory Pipeline v5.8 — Setup Module
 
 Implements:
   - §7.1.2 Setup Wizard
   - §7.1.3 Schema Initialization
   - Service connection verification
 
-Spec Authority: v5.6 §7.1
+Spec Authority: v5.8 §7.1
 """
 ```
 
@@ -6227,7 +6227,7 @@ Spec Authority: v5.6 §7.1
 
 ```python
 """
-AI Factory Pipeline v5.6 — Service Connection Verifiers
+AI Factory Pipeline v5.8 — Service Connection Verifiers
 
 Implements the 5 service verification checks from the setup wizard (§7.1.2):
   1. verify_anthropic()  — Claude API ping
@@ -6242,7 +6242,7 @@ Each verifier:
   - Raises on failure (caught by wizard)
   - Respects 10s timeout for network calls
 
-Spec Authority: v5.6 §7.1.2
+Spec Authority: v5.8 §7.1.2
 """
 
 from __future__ import annotations
@@ -7133,7 +7133,7 @@ from factory.telegram.decisions import (
 
 ```python
 """
-AI Factory Pipeline v5.6 — Database Schema Initialization
+AI Factory Pipeline v5.8 — Database Schema Initialization
 
 Implements:
   - §7.1.3 Database Schema Initialization
@@ -7147,7 +7147,7 @@ Implements:
 Both functions are idempotent (IF NOT EXISTS / IF NOT EXISTS).
 Called by the setup wizard (§7.1.2) after service verification.
 
-Spec Authority: v5.6 §7.1.3, §5.6, §8.3.1, §6.3
+Spec Authority: v5.8 §7.1.3, §5.6, §8.3.1, §6.3
 """
 
 from __future__ import annotations
@@ -7320,7 +7320,7 @@ NEO4J_INDEXES: list[str] = [
     "CREATE INDEX IF NOT EXISTS FOR (rd:RegulatoryDecision) ON (rd.id)",
     "CREATE INDEX IF NOT EXISTS FOR (lt:LegalDocTemplate) ON (lt.id)",
     "CREATE INDEX IF NOT EXISTS FOR (g:Graveyard) ON (g.id)",
-    # v5.6 extensions — FIX-27, WarRoom, StorePolicyEvent, Pattern
+    # v5.8 extensions — FIX-27, WarRoom, StorePolicyEvent, Pattern
     "CREATE INDEX IF NOT EXISTS FOR (we:WarRoomEvent) ON (we.project_id)",
     "CREATE INDEX IF NOT EXISTS FOR (we:WarRoomEvent) ON (we.resolved)",
     "CREATE INDEX IF NOT EXISTS FOR (pt:Pattern) ON (pt.pattern_type)",
@@ -7522,7 +7522,7 @@ def get_schema_summary() -> dict:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Interactive Setup Wizard
+AI Factory Pipeline v5.8 — Interactive Setup Wizard
 
 Implements:
   - §7.1.2 Automated Setup Script (Telegram-based)
@@ -7544,7 +7544,7 @@ Dependencies:
   - PROD-5: store_secret(), check_secret_exists()
   - PROD-5: verify_all_services() + individual verifiers
 
-Spec Authority: v5.6 §7.1.2
+Spec Authority: v5.8 §7.1.2
 """
 
 from __future__ import annotations
@@ -7652,7 +7652,7 @@ async def run_setup_wizard(operator_id: str) -> dict:
     # ── Welcome ──
     await send_fn(
         operator_id,
-        "🏭 AI Factory v5.6 Setup Wizard\n\n"
+        "🏭 AI Factory v5.8 Setup Wizard\n\n"
         "I'll verify each service connection.\n"
         "Have your API keys ready.\n\n"
         "For each key, you have 5 minutes to respond.\n"
@@ -8393,12 +8393,12 @@ factory/pipeline/graph.py — LangGraph DAG with 9 active stages S0–S8 + 2 ter
 
 ```python
 """
-AI Factory Pipeline v5.6 — Pipeline Module
+AI Factory Pipeline v5.8 — Pipeline Module
 
 LangGraph DAG and stage node implementations.
 Import this module to register all stage nodes with the DAG.
 
-Spec Authority: v5.6 §2.7
+Spec Authority: v5.8 §2.7
 """
 
 # Import graph infrastructure first
@@ -8441,7 +8441,7 @@ __all__ = [
 
 ```python
 """
-AI Factory Pipeline v5.6 — LangGraph DAG Core
+AI Factory Pipeline v5.8 — LangGraph DAG Core
 
 Implements:
   - §2.7.1 DAG Topology (9 active stages + halt + 2 terminals)
@@ -8458,7 +8458,7 @@ Dependencies:
   - PROD-3: factory.telegram.notifications (send_telegram_message)
   - PROD-4: factory.integrations.supabase (state persistence)
 
-Spec Authority: v5.6 §2.7, §2.7.1, §2.7.2, §2.7.3, §4.0
+Spec Authority: v5.8 §2.7, §2.7.1, §2.7.2, §2.7.3, §4.0
 """
 
 from __future__ import annotations
@@ -9037,7 +9037,7 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
 
 ```python
 """
-AI Factory Pipeline v5.6 — S0 Intake Node
+AI Factory Pipeline v5.8 — S0 Intake Node
 
 Implements:
   - §4.1 S0 Intake (parse Telegram message → structured requirements)
@@ -9050,7 +9050,7 @@ Dependencies:
   - PROD-2: factory.core.roles.call_ai (Scout market scan)
   - PROD-3: factory.telegram.decisions.present_decision
 
-Spec Authority: v5.6 §4.1
+Spec Authority: v5.8 §4.1
 """
 
 from __future__ import annotations
@@ -9248,7 +9248,7 @@ register_stage_node("s0_intake", s0_intake_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — S1 Legal Gate Node
+AI Factory Pipeline v5.8 — S1 Legal Gate Node
 
 Implements:
   - §4.2 S1 Legal Gate (classify, map regulations, assess risk)
@@ -9262,7 +9262,7 @@ Dependencies:
   - PROD-2: factory.core.roles.call_ai (Scout)
   - PROD-3: factory.telegram.decisions.present_decision
 
-Spec Authority: v5.6 §4.2, §4.2.1, §4.2.3
+Spec Authority: v5.8 §4.2, §4.2.1, §4.2.3
 """
 
 from __future__ import annotations
@@ -9540,7 +9540,7 @@ register_stage_node("s1_legal", s1_legal_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — S2 Blueprint Node
+AI Factory Pipeline v5.8 — S2 Blueprint Node
 
 Implements:
   - §4.3 S2 Blueprint + Stack Selection + Design
@@ -9554,7 +9554,7 @@ Dependencies:
   - PROD-1: factory.core.roles.call_ai (Strategist + Scout)
   - PROD-3: factory.telegram.decisions.present_decision
 
-Spec Authority: v5.6 §4.3, §2.6
+Spec Authority: v5.8 §4.3, §2.6
 """
 
 from __future__ import annotations
@@ -9916,7 +9916,7 @@ register_stage_node("s2_blueprint", s2_blueprint_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — Halt Handler Node
+AI Factory Pipeline v5.8 — Halt Handler Node
 
 Implements:
   - §4.10 Halt handler (notify operator with diagnosis)
@@ -9925,7 +9925,7 @@ Implements:
 Dependencies:
   - PROD-3: factory.telegram.notifications.send_telegram_message
 
-Spec Authority: v5.6 §4.10
+Spec Authority: v5.8 §4.10
 """
 
 from __future__ import annotations
@@ -9991,13 +9991,13 @@ register_stage_node("halt_handler", halt_handler_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — Stub Stage Nodes (S3–S8)
+AI Factory Pipeline v5.8 — Stub Stage Nodes (S3–S8)
 
 Placeholder implementations for stages not yet built.
 Each stub transitions through the stage and produces minimal output.
 Replaced by real implementations in PROD-8 through PROD-10.
 
-Spec Authority: v5.6 §4.4–§4.9
+Spec Authority: v5.8 §4.4–§4.9
 """
 
 from __future__ import annotations
@@ -10591,7 +10591,7 @@ factory/pipeline/s5_test.py — Test generation + execution + pre-deploy gate (A
 
 ```python
 """
-AI Factory Pipeline v5.6 — S3 Code Generation Node
+AI Factory Pipeline v5.8 — S3 Code Generation Node
 
 Implements:
   - §4.4 S3 CodeGen (full generation + retry fix mode)
@@ -10604,7 +10604,7 @@ Dependencies:
   - PROD-1: factory.core.roles.call_ai (Engineer + Quick Fix)
   - PROD-7: factory.pipeline.graph.pipeline_node
 
-Spec Authority: v5.6 §4.4, §3.3.1, §4.4.2
+Spec Authority: v5.8 §4.4, §3.3.1, §4.4.2
 """
 
 from __future__ import annotations
@@ -11129,7 +11129,7 @@ register_stage_node("s3_codegen", s3_codegen_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — S4 Build Node
+AI Factory Pipeline v5.8 — S4 Build Node
 
 Implements:
   - §4.5 S4 Build (compile using Cloud/Local/Hybrid mode)
@@ -11144,7 +11144,7 @@ Dependencies:
   - PROD-1: factory.core.roles.call_ai (Engineer for build fixes)
   - PROD-7: factory.pipeline.graph.pipeline_node
 
-Spec Authority: v5.6 §4.5, §4.5.1, §4.5.2, §2.3.1
+Spec Authority: v5.8 §4.5, §4.5.1, §4.5.2, §2.3.1
 """
 
 from __future__ import annotations
@@ -11547,7 +11547,7 @@ register_stage_node("s4_build", s4_build_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — S5 Test Node + Pre-Deploy Gate
+AI Factory Pipeline v5.8 — S5 Test Node + Pre-Deploy Gate
 
 Implements:
   - §4.6 S5 Test (generate + run + analyze tests)
@@ -11561,7 +11561,7 @@ Dependencies:
   - PROD-3: factory.telegram.notifications.send_telegram_message
   - PROD-7: factory.pipeline.graph.pipeline_node
 
-Spec Authority: v5.6 §4.6, §4.6.1, ADR-046
+Spec Authority: v5.8 §4.6, §4.6.1, ADR-046
 """
 
 from __future__ import annotations
@@ -11958,12 +11958,12 @@ register_stage_node("s5_test", s5_test_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — Stub Stage Nodes (S6–S8)
+AI Factory Pipeline v5.8 — Stub Stage Nodes (S6–S8)
 
 S3–S5 replaced by real implementations in PROD-8.
 S6–S8 replaced by real implementations in PROD-9.
 
-Spec Authority: v5.6 §4.7–§4.9
+Spec Authority: v5.8 §4.7–§4.9
 """
 
 from __future__ import annotations
@@ -12018,12 +12018,12 @@ register_stage_node("s8_handoff", s8_handoff_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — Pipeline Module
+AI Factory Pipeline v5.8 — Pipeline Module
 
 LangGraph DAG and stage node implementations.
 S0–S5 are real implementations. S6–S8 are stubs.
 
-Spec Authority: v5.6 §2.7
+Spec Authority: v5.8 §2.7
 """
 
 # Import graph infrastructure first
@@ -12589,7 +12589,7 @@ factory/pipeline/s8_handoff.py — DocuGen, Handoff Intelligence Pack (FIX-27), 
 
 ```python
 """
-AI Factory Pipeline v5.6 — S6 Deploy Node
+AI Factory Pipeline v5.8 — S6 Deploy Node
 
 Implements:
   - §4.7 S6 Deploy (push to hosting, app stores, API endpoints)
@@ -12605,7 +12605,7 @@ Dependencies:
   - PROD-3: factory.telegram.notifications, airlock
   - PROD-7: factory.pipeline.graph.pipeline_node
 
-Spec Authority: v5.6 §4.7, §4.7.1–§4.7.4, §7.6, ADR-016
+Spec Authority: v5.8 §4.7, §4.7.1–§4.7.4, §7.6, ADR-016
 """
 
 from __future__ import annotations
@@ -13017,7 +13017,7 @@ register_stage_node("s6_deploy", s6_deploy_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — S7 Verify Node
+AI Factory Pipeline v5.8 — S7 Verify Node
 
 Implements:
   - §4.8 S7 Verify (smoke tests on deployed app)
@@ -13029,7 +13029,7 @@ Dependencies:
   - PROD-1: factory.core.roles.call_ai (Scout + Quick Fix)
   - PROD-7: factory.pipeline.graph.pipeline_node
 
-Spec Authority: v5.6 §4.8
+Spec Authority: v5.8 §4.8
 """
 
 from __future__ import annotations
@@ -13251,7 +13251,7 @@ register_stage_node("s7_verify", s7_verify_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — S8 Handoff Node
+AI Factory Pipeline v5.8 — S8 Handoff Node
 
 Implements:
   - §4.9 S8 Handoff (legal docs, summary, delivery)
@@ -13265,7 +13265,7 @@ Dependencies:
   - PROD-1: factory.core.roles.call_ai (Scout + Strategist + Engineer)
   - PROD-3: factory.telegram.notifications
 
-Spec Authority: v5.6 §4.9, §3.5, FIX-27, ADR-051
+Spec Authority: v5.8 §4.9, §3.5, FIX-27, ADR-051
 """
 
 from __future__ import annotations
@@ -13724,12 +13724,12 @@ register_stage_node("s8_handoff", s8_handoff_node)
 
 ```python
 """
-AI Factory Pipeline v5.6 — Pipeline Module
+AI Factory Pipeline v5.8 — Pipeline Module
 
 LangGraph DAG and all 9 real stage node implementations.
 No stubs remain. Full S0–S8 pipeline operational.
 
-Spec Authority: v5.6 §2.7
+Spec Authority: v5.8 §2.7
 """
 
 # Import graph infrastructure first
@@ -14279,7 +14279,7 @@ Deliverables: 4 modules + 1 test file (20 tests).
 
 ```python
 """
-AI Factory Pipeline v5.6 — Three-Mode Execution Layer
+AI Factory Pipeline v5.8 — Three-Mode Execution Layer
 
 Implements:
   - §2.4.1 ExecutionModeManager (Cloud/Local/Hybrid routing)
@@ -14295,7 +14295,7 @@ Dependencies:
   - PROD-5: factory.core.secrets (env var fallback)
   - PROD-10: factory.core.user_space (enforce_user_space)
 
-Spec Authority: v5.6 §2.4, §8.10, ADR-012
+Spec Authority: v5.8 §2.4, §8.10, ADR-012
 """
 
 from __future__ import annotations
@@ -14682,7 +14682,7 @@ async def heartbeat_loop(state: PipelineState) -> None:
 
 ```python
 """
-AI Factory Pipeline v5.6 — User-Space Enforcer (Zero Sudo)
+AI Factory Pipeline v5.8 — User-Space Enforcer (Zero Sudo)
 
 Implements:
   - §2.5 User-Space Enforcer (prohibited patterns + safe rewrites)
@@ -14695,7 +14695,7 @@ before execution. This is a hard security boundary.
 Dependencies:
   - factory.core.state (UserSpaceViolation exception)
 
-Spec Authority: v5.6 §2.5, §7.7.2, ADR-012
+Spec Authority: v5.8 §2.5, §7.7.2, ADR-012
 """
 
 from __future__ import annotations
@@ -14875,7 +14875,7 @@ def sanitize_for_shell(value: str) -> str:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Regulatory Body Resolution
+AI Factory Pipeline v5.8 — Regulatory Body Resolution
 
 Implements:
   - §2.13 REGULATORY_BODY_MAPPING (alias normalization)
@@ -14885,7 +14885,7 @@ Implements:
   - Prohibited SDKs
   - CST time-of-day deploy restrictions
 
-Spec Authority: v5.6 §2.13, §7.7.2
+Spec Authority: v5.8 §2.13, §7.7.2
 """
 
 from __future__ import annotations
@@ -15084,7 +15084,7 @@ def check_prohibited_sdks(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Continuous Legal Thread
+AI Factory Pipeline v5.8 — Continuous Legal Thread
 
 Implements:
   - §2.7.3 LEGAL_CHECKS_BY_STAGE mapping
@@ -15099,7 +15099,7 @@ Dependencies:
   - PROD-1: factory.core.roles.call_ai (Scout + Strategist)
   - PROD-10: factory.legal.regulatory (data residency, PDPL, etc.)
 
-Spec Authority: v5.6 §2.7.3
+Spec Authority: v5.8 §2.7.3
 """
 
 from __future__ import annotations
@@ -15539,7 +15539,7 @@ async def _check_final_signoff(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Legal Module
+AI Factory Pipeline v5.8 — Legal Module
 
 KSA regulatory compliance, continuous legal thread,
 and document generation.
@@ -16006,7 +16006,7 @@ Deliverables: 4 modules + 1 test file (18 tests).
 
 ```python
 """
-AI Factory Pipeline v5.6 — GitHub Integration
+AI Factory Pipeline v5.8 — GitHub Integration
 
 Implements:
   - §2.9.1 Write 3 of triple-write (versioned state commits)
@@ -16021,7 +16021,7 @@ Current: interface-compatible in-memory store for offline dev.
 Dependencies:
   - PROD-5: factory.core.secrets (GITHUB_TOKEN)
 
-Spec Authority: v5.6 §2.9, §4.7.3
+Spec Authority: v5.8 §2.9, §4.7.3
 """
 
 from __future__ import annotations
@@ -16318,7 +16318,7 @@ async def github_reset_to_commit(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Neo4j Integration (Mother Memory v2)
+AI Factory Pipeline v5.8 — Neo4j Integration (Mother Memory v2)
 
 Implements:
   - §6.3 Mother Memory v2 (knowledge graph)
@@ -16335,7 +16335,7 @@ Current: in-memory graph for offline development.
 Dependencies:
   - PROD-5: factory.core.secrets (NEO4J_URI, NEO4J_PASSWORD)
 
-Spec Authority: v5.6 §6.3, §6.5, §2.12, FIX-27, ADR-051
+Spec Authority: v5.8 §6.3, §6.5, §2.12, FIX-27, ADR-051
 """
 
 from __future__ import annotations
@@ -16798,7 +16798,7 @@ async def query_patterns(
 
 ```python
 """
-AI Factory Pipeline v5.6 — AI Dispatch + Budget Governor
+AI Factory Pipeline v5.8 — AI Dispatch + Budget Governor
 
 Implements:
   - §8.10 Role contracts (4 roles → model mapping)
@@ -16812,7 +16812,7 @@ Dependencies:
   - PROD-1: factory.core.roles (call_ai, AIRole)
   - PROD-2: factory.integrations.perplexity (call_perplexity)
 
-Spec Authority: v5.6 §2.14, §3.6, §8.10, ADR-044, FIX-05
+Spec Authority: v5.8 §2.14, §3.6, §8.10, ADR-044, FIX-05
 """
 
 from __future__ import annotations
@@ -17170,7 +17170,7 @@ def estimate_cost(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Integrations Module
+AI Factory Pipeline v5.8 — Integrations Module
 
 External service integrations: GitHub, Neo4j, AI Dispatch.
 """
@@ -17701,7 +17701,7 @@ Deliverables: 5 modules + 1 test file (18 tests).
 
 ```python
 """
-AI Factory Pipeline v5.6 — WCAG Contrast Utilities
+AI Factory Pipeline v5.8 — WCAG Contrast Utilities
 
 Implements:
   - §3.4.2 WCAG AA contrast checks (4.5:1 normal, 3:1 large)
@@ -17712,7 +17712,7 @@ Implements:
 
 Pure functions — no AI calls, no external dependencies.
 
-Spec Authority: v5.6 §3.4.2
+Spec Authority: v5.8 §3.4.2
 """
 
 from __future__ import annotations
@@ -17872,7 +17872,7 @@ def check_wcag_aaa(bg: str, text: str) -> bool:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Grid Enforcer (Pydantic Validators)
+AI Factory Pipeline v5.8 — Grid Enforcer (Pydantic Validators)
 
 Implements:
   - §3.4.2 DesignSpec model with validators
@@ -17881,7 +17881,7 @@ Implements:
   - Font size minimum (12px) and even-number enforcement
   - Category-specific design presets
 
-Spec Authority: v5.6 §3.4.2
+Spec Authority: v5.8 §3.4.2
 "No Ugly Apps."
 """
 
@@ -18099,7 +18099,7 @@ def create_default_design(
 
 ```python
 """
-AI Factory Pipeline v5.6 — Vibe Check (Autonomous Design Discovery)
+AI Factory Pipeline v5.8 — Vibe Check (Autonomous Design Discovery)
 
 Implements:
   - §3.4.1 Autonomous Vibe Check
@@ -18112,7 +18112,7 @@ Dependencies:
   - PROD-1: factory.core.roles (call_ai)
   - PROD-12: factory.design.grid_enforcer (validate + defaults)
 
-Spec Authority: v5.6 §3.4.1
+Spec Authority: v5.8 §3.4.1
 """
 
 from __future__ import annotations
@@ -18314,7 +18314,7 @@ def _parse_design_json(raw: str) -> dict:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Visual Mock Generation
+AI Factory Pipeline v5.8 — Visual Mock Generation
 
 Implements:
   - §3.4.3 Pre-build visual mocks (3 variations)
@@ -18326,7 +18326,7 @@ Dependencies:
   - PROD-1: factory.core.roles (call_ai — Engineer generates HTML)
   - PROD-3: factory.telegram.notifications (Copilot selection)
 
-Spec Authority: v5.6 §3.4.3
+Spec Authority: v5.8 §3.4.3
 """
 
 from __future__ import annotations
@@ -18555,7 +18555,7 @@ def get_variation_count() -> int:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Design Engine Module
+AI Factory Pipeline v5.8 — Design Engine Module
 
 Hunter-Gatherer design system: Vibe Check, Grid Enforcer,
 Visual Mocks.
@@ -19090,7 +19090,7 @@ Deliverables: 5 modules + 1 test file (20 tests).
 
 ```python
 """
-AI Factory Pipeline v5.6
+AI Factory Pipeline v5.8
 
 Automated AI application factory — builds production-grade
 mobile and web apps from natural language descriptions.
@@ -19109,7 +19109,7 @@ Entry points:
   factory.cli           — CLI for local testing
 """
 
-__version__ = "5.6.0"
+__version__ = "5.8.0"
 __pipeline_version__ = "5.6"
 ```
 
@@ -19119,7 +19119,7 @@ __pipeline_version__ = "5.6"
 
 ```python
 """
-AI Factory Pipeline v5.6 — Consolidated Configuration
+AI Factory Pipeline v5.8 — Consolidated Configuration
 
 Implements:
   - §8.9 Environment Variable Reference (all env vars)
@@ -19130,7 +19130,7 @@ Implements:
 
 Single source of truth. All modules import from here.
 
-Spec Authority: v5.6 §8.9, §2.6, §2.14
+Spec Authority: v5.8 §8.9, §2.6, §2.14
 """
 
 from __future__ import annotations
@@ -19148,7 +19148,7 @@ logger = logging.getLogger("factory.config")
 # ═══════════════════════════════════════════════════════════════════
 
 PIPELINE_VERSION = "5.6"
-PIPELINE_FULL_VERSION = "5.6.0"
+PIPELINE_FULL_VERSION = "5.8.0"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -19444,7 +19444,7 @@ def get_config_summary() -> dict:
 
 ```python
 """
-AI Factory Pipeline v5.6 — Orchestrator (DAG + Run)
+AI Factory Pipeline v5.8 — Orchestrator (DAG + Run)
 
 Implements:
   - §2.10 LangGraph DAG topology (9 stages S0→S8)
@@ -19459,7 +19459,7 @@ Dependencies:
   - PROD-10: legal_check_hook
   - PROD-4: state persistence
 
-Spec Authority: v5.6 §2.10, §2.10.1, §2.10.2
+Spec Authority: v5.8 §2.10, §2.10.1, §2.10.2
 """
 
 from __future__ import annotations
@@ -19833,7 +19833,7 @@ async def run_pipeline_from_description(
 
 ```python
 """
-AI Factory Pipeline v5.6 — FastAPI Entry Point
+AI Factory Pipeline v5.8 — FastAPI Entry Point
 
 Implements:
   - §7.4.1 /health (liveness) and /health-deep (readiness)
@@ -19842,7 +19842,7 @@ Implements:
   - Status endpoint (/status)
   - Cloud Run compatible (PORT env var)
 
-Spec Authority: v5.6 §7.4.1, §5.1
+Spec Authority: v5.8 §7.4.1, §5.1
 """
 
 from __future__ import annotations
@@ -19881,7 +19881,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Factory Pipeline",
     version=PIPELINE_FULL_VERSION,
-    description="Automated AI application factory — v5.6",
+    description="Automated AI application factory — v5.8",
     lifespan=lifespan,
 )
 
@@ -20050,7 +20050,7 @@ if __name__ == "__main__":
 
 ```python
 """
-AI Factory Pipeline v5.6 — CLI for Local Testing
+AI Factory Pipeline v5.8 — CLI for Local Testing
 
 Usage:
     python -m factory.cli "Build an e-commerce app for KSA"
@@ -20060,7 +20060,7 @@ Usage:
 
 Not for production use. Production uses Cloud Run + Telegram.
 
-Spec Authority: v5.6 §7.4.1 (health), §5.1 (trigger)
+Spec Authority: v5.8 §7.4.1 (health), §5.1 (trigger)
 """
 
 from __future__ import annotations
@@ -20204,7 +20204,7 @@ PROD-13 Validation: Entry Points + Config + Orchestrator + CLI
 
 Tests cover:
   Package Init (2 tests):
-    1.  __version__ == "5.6.0"
+    1.  __version__ == "5.8.0"
     2.  __pipeline_version__ == "5.6"
 
   Config (6 tests):
@@ -20298,8 +20298,8 @@ def state():
 
 class TestPackageInit:
     def test_version(self):
-        """__version__ == '5.6.0'."""
-        assert factory.__version__ == "5.6.0"
+        """__version__ == '5.8.0'."""
+        assert factory.__version__ == "5.8.0"
 
     def test_pipeline_version(self):
         """__pipeline_version__ == '5.6'."""
@@ -20352,7 +20352,7 @@ class TestConfig:
     def test_summary(self):
         """get_config_summary returns all sections."""
         s = get_config_summary()
-        assert s["version"] == "5.6.0"
+        assert s["version"] == "5.8.0"
         assert "models" in s
         assert "budget" in s
         assert "compliance" in s
@@ -20465,7 +20465,7 @@ class TestCLI:
         s = get_config_summary()
         serialized = json.dumps(s)
         parsed = json.loads(serialized)
-        assert parsed["version"] == "5.6.0"
+        assert parsed["version"] == "5.8.0"
 ```
 
 ---
@@ -20512,7 +20512,7 @@ git commit -m "PROD-13: Entry Points — config (§8.9, 7 frozen dataclasses), o
 
 ### [CHECKPOINT — Part 13 Complete]
 
-✅ factory/__init__.py (~30 lines) — Package init, v5.6.0
+✅ factory/__init__.py (~30 lines) — Package init, v5.8.0
 ✅ factory/config.py (~320 lines) — Consolidated configuration:
     ∙    7 frozen dataclasses: ModelConfig, BudgetConfig, DeliveryConfig, ComplianceConfig, AppStoreConfig, DataResidencyConfig, WarRoomConfig
     ∙    MODELS — Opus 4.6, Sonnet 4.5, Haiku 4.5, Sonar Pro (§2.6)
@@ -20594,7 +20594,7 @@ Deliverables: 6 files + 1 test file (15 tests).
 ## [DOCUMENT 1] `requirements.txt`
 
 ```text
-# AI Factory Pipeline v5.6 — Python Dependencies
+# AI Factory Pipeline v5.8 — Python Dependencies
 # Spec: §7.4.1, §8.9
 # Install: pip install -r requirements.txt
 
@@ -20635,7 +20635,7 @@ pytest-asyncio==0.25.0
 ```toml
 [project]
 name = "ai-factory-pipeline"
-version = "5.6.0"
+version = "5.8.0"
 description = "AI Factory Pipeline — automated app builder for KSA market"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}
@@ -20669,7 +20669,7 @@ ignore = ["E501"]
 ## [DOCUMENT 3] `Dockerfile`
 
 ```python
-# AI Factory Pipeline v5.6 — Cloud Run Container
+# AI Factory Pipeline v5.8 — Cloud Run Container
 # Spec: §7.4.1
 #
 # Build:  docker build -t ai-factory-pipeline .
@@ -20721,7 +20721,7 @@ CMD ["python", "-m", "uvicorn", "factory.app:app", \
 ## [DOCUMENT 4] `cloudbuild.yaml`
 
 ```yaml
-# AI Factory Pipeline v5.6 — Cloud Build → Cloud Run
+# AI Factory Pipeline v5.8 — Cloud Build → Cloud Run
 # Spec: §7.4.1, §7.8.2
 #
 # Trigger: push to main branch
@@ -20788,7 +20788,7 @@ timeout: '600s'
 ## [DOCUMENT 5] `.env.example`
 
 ```text
-# AI Factory Pipeline v5.6 — Environment Variables
+# AI Factory Pipeline v5.8 — Environment Variables
 # Spec: §8.9, §2.11, Appendix B
 #
 # Copy to .env and fill in values:
@@ -20852,7 +20852,7 @@ GCP_PROJECT_ID=your-gcp-project-id
 ## [DOCUMENT 6] `.dockerignore`
 
 ```python
-# AI Factory Pipeline v5.6 — Docker build exclusions
+# AI Factory Pipeline v5.8 — Docker build exclusions
 .git
 .github
 .env
@@ -20894,7 +20894,7 @@ Tests cover:
 
   pyproject.toml (3 tests):
     4.  Valid TOML structure
-    5.  Version matches 5.6.0
+    5.  Version matches 5.8.0
     6.  CLI entry point defined
 
   Dockerfile (3 tests):
@@ -21007,12 +21007,12 @@ class TestPyproject:
         assert "[build-system]" in content
 
     def test_version(self):
-        """Version matches 5.6.0."""
+        """Version matches 5.8.0."""
         content = _read_file("pyproject.toml")
         if not content:
             pytest.skip("pyproject.toml not found")
 
-        assert 'version = "5.6.0"' in content
+        assert 'version = "5.8.0"' in content
 
     def test_cli_entry(self):
         """CLI entry point defined."""
@@ -21177,7 +21177,7 @@ git commit -m "PROD-14: Deployment Infrastructure — Dockerfile (§7.4.1, non-r
     ∙    Utils: aiofiles 24.1.0
     ∙    Dev: pytest 8.3.4, pytest-asyncio 0.25.0
 ✅ pyproject.toml — Package metadata:
-    ∙    Name: ai-factory-pipeline, version 5.6.0
+    ∙    Name: ai-factory-pipeline, version 5.8.0
     ∙    Python ≥3.11
     ∙    CLI entry: factory-cli = factory.cli:main
     ∙    pytest config: asyncio_mode=auto
@@ -21253,7 +21253,7 @@ Deliverables: 6 scripts + 1 test file (16 tests).
 ## [DOCUMENT 1] `scripts/__init__.py`
 
 ```python
-"""AI Factory Pipeline v5.6 — Operational Scripts."""
+"""AI Factory Pipeline v5.8 — Operational Scripts."""
 ```
 
 ---
@@ -21262,7 +21262,7 @@ Deliverables: 6 scripts + 1 test file (16 tests).
 
 ```python
 """
-AI Factory Pipeline v5.6 — Supabase Schema Migration
+AI Factory Pipeline v5.8 — Supabase Schema Migration
 
 Implements:
   - §5.6 Session Schema (5 operator tables)
@@ -21277,7 +21277,7 @@ Creates 11 tables + 7 indexes. Idempotent (IF NOT EXISTS).
 Usage:
   python -m scripts.migrate_supabase
 
-Spec Authority: v5.6 §5.6, §2.9.3, §7.6
+Spec Authority: v5.8 §5.6, §2.9.3, §7.6
 """
 
 from __future__ import annotations
@@ -21514,7 +21514,7 @@ def get_schema_summary() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — Supabase Migration")
+    print("AI Factory Pipeline v5.8 — Supabase Migration")
     print("=" * 50)
     result = asyncio.run(run_supabase_migration())
     print(f"\nTables: {result['tables_created']}")
@@ -21527,7 +21527,7 @@ if __name__ == "__main__":
 
 ```python
 """
-AI Factory Pipeline v5.6 — Neo4j Schema Migration
+AI Factory Pipeline v5.8 — Neo4j Schema Migration
 
 Implements:
   - §2.12/§6.3 Neo4j indexes and constraints
@@ -21542,7 +21542,7 @@ Idempotent — all CREATE use IF NOT EXISTS.
 Usage:
   python -m scripts.migrate_neo4j
 
-Spec Authority: v5.6 §2.12, §6.3, §8.3.1
+Spec Authority: v5.8 §2.12, §6.3, §8.3.1
 """
 
 from __future__ import annotations
@@ -21667,7 +21667,7 @@ def get_neo4j_summary() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — Neo4j Migration")
+    print("AI Factory Pipeline v5.8 — Neo4j Migration")
     print("=" * 50)
     result = asyncio.run(run_neo4j_migration())
     print(f"\nIndexes: {result['indexes_created']}")
@@ -21680,7 +21680,7 @@ if __name__ == "__main__":
 
 ```python
 """
-AI Factory Pipeline v5.6 — Janitor Agent
+AI Factory Pipeline v5.8 — Janitor Agent
 
 Implements:
   - §6.5 Janitor Agent Scheduling
@@ -21699,7 +21699,7 @@ Usage:
   python -m scripts.janitor --task clean      # Single task
   python -m scripts.janitor --task prune
 
-Spec Authority: v5.6 §6.5, §7.8.2
+Spec Authority: v5.8 §6.5, §7.8.2
 """
 
 from __future__ import annotations
@@ -22004,7 +22004,7 @@ async def janitor_run_all() -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AI Factory Pipeline v5.6 — Janitor Agent",
+        description="AI Factory Pipeline v5.8 — Janitor Agent",
     )
     parser.add_argument(
         "--task",
@@ -22015,7 +22015,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — Janitor Agent")
+    print("AI Factory Pipeline v5.8 — Janitor Agent")
     print("=" * 50)
 
     task_map = {
@@ -22040,7 +22040,7 @@ if __name__ == "__main__":
 
 ```python
 """
-AI Factory Pipeline v5.6 — GCP Secret Manager Bootstrap
+AI Factory Pipeline v5.8 — GCP Secret Manager Bootstrap
 
 Implements:
   - §2.11 Secrets Management
@@ -22054,7 +22054,7 @@ Usage:
   python -m scripts.setup_secrets
   python -m scripts.setup_secrets --validate-only
 
-Spec Authority: v5.6 §2.11, Appendix B
+Spec Authority: v5.8 §2.11, Appendix B
 """
 
 from __future__ import annotations
@@ -22209,7 +22209,7 @@ def print_validation_report(result: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "AI Factory Pipeline v5.6 — Secret Setup"
+            "AI Factory Pipeline v5.8 — Secret Setup"
         ),
     )
     parser.add_argument(
@@ -22220,7 +22220,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — Secret Setup")
+    print("AI Factory Pipeline v5.8 — Secret Setup")
     print("=" * 50)
 
     result = validate_secrets()
@@ -22247,7 +22247,7 @@ if __name__ == "__main__":
 
 ```python
 """
-AI Factory Pipeline v5.6 — v3.6→v5.4 Data Migration
+AI Factory Pipeline v5.8 — v3.6→v5.4 Data Migration
 
 Implements:
   - §8.3 Migration from legacy v3.6 data format
@@ -22264,7 +22264,7 @@ Usage:
   python -m scripts.migrate_v36_to_v54
   python -m scripts.migrate_v36_to_v54 --dry-run
 
-Spec Authority: v5.6 §8.3
+Spec Authority: v5.8 §8.3
 """
 
 from __future__ import annotations
@@ -22779,7 +22779,7 @@ Deliverables: 4 documentation files + 1 test file (12 tests).
 
 ## [DOCUMENT 1] `README.md` (~110 lines)
 
-# AI Factory Pipeline v5.6
+# AI Factory Pipeline v5.8
 
 Automated AI application factory — builds production-grade mobile and web apps from natural language descriptions, targeting the KSA market.
 
@@ -22872,7 +22872,7 @@ Documentation
     ∙    Operator Guide — Telegram commands and troubleshooting
     ∙    ADR Index — Architecture Decision Records
 Specification
-This implementation is built from the v5.6 AI Factory Pipeline Specification Document, which was refined through 4 audit rounds across 7 independent AI models with 50 patches applied.
+This implementation is built from the v5.8 AI Factory Pipeline Specification Document, which was refined through 4 audit rounds across 7 independent AI models with 50 patches applied.
 
 ---
 
@@ -22880,7 +22880,7 @@ This implementation is built from the v5.6 AI Factory Pipeline Specification Doc
 ## [DOCUMENT 2] `docs/ARCHITECTURE.md` (~180 lines)
 
 ```markdown
-# Architecture Reference — AI Factory Pipeline v5.6
+# Architecture Reference — AI Factory Pipeline v5.8
 
 Layer-by-layer technical reference for the complete implementation.
 
@@ -22990,7 +22990,7 @@ Cloud Run container (python:3.11-slim) deployed to me-central1 via GCP Cloud Bui
 ## [DOCUMENT 3] `docs/OPERATOR_GUIDE.md` (~170 lines)
 
 ```markdown
-# Operator Guide — AI Factory Pipeline v5.6
+# Operator Guide — AI Factory Pipeline v5.8
 
 This guide is for non-technical operators who interact with the pipeline through Telegram.
 
@@ -23104,7 +23104,7 @@ When your app is ready, the pipeline delivers files through Telegram:
 ## [DOCUMENT 4] `docs/ADR_INDEX.md` (~120 lines)
 
 ```markdown
-# Architecture Decision Records — AI Factory Pipeline v5.6
+# Architecture Decision Records — AI Factory Pipeline v5.8
 
 Index of all ADRs referenced in the specification.
 
@@ -23257,11 +23257,11 @@ def _read(filename: str) -> str:
 
 class TestReadme:
     def test_title_and_version(self):
-        """Contains project title and v5.6."""
+        """Contains project title and v5.8."""
         content = _read("README.md")
         if not content:
             pytest.skip("README.md not found")
-        assert "AI Factory Pipeline v5.6" in content
+        assert "AI Factory Pipeline v5.8" in content
 
     def test_quick_start(self):
         """Contains Quick Start section."""
@@ -23479,7 +23479,7 @@ Sixteen production layers complete. The full implementation is now documented fo
 ▶️ Next: Part 17 — Final Validation + Release Tag:
 
     ∙    scripts/validate_project.py — 6-phase project completeness check (imports, config, DAG, tests, docs, schemas)
-    ∙    Git tag v5.6.0 — Release marker
+    ∙    Git tag v5.8.0 — Release marker
     ∙    Final cumulative summary with complete file manifest​​​​​​​​​​​​​​​​
 
 ---
@@ -23499,7 +23499,7 @@ Deliverables: 1 validation script + 1 test file (14 tests) + release tag.
 
 ```python
 """
-AI Factory Pipeline v5.6 — Project Validation Script
+AI Factory Pipeline v5.8 — Project Validation Script
 
 Implements:
   - §8.1 Production Readiness Scorecard (automated checks)
@@ -23516,7 +23516,7 @@ Implements:
 Usage:
   python -m scripts.validate_project
 
-Spec Authority: v5.6 §8.1, §8.11
+Spec Authority: v5.8 §8.1, §8.11
 """
 
 from __future__ import annotations
@@ -23616,7 +23616,7 @@ def phase_2_config() -> dict:
         )
 
         # Version
-        assert PIPELINE_FULL_VERSION == "5.6.0"
+        assert PIPELINE_FULL_VERSION == "5.8.0"
         results["passed"] += 1
 
         # 7 dataclasses exist
@@ -23651,7 +23651,7 @@ def phase_2_config() -> dict:
 
         # Summary
         summary = get_config_summary()
-        assert summary["version"] == "5.6.0"
+        assert summary["version"] == "5.8.0"
         assert "models" in summary
         assert "budget" in summary
         results["passed"] += 1
@@ -23781,7 +23781,7 @@ def phase_5_docs() -> dict:
     doc_checks = [
         (
             "README.md",
-            ["AI Factory Pipeline v5.6", "Quick Start"],
+            ["AI Factory Pipeline v5.8", "Quick Start"],
         ),
         (
             "docs/ARCHITECTURE.md",
@@ -23916,7 +23916,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO)
 
     print("=" * 60)
-    print("AI Factory Pipeline v5.6 — Project Validation")
+    print("AI Factory Pipeline v5.8 — Project Validation")
     print("=" * 60)
 
     result = run_validation()
@@ -23941,7 +23941,7 @@ def main() -> int:
             f"{result['total_passed']} checks"
         )
         print(
-            "   Ready for release tag: v5.6.0"
+            "   Ready for release tag: v5.8.0"
         )
     else:
         print(
@@ -24182,7 +24182,7 @@ tests/test_prod_17_final.py::TestFullValidation::test_total_checks PASSED
 git add scripts/validate_project.py tests/test_prod_17_final.py
 git commit -m "PROD-17: Final Validation — 6-phase project completeness (§8.1, §8.11), 30+ automated checks"
 
-git tag -a v5.6.0 -m "AI Factory Pipeline v5.6.0 — Complete production implementation
+git tag -a v5.8.0 -m "AI Factory Pipeline v5.8.0 — Complete production implementation
 
 17 production layers, 362 tests, ~14,000 lines
 Full S0→S8 pipeline with ZERO STUBS
@@ -24190,7 +24190,7 @@ KSA legal compliance, Budget Governor, War Room
 Cloud Run deployment to me-central1 (Dammam)
 4 AI roles: Scout/Strategist/Engineer/Quick Fix
 6 supported stacks: FlutterFlow/Swift/Kotlin/RN/Python/Unity
-Specification-first development from v5.6 unified spec"
+Specification-first development from v5.8 unified spec"
 ```
 
 ---
@@ -24224,9 +24224,9 @@ Specification-first development from v5.6 unified spec"
 ## [COMPLETE FILE MANIFEST]
 
 ```
-ai-factory-pipeline/                      # Tagged: v5.6.0
+ai-factory-pipeline/                      # Tagged: v5.8.0
 ├── factory/
-│   ├── __init__.py                       # Package init, v5.6.0
+│   ├── __init__.py                       # Package init, v5.8.0
 │   ├── config.py                         # §8.9 — 7 frozen dataclasses, env vars
 │   ├── orchestrator.py                   # §2.10 — DAG, pipeline_node, routing
 │   ├── app.py                            # §7.4.1 — FastAPI, 5 endpoints
@@ -24315,7 +24315,7 @@ ai-factory-pipeline/                      # Tagged: v5.6.0
 ```
 
 🏁 IMPLEMENTATION COMPLETE
-AI Factory Pipeline v5.6.0 — tagged and ready.
+AI Factory Pipeline v5.8.0 — tagged and ready.
 What was built across 17 parts:
     ∙    Full S0→S8 pipeline with ZERO STUBS — every stage has real AI integration
     ∙    4 AI roles (Scout/Strategist/Engineer/Quick Fix) with real SDK clients

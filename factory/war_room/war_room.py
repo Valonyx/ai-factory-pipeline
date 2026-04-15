@@ -8,7 +8,7 @@ Implements:
   - Mother Memory pattern query before escalation
   - Retry cycle tracking
 
-Spec Authority: v5.6 §2.2.4
+Spec Authority: v5.8 §2.2.4
 """
 
 from __future__ import annotations

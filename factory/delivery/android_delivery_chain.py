@@ -21,7 +21,7 @@ Switch to paid: Set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON.
 
 Force a specific provider: ANDROID_DELIVERY_PROVIDER=playstore|firebase|airlock
 
-Spec Authority: v5.6 §4.7.1, ADR-016
+Spec Authority: v5.8 §4.7.1, ADR-016
 """
 
 from __future__ import annotations

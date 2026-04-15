@@ -17,7 +17,7 @@ or Groq still produce high-quality output because they receive the same rich
 context that Anthropic would have had. The Scout+Memory enrichment compensates
 for weaker models with better information.
 
-Spec Authority: v5.6 §2.2.4 (Context Enrichment), §6.7 (Vector Backend)
+Spec Authority: v5.8 §2.2.4 (Context Enrichment), §6.7 (Vector Backend)
 """
 
 from __future__ import annotations

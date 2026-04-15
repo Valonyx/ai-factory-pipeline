@@ -22,7 +22,7 @@ Env vars used:
   MATCH_REPOSITORY=git@github.com:org/certs.git  (for code signing)
   MATCH_PASSWORD=cert_repo_password
 
-Spec Authority: v5.6 §4.7.2 (free iOS delivery option)
+Spec Authority: v5.8 §4.7.2 (free iOS delivery option)
 """
 
 from __future__ import annotations

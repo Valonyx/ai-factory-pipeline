@@ -7,7 +7,7 @@ Implements:
   - §2.4.3 Local Agent interface
   - §8.10 Contract 4: execute_command
 
-Spec Authority: v5.6 §2.4, §2.7, §8.10
+Spec Authority: v5.8 §2.4, §2.7, §8.10
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ Implements:
   - DocuGen Module (§3.5) — legal doc generation
   - Mother Memory persistence for handoff docs
 
-Spec Authority: v5.6 §4.9, §3.5, FIX-27
+Spec Authority: v5.8 §4.9, §3.5, FIX-27
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ Tests cover:
 
   pyproject.toml (3 tests):
     4.  Valid TOML structure
-    5.  Version matches 5.6.0
+    5.  Version matches 5.8.0
     6.  CLI entry point defined
 
   Dockerfile (3 tests):
@@ -122,12 +122,12 @@ class TestPyproject:
         assert "[build-system]" in content
 
     def test_version(self):
-        """Version matches 5.6.0."""
+        """Version matches 5.8.0."""
         content = _read_file("pyproject.toml")
         if not content:
             pytest.skip("pyproject.toml not found")
 
-        assert 'version = "5.6.0"' in content
+        assert 'version = "5.8.0"' in content
 
     def test_cli_entry(self):
         """CLI entry point defined."""

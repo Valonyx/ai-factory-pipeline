@@ -12,7 +12,7 @@ Storage hierarchy (primary → fallback):
   3. Upstash   — Redis, 10K commands/day free, resets midnight UTC
   4. Turso     — SQLite, 1B reads/25M writes per month free
 
-Spec Authority: v5.6 §2.10 (Mother Memory)
+Spec Authority: v5.8 §2.10 (Mother Memory)
 """
 
 from __future__ import annotations

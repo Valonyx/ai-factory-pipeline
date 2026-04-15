@@ -39,7 +39,7 @@ What it adds over the old chain loop:
     operator receives a brief warning via Telegram — without blocking the
     pipeline.
 
-Spec Authority: v5.6 §2.2.3, §2.10, §5.4
+Spec Authority: v5.8 §2.2.3, §2.10, §5.4
 """
 
 from __future__ import annotations

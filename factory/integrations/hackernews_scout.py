@@ -16,7 +16,7 @@ Enhancements:
 
 API: https://hn.algolia.com/api/v1/search
 
-Spec Authority: v5.6 §2.2.3
+Spec Authority: v5.8 §2.2.3
 """
 
 from __future__ import annotations

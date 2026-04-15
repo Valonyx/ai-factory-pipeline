@@ -12,7 +12,7 @@ instead of building from scratch. This module:
 
 Used by S0 (intake), S2 (blueprint), and S3 (codegen) in MODIFY mode.
 
-Spec Authority: v5.6 §4.0 (NB4 Phase F, Part 20-21)
+Spec Authority: v5.8 §4.0 (NB4 Phase F, Part 20-21)
 """
 
 from __future__ import annotations

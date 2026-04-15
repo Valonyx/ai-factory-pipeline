@@ -9,7 +9,7 @@ Implements:
 Cost note (§2.2.4): Per-invocation estimates are illustrative.
 Runtime cost enforcement by circuit breaker (§3.6) + Budget Governor (§2.14).
 
-Spec Authority: v5.6 §2.2.4
+Spec Authority: v5.8 §2.2.4
 """
 
 from __future__ import annotations

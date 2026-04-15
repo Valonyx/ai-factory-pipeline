@@ -10,7 +10,7 @@ Implements:
 ADVISORY ONLY: All preflight checks surface risks.
 They do NOT guarantee Apple/Google approval.
 
-Spec Authority: v5.6 §7.6.0b, FIX-09
+Spec Authority: v5.8 §7.6.0b, FIX-09
 """
 
 from __future__ import annotations

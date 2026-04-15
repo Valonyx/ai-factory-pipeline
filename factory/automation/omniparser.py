@@ -13,7 +13,7 @@ Provider cascade:
 
 Force provider: SCREEN_PARSER_PROVIDER=omniparser|tesseract|coordinates
 
-Spec Authority: v5.6 §2.4.2 (NB4 Part 6)
+Spec Authority: v5.8 §2.4.2 (NB4 Part 6)
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Neo4j Schema Migration
+AI Factory Pipeline v5.8 — Neo4j Schema Migration
 
 Implements:
   - §8.3.1 Neo4j Indexes and Constraints
@@ -10,7 +10,7 @@ Implements:
 Idempotent — all CREATE use IF NOT EXISTS.
 Run: python -m scripts.migrate_neo4j
 
-Spec Authority: v5.6 §8.3.1
+Spec Authority: v5.8 §8.3.1
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ NEO4J_INDEXES = [
     "CREATE INDEX IF NOT EXISTS FOR (lt:LegalDocTemplate) ON (lt.id)",
     "CREATE INDEX IF NOT EXISTS FOR (g:Graveyard) ON (g.id)",
 
-    # Additional indexes for v5.6 extensions
+    # Additional indexes for v5.8 extensions
     "CREATE INDEX IF NOT EXISTS FOR (we:WarRoomEvent) ON (we.project_id)",
     "CREATE INDEX IF NOT EXISTS FOR (we:WarRoomEvent) ON (we.resolved)",
     "CREATE INDEX IF NOT EXISTS FOR (pt:Pattern) ON (pt.pattern_type)",
@@ -108,7 +108,7 @@ def get_neo4j_summary() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — Neo4j Migration")
+    print("AI Factory Pipeline v5.8 — Neo4j Migration")
     print("=" * 50)
     result = asyncio.run(run_neo4j_migration())
     print(f"\nIndexes: {result['indexes_created']}")

@@ -17,7 +17,7 @@ Pricing verified 2025-02-27 from platform.claude.com/docs/en/about-claude/pricin
   - claude-sonnet-4-20250514:   $3.00 input / $15.00 output per MTok
   - claude-haiku-4-5-20251001:  $1.00 input /  $5.00 output per MTok
 
-Spec Authority: v5.6 §2.2, §3.2, §3.3, §3.6
+Spec Authority: v5.8 §2.2, §3.2, §3.3, §3.6
 """
 
 from __future__ import annotations

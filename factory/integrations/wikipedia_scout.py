@@ -15,7 +15,7 @@ Enhancements:
 API: https://en.wikipedia.org/w/rest.php/v1/search/page
      https://en.wikipedia.org/w/rest.php/v1/page/{title}/summary
 
-Spec Authority: v5.6 §2.2.3
+Spec Authority: v5.8 §2.2.3
 """
 
 from __future__ import annotations

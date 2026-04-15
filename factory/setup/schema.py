@@ -21,7 +21,7 @@ Neo4j indexes (18) per §2.10.1:
     APIContract, UserStory, TechDebt, LegalConstraint,
     PostSnapshot, HandoffDoc + relationship indexes
 
-Spec Authority: v5.6 §7.1.3, §2.10.1
+Spec Authority: v5.8 §7.1.3, §2.10.1
 """
 
 from __future__ import annotations

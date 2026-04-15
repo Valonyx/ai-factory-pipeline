@@ -9,7 +9,7 @@ Usage in pipeline (S2 Blueprint):
     assets = await generate_brand_assets(state, blueprint_data)
     # assets["logo_bytes"], assets["splash_bytes"], assets["logo_path"]
 
-Spec Authority: v5.6 §4.3.1 (Design Asset Generation)
+Spec Authority: v5.8 §4.3.1 (Design Asset Generation)
 """
 
 from __future__ import annotations

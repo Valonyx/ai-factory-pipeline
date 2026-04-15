@@ -322,7 +322,7 @@ Send to bot: /help
 
 Expected response:
 ```
-AI FACTORY PIPELINE v5.6
+AI FACTORY PIPELINE v5.8
 Available Commands:
 
 BASIC:
@@ -448,7 +448,7 @@ python -m factory.cli start
 
 Expected output:
 ```
-AI Factory Pipeline v5.6
+AI Factory Pipeline v5.8
 Starting services...
 ✅ Core engine started
 ✅ Telegram bot connected
@@ -2548,7 +2548,7 @@ Repository: https://github.com/yourusername/focusflow
 ```
 Pipeline Status: ✅ RUNNING
 Mode: LOCAL
-Version: 5.6.0
+Version: 5.8.0
 Uptime: 3 days, 14 hours
 
 Services:
@@ -3883,10 +3883,10 @@ Shows current pipeline version.
 
 If updates available:
 ```
-Pipeline v5.6.0 installed
-Update available: v5.6.1
+Pipeline v5.8.0 installed
+Update available: v5.8.1
 
-New in v5.6.1:
+New in v5.8.1:
 - Faster S4 builds (10% improvement)
 - Better error messages
 - Bug fixes
@@ -4595,7 +4595,7 @@ Test internet speed:
 If shows:
 ```
 Pipeline: v5.4.0
-Latest: v5.6.0
+Latest: v5.8.0
 
 You are 2 versions behind.
 Update recommended.
@@ -5039,7 +5039,7 @@ Old:
 /create platform:android [spec]
 ```
 
-New (v5.6):
+New (v5.8):
 ```
 /create
 platform: android
@@ -5075,7 +5075,7 @@ Wait for bug fix release:
 /check-updates
 ```
 
-When v5.6.1 available with fix:
+When v5.8.1 available with fix:
 ```
 /update
 ```
@@ -5483,7 +5483,7 @@ RESULT: Builds succeed
 
 **These topics covered in:**
 - Advanced operator documentation (when available)
-- Technical specification (v5.6 document)
+- Technical specification (v5.8 document)
 - GitHub issues and discussions
 - Community knowledge base
 
@@ -5496,7 +5496,7 @@ RESULT: Builds succeed
 **1. Check other runbooks first:**
 - RB2: Troubleshooting (comprehensive problem-solving)
 - NB6: Real-World Scenarios (specific situations)
-- Technical specification v5.6 (deep technical details)
+- Technical specification v5.8 (deep technical details)
 
 **2. Use built-in diagnostics:**
 ```

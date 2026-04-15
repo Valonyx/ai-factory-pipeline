@@ -10,7 +10,7 @@ Requires: BRAVE_SEARCH_API_KEY (api.search.brave.com)
 Best for: general web search, cross-validation with other providers,
 fresh news results, and when DuckDuckGo/SearXNG don't find enough.
 
-Spec Authority: v5.6 §2.2.3 (Scout provider interface)
+Spec Authority: v5.8 §2.2.3 (Scout provider interface)
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ Each key collected via wait_for_operator_reply() (300s timeout → SKIP).
 SKIP skips verification; key stored as "" (configurable later).
 After all keys: schema init.
 
-Spec Authority: v5.6 §7.1.2, §7.1.3
+Spec Authority: v5.8 §7.1.2, §7.1.3
 """
 
 from __future__ import annotations

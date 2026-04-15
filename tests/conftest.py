@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Shared Test Fixtures
+AI Factory Pipeline v5.8 — Shared Test Fixtures
 
 Provides:
   - fresh_state: Clean PipelineState for each test

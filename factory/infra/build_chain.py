@@ -20,7 +20,7 @@ Paid-to-free flexibility:
   Set BUILD_MAC_PROVIDER=macincloud|github_actions|codemagic in .env
   to force a specific provider, or leave blank for auto-cascade.
 
-Spec Authority: v5.6 §2.4.1, §4.5
+Spec Authority: v5.8 §2.4.1, §4.5
 """
 
 from __future__ import annotations

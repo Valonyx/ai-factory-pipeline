@@ -24,7 +24,7 @@ Anthropic API credits were unavailable. All role contracts, prompts, and cost
 tracking logic remain identical — only the underlying model provider changes.
 Remove AI_PROVIDER=gemini from .env to revert to Anthropic.
 
-Spec Authority: v5.6 §2.2 (provider-agnostic role interface)
+Spec Authority: v5.8 §2.2 (provider-agnostic role interface)
 """
 
 from __future__ import annotations

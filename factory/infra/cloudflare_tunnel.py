@@ -22,7 +22,7 @@ Config (optional, for named tunnels):
   CLOUDFLARE_API_TOKEN=your_token
   CLOUDFLARE_TUNNEL_NAME=ai-factory-pipeline
 
-Spec Authority: v5.6 §2.4.1 (Local/Hybrid mode)
+Spec Authority: v5.8 §2.4.1 (Local/Hybrid mode)
 """
 
 from __future__ import annotations

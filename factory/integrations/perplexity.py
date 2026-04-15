@@ -8,7 +8,7 @@ Implements:
   - ADR-049 Scout context-tier ceiling enforcement
   - FIX-19  Context tier limits
 
-Spec Authority: v5.6 §3.1, §2.2.3, ADR-049, FIX-19
+Spec Authority: v5.8 §3.1, §2.2.3, ADR-049, FIX-19
 """
 
 from __future__ import annotations

@@ -10,7 +10,7 @@ Best for: developer opinions, product reviews, community sentiment,
 Note: Reddit returns ~25 results/request. Anonymous access has soft rate
 limits (~60 req/min) but no hard monthly quota.
 
-Spec Authority: v5.6 §2.2.3 (Scout provider interface)
+Spec Authority: v5.8 §2.2.3 (Scout provider interface)
 """
 
 from __future__ import annotations

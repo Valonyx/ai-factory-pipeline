@@ -6,7 +6,7 @@ Implements:
   - hex_to_rgb, relative_luminance, contrast_ratio
   - darken_until_contrast (auto-fix for WCAG AA 4.5:1)
 
-Spec Authority: v5.6 §3.4.2
+Spec Authority: v5.8 §3.4.2
 """
 
 from __future__ import annotations

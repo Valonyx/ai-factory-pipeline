@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — GitHub Container Registry (GHCR) Activation
+# AI Factory Pipeline v5.8 — GitHub Container Registry (GHCR) Activation
 #
 # What this does:
 #   1. Verify GITHUB_TOKEN has packages scope

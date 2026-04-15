@@ -78,7 +78,7 @@ This is your complete guide to updating the AI Factory Pipeline software itself 
 - Custom integration updates
 
 **Version Management:**
-- Understanding version numbers (5.6.0 explained)
+- Understanding version numbers (5.8.0 explained)
 - Reading changelogs effectively
 - Tracking which version you're on
 - Planning multi-version upgrades
@@ -180,7 +180,7 @@ Example: 5.6.2
 
 ---
 
-**PATCH updates (5.6.0 → 5.6.1)**
+**PATCH updates (5.8.0 → 5.6.1)**
 
 **What changes:**
 - Bug fixes only
@@ -191,7 +191,7 @@ Example: 5.6.2
 
 **Example changelog:**
 ```
-v5.6.1 - March 15, 2026
+v5.8.1 - March 15, 2026
 
 FIXES:
 - Fixed S4 timeout on large builds
@@ -209,7 +209,7 @@ SECURITY:
 
 ---
 
-**MINOR updates (5.6.0 → 5.7.0)**
+**MINOR updates (5.8.0 → 5.7.0)**
 
 **What changes:**
 - New features added
@@ -236,7 +236,7 @@ FIXES:
 - 12 bug fixes (see detailed changelog)
 
 COMPATIBILITY:
-- All v5.6.x configurations work unchanged
+- All v5.8.x configurations work unchanged
 - New features opt-in, don't affect existing workflows
 ```
 
@@ -379,14 +379,14 @@ Development/contributing: NIGHTLY
 ```
 AI Factory Pipeline
 
-Installed: v5.6.0
+Installed: v5.8.0
 Released: March 1, 2026
 Channel: stable
 
-Latest available: v5.6.2
+Latest available: v5.8.2
 Update available: Yes
 
-New in v5.6.2:
+New in v5.8.2:
 - Security patch for API authentication
 - Fixed S4 timeout issue
 - Improved error messages
@@ -405,12 +405,12 @@ python -m factory.cli version
 
 **Response:**
 ```
-AI Factory Pipeline v5.6.0
+AI Factory Pipeline v5.8.0
 Python: 3.11.2
 Platform: macOS 13.2
 
 Release channel: stable
-Update available: v5.6.2
+Update available: v5.8.2
 ```
 
 ---
@@ -422,7 +422,7 @@ cat ~/ai-factory-pipeline/VERSION
 
 **Response:**
 ```
-5.6.0
+5.8.0
 ```
 
 ---
@@ -482,7 +482,7 @@ Before updating, verify these requirements:
 
 **Get changelog:**
 - https://github.com/[pipeline-repo]/releases
-- Or: `/changelog v5.6.2`
+- Or: `/changelog v5.8.2`
 
 □ **Understand impact**
 - Will this affect current projects?
@@ -879,7 +879,7 @@ Approach: Treat as fresh install, migrate data
 ```
 UPDATE PLAN
 
-FROM: v5.6.0
+FROM: v5.8.0
 TO: v5.7.0
 DATE: April 10, 2026
 
@@ -1077,10 +1077,10 @@ Available backups:
 1. pre-update-5.7.0
    Date: 2026-04-10 09:15:00
    Size: 892 MB
-   Version: 5.6.0
+   Version: 5.8.0
    Status: ✅ Valid
 
-2. pre-update-5.6.0
+2. pre-update-5.8.0
    Date: 2026-03-01 10:30:00
    Size: 845 MB
    Version: 5.5.0
@@ -1089,7 +1089,7 @@ Available backups:
 3. weekly-auto-2026-04-07
    Date: 2026-04-07 02:00:00
    Size: 901 MB
-   Version: 5.6.0
+   Version: 5.8.0
    Status: ✅ Valid
 ```
 
@@ -1151,7 +1151,7 @@ cp ~/ai-factory-pipeline/.env $BACKUP_DIR/env-backup.txt
 cp ~/ai-factory-pipeline/config.json $BACKUP_DIR/config-backup.json
 
 # Document current version
-echo "5.6.0" > $BACKUP_DIR/VERSION.txt
+echo "5.8.0" > $BACKUP_DIR/VERSION.txt
 ```
 
 ---
@@ -1173,7 +1173,7 @@ cp ~/ai-factory-pipeline/data/pipeline.db $BACKUP_DIR/database-backup.db
 cat > $BACKUP_DIR/MANIFEST.txt << EOF
 AI Factory Pipeline Backup
 Created: $(date)
-Version: 5.6.0
+Version: 5.8.0
 Purpose: Pre-update backup before upgrading to 5.7.0
 
 Contents:
@@ -1251,7 +1251,7 @@ rm -rf /tmp/backup-test
 **Contains:**
 ```json
 {
-  "version": "5.6.0",
+  "version": "5.8.0",
   "exported": "2026-04-10T09:20:00Z",
   "configuration": {
     "execution_mode": "HYBRID",
@@ -1292,7 +1292,7 @@ Create a text file documenting your settings:
 cat > ~/Desktop/pipeline-config-backup.txt << EOF
 AI FACTORY PIPELINE CONFIGURATION
 Date: $(date)
-Version: 5.6.0
+Version: 5.8.0
 
 EXECUTION:
 - Mode: HYBRID
@@ -1332,7 +1332,7 @@ EOF
 cat > ~/Desktop/pre-update-state.txt << EOF
 PRE-UPDATE STATE DOCUMENTATION
 Date: 2026-04-10
-Current Version: 5.6.0
+Current Version: 5.8.0
 Target Version: 5.7.0
 
 CURRENT STATUS:
@@ -1484,7 +1484,7 @@ kill -9 [PID]
 ```
 PRE-UPDATE TEST RESULTS
 Date: 2026-04-10 09:45:00
-Version: 5.6.0
+Version: 5.8.0
 
 ✅ Pipeline starts in 25 seconds
 ✅ All services connect (Anthropic, GitHub, Firebase)
@@ -1533,8 +1533,8 @@ All systems operational before update.
 ### 5.2 Method 1: Automatic Update (Recommended)
 
 **Use this method for:**
-- ✅ Patch updates (5.6.0 → 5.6.1)
-- ✅ Minor updates (5.6.0 → 5.7.0)
+- ✅ Patch updates (5.8.0 → 5.6.1)
+- ✅ Minor updates (5.8.0 → 5.7.0)
 - ✅ When staying on same major version
 
 **Don't use for:**
@@ -1556,7 +1556,7 @@ All systems operational before update.
 
 **Response:**
 ```
-Current: v5.6.0
+Current: v5.8.0
 Latest: v5.7.0
 
 Update available: YES
@@ -1614,7 +1614,7 @@ After updating Python, run /check-updates again.
 
 **Pipeline shows progress:**
 ```
-🔄 Starting update: 5.6.0 → 5.7.0
+🔄 Starting update: 5.8.0 → 5.7.0
 
 Phase 1: Pre-update checks
 ✅ Backup verified
@@ -1652,7 +1652,7 @@ Verifying installation... ✅
 
 ✅ UPDATE COMPLETE
 
-Updated: 5.6.0 → 5.7.0
+Updated: 5.8.0 → 5.7.0
 Time: 3m 42s
 Backup preserved: ~/ai-factory-pipeline/backups/pre-update-5.7.0.tar.gz.enc
 
@@ -1752,7 +1752,7 @@ shasum -a 256 ai-factory-pipeline-5.7.0.tar.gz
 
 **Step 4: Backup current installation** (if not already done)
 ```bash
-mv ~/ai-factory-pipeline ~/ai-factory-pipeline-5.6.0-backup
+mv ~/ai-factory-pipeline ~/ai-factory-pipeline-5.8.0-backup
 ```
 
 ---
@@ -1772,8 +1772,8 @@ mv ~/Downloads/pipeline-5.7.0 ~/ai-factory-pipeline
 **Step 6: Restore configuration**
 ```bash
 # Copy configuration from backup
-cp ~/ai-factory-pipeline-5.6.0-backup/.env ~/ai-factory-pipeline/.env
-cp ~/ai-factory-pipeline-5.6.0-backup/config.json ~/ai-factory-pipeline/config.json
+cp ~/ai-factory-pipeline-5.8.0-backup/.env ~/ai-factory-pipeline/.env
+cp ~/ai-factory-pipeline-5.8.0-backup/config.json ~/ai-factory-pipeline/config.json
 
 # Copy any custom modifications
 # (if you made any to the code)
@@ -2115,7 +2115,7 @@ You now know:
 **Expected result:**
 ```
 Pipeline Status: ✅ RUNNING
-Version: 5.7.0 ✅ (updated from 5.6.0)
+Version: 5.7.0 ✅ (updated from 5.8.0)
 Mode: HYBRID
 Uptime: 2 minutes
 
@@ -2202,8 +2202,8 @@ Python: 3.11.2
 Platform: macOS 13.2
 
 Update history:
-- 2026-04-10: 5.6.0 → 5.7.0 (SUCCESS)
-- 2026-03-01: 5.5.0 → 5.6.0 (SUCCESS)
+- 2026-04-10: 5.8.0 → 5.7.0 (SUCCESS)
+- 2026-03-01: 5.5.0 → 5.8.0 (SUCCESS)
 ```
 
 **What to verify:**
@@ -2275,7 +2275,7 @@ Recent Logs (last 50 entries):
 [2026-04-10 10:05:23] INFO: Pipeline started - v5.7.0
 [2026-04-10 10:05:22] INFO: Services connected successfully
 [2026-04-10 10:05:21] INFO: Configuration loaded
-[2026-04-10 10:05:20] INFO: Update completed: 5.6.0 → 5.7.0
+[2026-04-10 10:05:20] INFO: Update completed: 5.8.0 → 5.7.0
 [2026-04-10 10:02:15] INFO: Update started
 [2026-04-10 10:01:30] INFO: Pre-update backup created
 ...
@@ -2575,7 +2575,7 @@ Total time: 36m 26s
 
 **Performance comparison:**
 ```
-Pre-update (v5.6.0): Avg 38m 15s
+Pre-update (v5.8.0): Avg 38m 15s
 Post-update (v5.7.0): 36m 26s
 Improvement: 1m 49s (4.8% faster) ✅
 
@@ -2750,11 +2750,11 @@ This is a dry run - no files deleted ✅
 
 ```
 PERFORMANCE COMPARISON
-Update: v5.6.0 → v5.7.0
+Update: v5.8.0 → v5.7.0
 Date: 2026-04-10
 
 BUILD PERFORMANCE:
-                          v5.6.0      v5.7.0      Change
+                          v5.8.0      v5.7.0      Change
 ────────────────────────────────────────────────────────
 Create (simple app):      38m 15s     36m 26s     -4.8% ✅
 Modify (small change):    18m 40s     17m 23s     -6.8% ✅
@@ -2902,7 +2902,7 @@ Issue detected after update
 ⚠️ ROLLBACK REQUESTED
 
 Current version: 5.7.0
-Will rollback to: 5.6.0 (from backup: pre-update-5.7.0)
+Will rollback to: 5.8.0 (from backup: pre-update-5.7.0)
 
 This will:
 1. Stop pipeline
@@ -2915,7 +2915,7 @@ This will:
 Backup details:
 - Created: 2026-04-10 09:15:00
 - Size: 892 MB
-- Version: 5.6.0
+- Version: 5.8.0
 - Status: ✅ Valid
 
 Continue with rollback? (yes/no)
@@ -2927,7 +2927,7 @@ Continue with rollback? (yes/no)
 
 **Rollback process:**
 ```
-🔄 Starting rollback: 5.7.0 → 5.6.0
+🔄 Starting rollback: 5.7.0 → 5.8.0
 
 Phase 1: Preparation
 ✅ Stopping pipeline
@@ -2936,7 +2936,7 @@ Phase 1: Preparation
 
 Phase 2: Code restoration
 ✅ Removing v5.7.0 installation
-✅ Extracting v5.6.0 from backup
+✅ Extracting v5.8.0 from backup
 ✅ Restoring files (543 MB)
 
 Phase 3: Configuration restoration
@@ -2950,13 +2950,13 @@ Phase 4: Verification
 ✅ Running post-restore checks
 
 Phase 5: Restart
-✅ Starting pipeline v5.6.0
+✅ Starting pipeline v5.8.0
 ✅ Connecting services
 ✅ Verifying functionality
 
 ✅ ROLLBACK COMPLETE
 
-Restored to: v5.6.0
+Restored to: v5.8.0
 Time: 2m 45s
 Previous state fully restored
 
@@ -2982,7 +2982,7 @@ Next steps:
 ```
 AI Factory Pipeline
 
-Installed: v5.6.0 ✅
+Installed: v5.8.0 ✅
 Released: March 1, 2026
 
 Rollback successful
@@ -3086,7 +3086,7 @@ python -m factory.cli start
 
 **Monitor startup:**
 ```
-AI Factory Pipeline v5.6.0
+AI Factory Pipeline v5.8.0
 Starting services...
 ✅ Core engine started
 ✅ Telegram bot connected
@@ -3104,7 +3104,7 @@ Pipeline is RUNNING
 /projects list
 ```
 
-**All should show v5.6.0 and pre-update state.**
+**All should show v5.8.0 and pre-update state.**
 
 ---
 
@@ -3123,7 +3123,7 @@ Pipeline is RUNNING
 ls -lht ~/ai-factory-pipeline/backups/
 
 # Find earlier backup
-# pre-update-5.6.0.tar.gz.enc (from previous update)
+# pre-update-5.8.0.tar.gz.enc (from previous update)
 
 # Restore from that
 [Follow manual rollback steps with older backup]
@@ -3137,7 +3137,7 @@ ls -lht ~/ai-factory-pipeline/backups/
 
 **Last resort if no working backups:**
 
-1. Download fresh v5.6.0 (or latest stable)
+1. Download fresh v5.8.0 (or latest stable)
 2. Install from scratch
 3. Manually configure (API keys, etc.)
 4. Reconnect to GitHub repositories
@@ -3159,7 +3159,7 @@ ROLLBACK REPORT
 
 Date: 2026-04-10 11:30:00
 From: v5.7.0 (failed)
-To: v5.6.0 (restored)
+To: v5.8.0 (restored)
 
 REASON FOR ROLLBACK:
 [Describe issue that caused rollback]
@@ -3175,7 +3175,7 @@ Time: 2m 45s
 Status: Successful
 
 CURRENT STATE:
-✅ Pipeline running v5.6.0
+✅ Pipeline running v5.8.0
 ✅ All services connected
 ✅ Projects intact
 ✅ Normal operations resumed
@@ -3188,7 +3188,7 @@ LESSONS LEARNED:
 NEXT STEPS:
 - Report bug if pipeline issue
 - Wait for v5.7.1 fix
-- Or stay on v5.6.0 until v5.8.0
+- Or stay on v5.8.0 until v5.8.0
 EOF
 ```
 
@@ -3211,7 +3211,7 @@ See RB2 Section 6 (Escalation) for bug reporting.
 **3. Clean up**
 
 ```bash
-# After 1 week on stable v5.6.0:
+# After 1 week on stable v5.8.0:
 
 # Remove broken v5.7.0
 rm -rf ~/ai-factory-pipeline-5.7.0-BROKEN
@@ -3234,8 +3234,8 @@ rm ~/ai-factory-pipeline/backups/failed-update-5.7.0.tar.gz
 - Fix expected in patch release
 - Update when available
 
-**B. Stay on 5.6.0 indefinitely**
-- 5.6.0 works fine
+**B. Stay on 5.8.0 indefinitely**
+- 5.8.0 works fine
 - Don't need 5.7.0 features
 - Will update to 5.8.0 when available
 
@@ -3256,9 +3256,9 @@ v5.7.0 - FAILED - 2026-04-10
 Issue: [describe]
 Rollback: Successful
 Lesson: [what learned]
-Status: Waiting for 5.7.1 or staying on 5.6.0
+Status: Waiting for 5.7.1 or staying on 5.8.0
 
-v5.6.0 - SUCCESS - 2026-03-01
+v5.8.0 - SUCCESS - 2026-03-01
 Issue: None
 Status: ✅ Current, stable
 ```
@@ -3317,8 +3317,8 @@ You now know:
 **Not all updates require migration:**
 
 **No migration needed:**
-- ✅ Patch updates (5.6.0 → 5.6.1)
-- ✅ Most minor updates (5.6.0 → 5.7.0)
+- ✅ Patch updates (5.8.0 → 5.6.1)
+- ✅ Most minor updates (5.8.0 → 5.7.0)
 - ✅ Backward-compatible changes
 
 **Migration usually needed:**
@@ -3743,12 +3743,12 @@ No action needed. Pipeline's internal API usage updates automatically.
 
 ---
 
-### 8.4 Example Migration: v5.6 → v6.0
+### 8.4 Example Migration: v5.8 → v6.0
 
 **Complete walkthrough of major version migration:**
 
 **Starting point:**
-- Current: v5.6.0
+- Current: v5.8.0
 - Target: v6.0.0
 - Time allocated: 2 hours
 
@@ -3832,7 +3832,7 @@ python -m factory.migrate --from=~/ai-factory-pipeline --to=.
 **Tool prompts:**
 ```
 🔄 AI Factory Pipeline Migration Tool
-From: v5.6.0 (~/ai-factory-pipeline)
+From: v5.8.0 (~/ai-factory-pipeline)
 To: v6.0.0 (current directory)
 
 This will:
@@ -3888,7 +3888,7 @@ Ready to replace v5 installation.
 **Step 9: Replace old installation**
 ```bash
 # Backup old installation (extra safety)
-mv ~/ai-factory-pipeline ~/ai-factory-pipeline-5.6.0-backup
+mv ~/ai-factory-pipeline ~/ai-factory-pipeline-5.8.0-backup
 
 # Move new installation
 mv ~/pipeline-6.0-temp/ai-factory-pipeline ~/ai-factory-pipeline
@@ -4003,7 +4003,7 @@ cat > ~/migration-6.0-report.txt << EOF
 MIGRATION COMPLETED SUCCESSFULLY
 
 Date: 2026-04-10
-From: v5.6.0
+From: v5.8.0
 To: v6.0.0
 
 Duration:
@@ -4022,7 +4022,7 @@ Post-migration state:
 ✅ Configuration migrated successfully
 
 Backups preserved:
-- ~/ai-factory-pipeline-5.6.0-backup
+- ~/ai-factory-pipeline-5.8.0-backup
 - Backup file: pre-update-6.0.0.tar.gz.enc
 
 Notes:
@@ -4037,7 +4037,7 @@ EOF
 **Step 17: Clean up (after 1 week on stable v6.0.0)**
 ```bash
 # Remove old backup installation
-rm -rf ~/ai-factory-pipeline-5.6.0-backup
+rm -rf ~/ai-factory-pipeline-5.8.0-backup
 
 # Keep backup file for 1 month
 # (Don't delete pre-update-6.0.0.tar.gz.enc yet)
@@ -4620,7 +4620,7 @@ sudo chown -R $USER ~/ai-factory-pipeline
 
 **Symptom:**
 ```
-🔄 Starting update: 5.6.0 → 5.7.0
+🔄 Starting update: 5.8.0 → 5.7.0
 
 Phase 2: Download
 Downloading v5.7.0... [########--------] 45%
@@ -4699,7 +4699,7 @@ df -h ~
 ```
 ✅ UPDATE COMPLETE
 
-Updated: 5.6.0 → 5.7.0
+Updated: 5.8.0 → 5.7.0
 
 [Try to start]
 python -m factory.cli start
@@ -4957,7 +4957,7 @@ Look at CPU/Memory during build.
 cat > ~/performance-report.txt << EOF
 Performance Issue After Update
 
-Version: 5.7.0 (updated from 5.6.0)
+Version: 5.7.0 (updated from 5.8.0)
 Date: 2026-04-10
 
 Build times comparison:

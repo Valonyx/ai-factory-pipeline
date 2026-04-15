@@ -1913,7 +1913,7 @@ At any given stage, 60-70% of this documentation is either pre-reading for a fut
 Anytime you don't know where to go, return here first. Section 2 covers 8 common situations. Section 4 covers 80+ topics. Between them, you'll find your answer in under 2 minutes.
 
 **Rule 5: The specification document is the ultimate authority.**
-All documentation in this system is derived from and consistent with the v5.6 AI Factory Pipeline Specification. If any notebook or runbook appears to conflict with the specification, the specification takes precedence. The specification also covers architectural and technical decisions that these operator-facing documents intentionally simplify.
+All documentation in this system is derived from and consistent with the v5.8 AI Factory Pipeline Specification. If any notebook or runbook appears to conflict with the specification, the specification takes precedence. The specification also covers architectural and technical decisions that these operator-facing documents intentionally simplify.
 
 ---
 
@@ -2042,7 +2042,7 @@ When in doubt about what takes precedence:
 AUTHORITY HIERARCHY
 ════════════════════════════════════════════════════════
 
-1. v5.6 AI Factory Pipeline Specification
+1. v5.8 AI Factory Pipeline Specification
    (technical authority — all else is derived from it)
 
 2. Implementation Notebooks (NB1-4)
@@ -2122,7 +2122,7 @@ You now know where to look.
 
 *✅ ✅ ✅ COMPLETE DOCUMENTATION SYSTEM DELIVERED ✅ ✅ ✅*
 
-*All 14 documents in the AI Factory Pipeline v5.6 Operator Manual are now complete:*
+*All 14 documents in the AI Factory Pipeline v5.8 Operator Manual are now complete:*
 
 *Operator Notebooks:*
 *  NB0: Master Navigation Guide (this session)*

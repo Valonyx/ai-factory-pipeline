@@ -13,7 +13,7 @@ Implements:
 Each stage may prepend additional context to these base prompts.
 The base prompt ensures the role stays within its contract boundaries.
 
-Spec Authority: v5.6 §2.2, §3.2, §3.3, §3.4
+Spec Authority: v5.8 §2.2, §3.2, §3.3, §3.4
 """
 
 # ═══════════════════════════════════════════════════════════════════

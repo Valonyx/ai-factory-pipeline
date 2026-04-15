@@ -5,7 +5,7 @@ AI Factory Pipeline v5.8 — Revenue Command Handlers
 /revenue [today|this_month|all_time]     — Show revenue summary
 /clients                                  — List all clients
 
-Spec Authority: v5.6 §5.2 (/invoice, /revenue, /clients), NB4 Part 25
+Spec Authority: v5.8 §5.2 (/invoice, /revenue, /clients), NB4 Part 25
 """
 
 from __future__ import annotations

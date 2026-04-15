@@ -6,7 +6,7 @@ from factory.core.state import (
 )
 from factory.core.roles import ROLE_CONTRACTS, call_ai
 from factory.orchestrator import STAGE_SEQUENCE
-get_next_stage = lambda s: None  # stub — not implemented in v5.6
+get_next_stage = lambda s: None  # stub — not implemented in v5.8
 from factory.core.secrets import REQUIRED_SECRETS
 from factory.core.execution import ExecutionModeManager as ExecutionRouter
 from factory.core.user_space import (

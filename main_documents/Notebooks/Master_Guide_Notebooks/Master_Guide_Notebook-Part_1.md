@@ -1,4 +1,4 @@
-# AI FACTORY PIPELINE v5.6
+# AI FACTORY PIPELINE v5.8
 # MASTER IMPLEMENTATION GUIDE — PART 1
 ## Pre-Implementation Setup + NB1: Codebase Build
 
@@ -696,7 +696,7 @@ created in NB3. For now, you create the template.
 
 ```bash
 cat > .env.example << 'EOF'
-# AI Factory Pipeline v5.6 — Environment Variables
+# AI Factory Pipeline v5.8 — Environment Variables
 # Copy to .env and fill in real values during NB3 activation
 
 # ── AI Services ──
@@ -827,7 +827,7 @@ claude
 
 ```
 Create the file factory/core/state.py implementing the 
-complete AI Factory Pipeline v5.6 core state model per 
+complete AI Factory Pipeline v5.8 core state model per 
 spec §2.1 through §2.14. 
 
 The file must include:
@@ -1941,7 +1941,7 @@ Create the top-level assembly files for NB1 Parts 18-19:
    - --dry-run flag returns mock success
 
 3. factory/app.py — FastAPI application
-   - /health endpoint → {"status": "healthy", "version": "5.6.0"}
+   - /health endpoint → {"status": "healthy", "version": "5.8.0"}
    - /webhook endpoint → Telegram webhook handler
    - /status endpoint → Pipeline status
    - /run endpoint → Trigger pipeline run
@@ -2044,7 +2044,7 @@ echo "=== All NB1 checks complete ==="
 ```bash
 git add .
 git commit -m "NB1-COMPLETE: All 14 Definition of Done criteria pass — ready for NB2 production wiring"
-git tag v5.6.0-stub
+git tag v5.8.0-stub
 ```
 
 **USE NOTION MCP HERE:**
@@ -2052,14 +2052,14 @@ git tag v5.6.0-stub
 "Mark all remaining NB1 items as complete in my 
 Implementation Tracker. Add a note: 'NB1 complete. 
 85+ files. All tests pass. Dry-run verified. 
-Tagged v5.6.0-stub. Ready for NB2.'"
+Tagged v5.8.0-stub. Ready for NB2.'"
 ```
 
 **USE MEMORY HERE:**
 ```
 "Remember: NB1 COMPLETE. All 85+ files built as stubs. 
 All tests pass. Dry-run runs S0→S8→COMPLETED. 
-Tagged v5.6.0-stub. Zero dollars spent. 
+Tagged v5.8.0-stub. Zero dollars spent. 
 Ready to begin NB2 — replacing stubs with real 
 production API calls."
 ```
@@ -2067,7 +2067,7 @@ production API calls."
 **USE GOOGLE CALENDAR HERE:**
 ```
 "Create an event for today: NB1 Complete — 
-v5.6.0-stub tagged. Starting NB2 next session."
+v5.8.0-stub tagged. Starting NB2 next session."
 ```
 
 ---
@@ -2081,7 +2081,7 @@ the following are true:
 ✅ `find factory/ -name "*.py" | wc -l` shows 55 or more files
 ✅ `python -m pytest tests/ -v` shows 0 failures
 ✅ `python -m factory.pipeline.runner` shows "Pipeline COMPLETED"
-✅ Git shows tag `v5.6.0-stub`
+✅ Git shows tag `v5.8.0-stub`
 ✅ Notion tracker shows all NB1 items checked
 ✅ Memory is updated with NB1 complete status
 

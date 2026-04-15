@@ -11,7 +11,7 @@ API implementation patterns, version-specific answers.
 The StackExchange API returns accepted/highest-voted answers inline,
 giving us both the question context AND the solution in one call.
 
-Spec Authority: v5.6 §2.2.3 (Scout provider interface)
+Spec Authority: v5.8 §2.2.3 (Scout provider interface)
 """
 
 from __future__ import annotations

@@ -21,7 +21,7 @@ Setup:
   MACINCLOUD_PASSWORD=your_password
   MACINCLOUD_IDLE_MINUTES=30
 
-Spec Authority: v5.6 §2.4.1 (MacinCloud integration)
+Spec Authority: v5.8 §2.4.1 (MacinCloud integration)
 """
 
 from __future__ import annotations

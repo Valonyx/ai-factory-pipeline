@@ -7,7 +7,7 @@ Implements:
   - §2.9.2 Reset to commit (time-travel restore)
   - Repo creation and management
 
-Spec Authority: v5.6 §2.9, §4.7.3
+Spec Authority: v5.8 §2.9, §4.7.3
 """
 
 from __future__ import annotations

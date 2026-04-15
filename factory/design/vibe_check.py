@@ -8,7 +8,7 @@ Implements:
   - Grid Enforcer final validation
   - Design DNA persistence to Mother Memory
 
-Spec Authority: v5.6 §3.4.1
+Spec Authority: v5.8 §3.4.1
 """
 
 from __future__ import annotations

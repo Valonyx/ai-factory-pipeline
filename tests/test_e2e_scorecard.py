@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — E2E Scorecard Tests
+AI Factory Pipeline v5.8 — E2E Scorecard Tests
 
 Validates the full pipeline for all 6 stacks × CREATE + MODIFY modes.
 All tests run in dry-run mode (no real AI calls, no real API calls).
@@ -14,7 +14,7 @@ Scorecard dimensions:
 
 Run: pytest tests/test_e2e_scorecard.py -v
 
-Spec Authority: v5.6 §6.x — QA & Scorecard
+Spec Authority: v5.8 §6.x — QA & Scorecard
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — v3.6 → v5.4+ Migration
+AI Factory Pipeline v5.8 — v3.6 → v5.4+ Migration
 
 Implements:
   - §8.3.2 One-time migration script
@@ -11,7 +11,7 @@ Implements:
 Run once before first v5.4+ project.
 Run: python -m scripts.migrate_v36_to_v54
 
-Spec Authority: v5.6 §8.3.2
+Spec Authority: v5.8 §8.3.2
 """
 
 from __future__ import annotations
@@ -220,6 +220,6 @@ async def migrate_v36_to_v54(
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — v3.6 → v5.4 Migration")
+    print("AI Factory Pipeline v5.8 — v3.6 → v5.4 Migration")
     print("=" * 50)
     asyncio.run(migrate_v36_to_v54())

@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Phase 1 + Phase 2 Real-Path Tests
+AI Factory Pipeline v5.8 — Phase 1 + Phase 2 Real-Path Tests
 
 Covers newly wired production paths:
   - S1-REAL: Legal Dossier PDF generator (factory/legal/pdf_generator.py)

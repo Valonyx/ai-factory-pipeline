@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6 — Docker Build & Push (GHCR)
+# AI Factory Pipeline v5.8 — Docker Build & Push (GHCR)
 # Spec: §7.4.1, §4.5.1, ADR-029
 #
 # Builds the pipeline Docker image on every push to main and pushes to

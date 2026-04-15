@@ -2046,8 +2046,8 @@ Removes: Intermediate builds
 /check-updates
 
 Pipeline updates available:
-- Current: v5.6.0
-- Latest: v5.6.2
+- Current: v5.8.0
+- Latest: v5.8.2
 - Changes: Bug fixes, performance improvements
 
 Decision:

@@ -55,11 +55,11 @@ def _read(filename: str) -> str:
 
 class TestReadme:
     def test_title_and_version(self):
-        """Contains project title and v5.6."""
+        """Contains project title and v5.8."""
         content = _read("README.md")
         if not content:
             pytest.skip("README.md not found")
-        assert "AI Factory Pipeline v5.6" in content
+        assert "AI Factory Pipeline v5.8" in content
 
     def test_quick_start(self):
         """Contains Quick Start section."""

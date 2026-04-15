@@ -1453,7 +1453,7 @@ Google: Play Console → Settings → Email preferences → Enable all relevant 
 Set up both platforms to email you when any new review arrives. This replaces daily manual checking with a single email notification. You batch-respond on Monday rather than checking throughout the week.
 
 *Cost alerts:*
-If your pipeline infrastructure uses GCP (as specified in the v5.6 architecture), set billing alerts in GCP Console:
+If your pipeline infrastructure uses GCP (as specified in the v5.8 architecture), set billing alerts in GCP Console:
 - Alert at 80% of your monthly budget
 - Alert at 100% of your monthly budget
 This prevents cost surprises without requiring daily cost checking.

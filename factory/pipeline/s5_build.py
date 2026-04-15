@@ -10,7 +10,7 @@ Implements:
   - Phase 3: Build (stack-specific)
   - Phase 4: Collect artifacts
 
-Spec Authority: v5.6 §4.5, §4.5.1, §4.5.2
+Spec Authority: v5.8 §4.5, §4.5.1, §4.5.2
 """
 
 from __future__ import annotations

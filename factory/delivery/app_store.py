@@ -10,7 +10,7 @@ Implements:
 The pipeline ATTEMPTS programmatic upload. If it fails,
 the Airlock delivers the binary to the operator via Telegram.
 
-Spec Authority: v5.6 §7.6.0a, FIX-21
+Spec Authority: v5.8 §7.6.0a, FIX-21
 """
 
 from __future__ import annotations

@@ -7,7 +7,7 @@ to proceed, adjust, or abandon.
 
 Triggered by: /evaluate [idea description] Telegram command
 
-Spec Authority: v5.6 §5.x (NB4 Part 24)
+Spec Authority: v5.8 §5.x (NB4 Part 24)
 """
 
 from __future__ import annotations

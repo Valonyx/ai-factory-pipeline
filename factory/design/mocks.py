@@ -8,7 +8,7 @@ Implements:
   - Telegram delivery with operator selection
   - Autopilot auto-select (Clean Minimal)
 
-Spec Authority: v5.6 §3.4.3
+Spec Authority: v5.8 §3.4.3
 """
 
 from __future__ import annotations

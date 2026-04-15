@@ -20,7 +20,7 @@ Part 16 — Certification + Revenue Readiness: Final certification statement, re
 
 Part 1 — Pre-Flight and Materialization Verification
 Spec sections: §8.5 (Complete File Manifest), §8.9 (Environment Variable Reference), §2.8 (User-Space Enforcer — zero sudo), §7.1 (Initial Setup Protocol)
-Current state: Notebooks 1 and 2 are complete. They delivered ~13,970 lines of Python code across 45+ files, 362 tests across 17 test files, deployment infrastructure (Dockerfile, cloudbuild.yaml, requirements.txt), 6 operational scripts, and 4 documentation files. All of this exists as text in the notebooks. Notebook 2 ended with a v5.6.0 Git tag command. No external services are provisioned. No real API calls have been made. The operator may or may not have already materialized the files to disk — this part handles both cases.
+Current state: Notebooks 1 and 2 are complete. They delivered ~13,970 lines of Python code across 45+ files, 362 tests across 17 test files, deployment infrastructure (Dockerfile, cloudbuild.yaml, requirements.txt), 6 operational scripts, and 4 documentation files. All of this exists as text in the notebooks. Notebook 2 ended with a v5.8.0 Git tag command. No external services are provisioned. No real API calls have been made. The operator may or may not have already materialized the files to disk — this part handles both cases.
 Deliverables: A verified project directory with every file on disk, correct structure per §8.5, working virtual environment, and clean Git state.
 
 1.1 What Notebook 3 Does
@@ -208,7 +208,7 @@ Core Module (factory/core/)
 
 |File                          |Source     |Description                          |
 |------------------------------|-----------|-------------------------------------|
-|`factory/__init__.py`         |NB2 Part 13|Package init, version 5.6.0          |
+|`factory/__init__.py`         |NB2 Part 13|Package init, version 5.8.0          |
 |`factory/config.py`           |NB2 Part 13|7 frozen dataclasses (§8.9)          |
 |`factory/orchestrator.py`     |NB2 Part 13|DAG + pipeline_node + routing (§2.10)|
 |`factory/app.py`              |NB2 Part 13|FastAPI, 5 endpoints (§7.4.1)        |
@@ -512,12 +512,12 @@ Changes to be committed:
 
 You should see 50+ files listed. If the number looks right:
 
-git commit -m "NB3-01: Materialize all files from Notebooks 1+2 — complete v5.6 codebase"
+git commit -m "NB3-01: Materialize all files from Notebooks 1+2 — complete v5.8 codebase"
 
 
 EXPECTED OUTPUT:
 
-[main (root-commit) abc1234] NB3-01: Materialize all files from Notebooks 1+2 — complete v5.6 codebase
+[main (root-commit) abc1234] NB3-01: Materialize all files from Notebooks 1+2 — complete v5.8 codebase
  55 files changed, 13970 insertions(+)
 
 
@@ -750,7 +750,7 @@ print(f'   Routes:  {[r.path for r in app.routes if hasattr(r, \"path\")]}')
 EXPECTED OUTPUT:
 ```
 ✅ Layer 5 — Entry Points: all 4 modules import OK
-   Version: 5.6.0
+   Version: 5.8.0
    Stages:  9
    Routes:  ['/health', '/health-deep', '/webhook', '/run', '/status']
 ```
@@ -958,7 +958,7 @@ python -m scripts.validate_project
 EXPECTED OUTPUT:
 ```
 ============================================================
-AI Factory Pipeline v5.6 — Project Validation
+AI Factory Pipeline v5.8 — Project Validation
 ============================================================
 
 ✅ Phase 1: Module Imports: 38 passed, 0 failed
@@ -975,13 +975,13 @@ AI Factory Pipeline v5.6 — Project Validation
 
 ============================================================
 ✅ ALL VALIDATION PASSED — 63 checks
-   Ready for release tag: v5.6.0
+   Ready for release tag: v5.8.0
 ============================================================
 ```
 
 Every phase should show ✅ with 0 failed. The total check count should be 30+.
 
-**If Phase 5 (Documentation) shows failures:** The docs check looks for specific strings like "AI Factory Pipeline v5.6" in README.md and "Layer Map" in ARCHITECTURE.md. Open the failing doc file and verify the expected content is present.
+**If Phase 5 (Documentation) shows failures:** The docs check looks for specific strings like "AI Factory Pipeline v5.8" in README.md and "Layer Map" in ARCHITECTURE.md. Open the failing doc file and verify the expected content is present.
 
 **If Phase 6 (Integration) shows failures:** This tests cross-module wiring — that the FastAPI app has all routes, the Design module exports work, Legal module exports work, etc. The error message will tell you which specific check failed.
 
@@ -1017,7 +1017,7 @@ If `git status` shows `nothing to commit, working tree clean`, that's also fine 
 WHY: This creates a marker you can return to if anything breaks later. Per §6.1 (Time Travel), tags are restore points.
 
 ```bash
-git tag -a v5.6.0-verified -m "Notebook 3 Part 2: All imports clean, all tests passing, validation complete"
+git tag -a v5.8.0-verified -m "Notebook 3 Part 2: All imports clean, all tests passing, validation complete"
 ```
 
 EXPECTED OUTPUT: No output (silence means success).
@@ -1029,8 +1029,8 @@ git log --oneline --decorate -5
 
 EXPECTED OUTPUT:
 ```
-abc5678 (HEAD -> main, tag: v5.6.0-verified) NB3-02: Import chain validated, 362+ tests passing, 6-phase validation clean
-def1234 NB3-01: Materialize all files from Notebooks 1+2 — complete v5.6 codebase
+abc5678 (HEAD -> main, tag: v5.8.0-verified) NB3-02: Import chain validated, 362+ tests passing, 6-phase validation clean
+def1234 NB3-01: Materialize all files from Notebooks 1+2 — complete v5.8 codebase
 ```
 
 ---
@@ -1049,7 +1049,7 @@ def1234 NB3-01: Materialize all files from Notebooks 1+2 — complete v5.6 codeb
 | Test files executed | 17 | ✅ |
 | Individual tests passed | 362+ | ✅ |
 | Validation script phases | 6/6 | ✅ |
-| Git tag created | v5.6.0-verified | ✅ |
+| Git tag created | v5.8.0-verified | ✅ |
 
 The code is not just "on disk" — it's verified, tested, and tagged. Every module talks to every other module correctly. The pipeline logic works. The next step is connecting it to real external services.
 
@@ -1063,12 +1063,12 @@ CHECKPOINT — Part 2 Complete
    □ No circular import errors anywhere in the project
    □ `python -m pytest tests/ -v` shows 362+ passed, 0 failed
    □ `python -m scripts.validate_project` shows all 6 phases passing
-   □ Config values match spec: version 5.6.0, strategist = claude-opus-4-6, monthly budget = $300, 9 stages
+   □ Config values match spec: version 5.8.0, strategist = claude-opus-4-6, monthly budget = $300, 9 stages
    □ Schema counts match spec: 11 Supabase tables, 18 Neo4j indexes, 4 Janitor tasks, 9 required secrets
    □ FastAPI app has 5 routes: /health, /health-deep, /webhook, /run, /status
    □ Design module exports MOCK_VARIATIONS with 3 entries
    □ Legal module exports CANONICAL_BODIES with 6 entries
-   □ Git tag `v5.6.0-verified` exists
+   □ Git tag `v5.8.0-verified` exists
    □ Git log shows both NB3-01 and NB3-02 commits
 
 ▶️ **Next: Part 3 — Account Creation Sprint** (GCP, Supabase, Neo4j, Telegram, Anthropic, Perplexity, GitHub — every account created from zero, every click described)
@@ -1090,7 +1090,7 @@ CHECKPOINT — Part 2 Complete
 
 # Part 3 — Account Creation Sprint
 Spec sections: §7.1 (Initial Setup Protocol — prerequisites), §8.9 (Environment Variable Reference — 28 variables), §2.11 (GCP Secret Manager — 9 required secrets), Appendix B (Complete Secrets List — 15 secrets)
-Current state: Part 2 complete. All 45+ files on disk, 362+ tests passing, 6-phase validation clean, Git tag v5.6.0-verified in place. The code is verified and ready. But it has no external services to talk to — no cloud accounts, no databases, no API keys, no bot. This part creates every account from zero.
+Current state: Part 2 complete. All 45+ files on disk, 362+ tests passing, 6-phase validation clean, Git tag v5.8.0-verified in place. The code is verified and ready. But it has no external services to talk to — no cloud accounts, no databases, no API keys, no bot. This part creates every account from zero.
 Deliverables: 7 external accounts created and verified (GCP, Supabase, Neo4j Aura, Telegram bot, Anthropic, Perplexity, GitHub). No API keys obtained yet — that’s Part 4. This part focuses on getting past each service’s signup process so you have active accounts ready for key generation.
 
 Verified External Facts (Web-searched 2026-02-28)
@@ -1324,7 +1324,7 @@ CRITICAL: Copy this token immediately and save it securely. This is your bot’s
 
 BotFather asks which bot. Select your bot. Then send:
 
-AI Factory Pipeline v5.6 — An autonomous system that builds multi-platform apps from natural language descriptions. Send /start to begin.
+AI Factory Pipeline v5.8 — An autonomous system that builds multi-platform apps from natural language descriptions. Send /start to begin.
 
 
 30. Set the bot’s commands. Type and send:
@@ -1409,7 +1409,7 @@ Follow the prompts to verify your email and complete account setup. The free pla
 43. Create the repository for the pipeline:
     ∙    Once logged in, click the ”+” icon in the top-right corner → “New repository”.
     ∙    Repository name: ai-factory-pipeline
-    ∙    Description: AI Factory Pipeline v5.6 — Autonomous app builder
+    ∙    Description: AI Factory Pipeline v5.8 — Autonomous app builder
     ∙    Visibility: Private (recommended — keeps your code and generated apps confidential)
     ∙    Initialize: Do NOT check “Add a README file” (you already have one from Notebooks 1/2)
     ∙    Click “Create repository”.
@@ -1746,7 +1746,7 @@ WHY: The `.env` file stores secrets locally for development. It is listed in `.g
 ```bash
 cat > .env << 'ENVEOF'
 # ═══════════════════════════════════════════════════════════════
-# AI Factory Pipeline v5.6 — Local Environment Secrets
+# AI Factory Pipeline v5.8 — Local Environment Secrets
 # ═══════════════════════════════════════════════════════════════
 # WARNING: This file contains sensitive credentials.
 # It is listed in .gitignore and must NEVER be committed to Git.
@@ -2285,7 +2285,7 @@ Sign in and select the `ai-factory-pipeline` project.
 
 ```sql
 -- ═══════════════════════════════════════════════════════════════
--- AI Factory Pipeline v5.6 — exec_sql RPC Function
+-- AI Factory Pipeline v5.8 — exec_sql RPC Function
 -- ═══════════════════════════════════════════════════════════════
 -- This function allows the migration script to execute DDL
 -- (CREATE TABLE, CREATE INDEX, etc.) through the Supabase REST API.
@@ -3223,7 +3223,7 @@ branch 'main' set up to track 'origin/main'.
 
 14. Push the verification tag from Part 2:
 
-git push origin v5.6.0-verified
+git push origin v5.8.0-verified
 
 
 15. Verify on GitHub. Open your browser and go to:
@@ -3231,7 +3231,7 @@ git push origin v5.6.0-verified
 https://github.com/YOUR_USERNAME/ai-factory-pipeline
 
 
-You should see all your files: the factory/ directory, scripts/, tests/, docs/, configuration files, etc. Click “Tags” or “Releases” to confirm v5.6.0-verified appears.
+You should see all your files: the factory/ directory, scripts/, tests/, docs/, configuration files, etc. Click “Tags” or “Releases” to confirm v5.8.0-verified appears.
 If push is rejected (“Updates were rejected”): The remote has content that conflicts. If the repo is brand new and you initialized it with a README, run:
 
 git pull origin main --allow-unrelated-histories
@@ -3329,7 +3329,7 @@ CHECKPOINT — Part 6 Complete
 - Read pattern traversal → Create HandoffDoc → HAS_HANDOFF_DOC rel
 □ GitHub token validated (authenticated user + repo access confirmed)
 □ First git push to GitHub completed
-□ Tag v5.6.0-verified pushed to GitHub
+□ Tag v5.8.0-verified pushed to GitHub
 □ Codebase visible at github.com/YOUR_USERNAME/ai-factory-pipeline
 □ get_neo4j().is_connected returns True (credentials detected)
 □ get_supabase_client() returns real Client (from Part 5)
@@ -3421,7 +3421,7 @@ source .venv/bin/activate
 Open `Dockerfile` in your text editor (e.g., `nano Dockerfile`) and make sure it looks like this:
 
 ```dockerfile
-# AI Factory Pipeline v5.6 — Cloud Run Container
+# AI Factory Pipeline v5.8 — Cloud Run Container
 # Spec: §7.4.1, §7.8.1
 #
 # Build:  docker build -t ai-factory-pipeline .
@@ -3541,7 +3541,7 @@ curl http://localhost:8080/health
 
 EXPECTED:
 ```json
-{"status":"healthy","version":"5.6.0","timestamp":"2026-03-01T..."}
+{"status":"healthy","version":"5.8.0","timestamp":"2026-03-01T..."}
 ```
 
 **9.** Test the deep health check:
@@ -3562,7 +3562,7 @@ EXPECTED:
 ```
 INFO:     Started server process [1]
 INFO:     Waiting for application startup.
-INFO:     AI Factory Pipeline v5.6.0 starting
+INFO:     AI Factory Pipeline v5.8.0 starting
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
 ```
@@ -3625,14 +3625,14 @@ docker tag ai-factory-pipeline:latest \
   me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:latest
 
 docker tag ai-factory-pipeline:latest \
-  me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.6.0
+  me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.8.0
 ```
 
 **16.** Push both tags:
 
 ```bash
 docker push me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:latest
-docker push me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.6.0
+docker push me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.8.0
 ```
 
 EXPECTED OUTPUT (abbreviated):
@@ -3641,7 +3641,7 @@ The push refers to repository [me-central1-docker.pkg.dev/.../ai-factory-pipelin
 abc123: Pushed
 def456: Pushed
 latest: digest: sha256:... size: 1234
-v5.6.0: digest: sha256:... size: 1234
+v5.8.0: digest: sha256:... size: 1234
 ```
 
 **If push fails with "denied: Permission denied":** Run `gcloud auth configure-docker me-central1-docker.pkg.dev` again, or check that Artifact Registry API is enabled.
@@ -3771,7 +3771,7 @@ curl ${SERVICE_URL}/health
 
 EXPECTED:
 ```json
-{"status":"healthy","version":"5.6.0","timestamp":"2026-03-01T..."}
+{"status":"healthy","version":"5.8.0","timestamp":"2026-03-01T..."}
 ```
 
 **If you get a 502/503 error:** The service is starting up (cold start can take 10–20 seconds on first request since `min-instances=0`). Wait 15 seconds and try again.
@@ -3833,7 +3833,7 @@ The existing `cloudbuild.yaml` from Notebook 2 uses `gcr.io` (deprecated). Updat
 **25.** Edit `cloudbuild.yaml`:
 
 ```yaml
-# AI Factory Pipeline v5.6 — Cloud Build → Cloud Run
+# AI Factory Pipeline v5.8 — Cloud Build → Cloud Run
 # Spec: §7.4.1, §7.8.2
 #
 # Trigger: push to main branch
@@ -3941,9 +3941,9 @@ CHECKPOINT — Part 7 Complete
    □ Docker installed and running
    □ Dockerfile updated (non-root user, fixed healthcheck, hardcoded port)
    □ Docker image builds successfully (~850MB)
-   □ Container runs locally — `/health` returns 200 + version 5.6.0
+   □ Container runs locally — `/health` returns 200 + version 5.8.0
    □ Artifact Registry repository created in me-central1
-   □ Image pushed with tags: `latest` and `v5.6.0`
+   □ Image pushed with tags: `latest` and `v5.8.0`
    □ Cloud Run service account has access to all 9 secrets
    □ Cloud Run service deployed:
      - Region: me-central1 (or fallback per §2.13)
@@ -4201,7 +4201,7 @@ EXPECTED OUTPUT:
 EXPECTED: The bot should reply with a welcome message. The exact text depends on your `format_welcome_message()` implementation, but it should look something like:
 
 ```
-🏭 Welcome to AI Factory v5.6, Operator!
+🏭 Welcome to AI Factory v5.8, Operator!
 
 I build production-ready apps from your ideas.
 
@@ -4376,7 +4376,7 @@ EXPECTED OUTPUT:
    URL: https://ai-factory-pipeline-XXXXX-me.a.run.app/webhook
    Pending: 0
    Last error: none
-✅ Check 2: Cloud Run healthy — version 5.6.0
+✅ Check 2: Cloud Run healthy — version 5.8.0
 ✅ Check 3: Bot active — @ai_factory_pipeline_bot (AI Factory Pipeline)
 ✅ Check 4: 1 active operator(s) whitelisted
    ✅ 123456789: Operator
@@ -4464,7 +4464,7 @@ CHECKPOINT — Part 8 Complete
    □ `/help` command tested — shows all 15 commands
    □ Free-text test — bot creates a project from description
    □ `getMe` confirms bot is active and accessible
-   □ Cloud Run `/health` returns 200 + version 5.6.0
+   □ Cloud Run `/health` returns 200 + version 5.8.0
    □ End-to-end verification: 4/4 checks passing
      - Webhook set ✅
      - Cloud Run healthy ✅
@@ -5880,7 +5880,7 @@ Hybrid
 EXPECTED: A comprehensive list of all 15 commands with descriptions matching §5.7:
 
 ```
-🏭 AI Factory Pipeline v5.6 — Commands
+🏭 AI Factory Pipeline v5.8 — Commands
 
 📋 Project Lifecycle:
   /start — Welcome message
@@ -6096,7 +6096,7 @@ CHECKPOINT — Part 11 Complete
 
 📊 Full system status:
    Cloud Run:         1 service (live, /health + /webhook + /janitor)
-   Artifact Registry: 1 repo (latest + v5.6.0 tags)
+   Artifact Registry: 1 repo (latest + v5.8.0 tags)
    Secret Manager:    9 secrets (all accessible by Cloud Run SA)
    Cloud Scheduler:   4 jobs (clean/prune/stats/graveyard)
    Supabase:          11 tables + 7 indexes (operator data live)
@@ -7505,7 +7505,7 @@ SERVICE_URL=$(gcloud run services describe ai-factory-pipeline \
 curl -s ${SERVICE_URL}/health | python3 -m json.tool
 ```
 
-EXPECTED: `{"status": "healthy", "version": "5.6.0", ...}`
+EXPECTED: `{"status": "healthy", "version": "5.8.0", ...}`
 
 ---
 
@@ -8188,7 +8188,7 @@ EXPECTED:
 
 ── Step 1: Liveness check (/health) ──
   HTTP: 200
-  Body: {"status":"healthy","version":"5.6.0"}
+  Body: {"status":"healthy","version":"5.8.0"}
   ✅ Liveness: PASS
 
 ── Step 2: Readiness check (/health-deep) ──
@@ -8561,7 +8561,7 @@ from datetime import datetime
 
 print('═══════════════════════════════════════════════════════')
 print('  DISASTER RECOVERY DRILL REPORT')
-print('  AI Factory Pipeline v5.6')
+print('  AI Factory Pipeline v5.8')
 print(f'  Date: {datetime.now().strftime(\"%Y-%m-%d %H:%M\")}')
 print('═══════════════════════════════════════════════════════')
 print()
@@ -8685,7 +8685,7 @@ Part 14-15:          ~$0 (infrastructure config only)
 Running total:       ~$10-30
 Monthly budget:      $300.00
 Remaining:           ~$270-290
-▶️ Next: Part 16 — Final Validation & Certification (run the v5.6 Production Readiness Scorecard from §8.1, verify all 40 capabilities, compile the final NB3 completion report, tag the release as v5.6.0-production, create the operator handover document)
+▶️ Next: Part 16 — Final Validation & Certification (run the v5.8 Production Readiness Scorecard from §8.1, verify all 40 capabilities, compile the final NB3 completion report, tag the release as v5.8.0-production, create the operator handover document)
 
 
 
@@ -8708,7 +8708,7 @@ Remaining:           ~$270-290
 
 **Current state:** Part 15 complete. All 15 prior parts delivered: codebase materialized, 7 external services connected, databases migrated, Docker deployed to Cloud Run, Telegram webhook active, 4 AI roles verified live, 2 full pipeline runs (polyglot), Cloud Scheduler running, GCP Uptime Check monitoring, supervision chain configured, disaster recovery drilled. This part runs the final validation sweep and certifies the system as production-ready.
 
-**Deliverables:** Production Readiness Scorecard evaluated, 6-phase validation script executed, complete NB3 summary compiled, release tagged as `v5.6.0-production`, operator handover checklist created.
+**Deliverables:** Production Readiness Scorecard evaluated, 6-phase validation script executed, complete NB3 summary compiled, release tagged as `v5.8.0-production`, operator handover checklist created.
 
 ---
 
@@ -8733,7 +8733,7 @@ python -m scripts.validate_project
 EXPECTED:
 ```
 ════════════════════════════════════════════════════════════
-AI Factory Pipeline v5.6 — Project Validation
+AI Factory Pipeline v5.8 — Project Validation
 ════════════════════════════════════════════════════════════
 
 ✅ Phase 1: Module Imports: 30+ passed, 0 failed
@@ -8745,7 +8745,7 @@ AI Factory Pipeline v5.6 — Project Validation
 
 ════════════════════════════════════════════════════════════
 ✅ ALL VALIDATION PASSED — 55+ checks
-   Ready for release tag: v5.6.0
+   Ready for release tag: v5.8.0
 ════════════════════════════════════════════════════════════
 ```
 
@@ -8787,7 +8787,7 @@ The spec defines 40 capabilities that must all be graded. We evaluate each again
 ```bash
 python -c "
 print('═══════════════════════════════════════════════════════════════')
-print('  AI FACTORY PIPELINE v5.6 — PRODUCTION READINESS SCORECARD')
+print('  AI FACTORY PIPELINE v5.8 — PRODUCTION READINESS SCORECARD')
 print('  §8.1 — 40 Capabilities Assessment')
 print('═══════════════════════════════════════════════════════════════')
 print()
@@ -8964,7 +8964,7 @@ print('✅ No Magic Handoffs — all data flows have code + verification')
 ```bash
 python -c "
 print('═══════════════════════════════════════════════════════════════')
-print('  AI FACTORY PIPELINE v5.6 — INFRASTRUCTURE INVENTORY')
+print('  AI FACTORY PIPELINE v5.8 — INFRASTRUCTURE INVENTORY')
 print('═══════════════════════════════════════════════════════════════')
 print()
 
@@ -8974,7 +8974,7 @@ inventory = {
         '                    1 GiB RAM, 1 CPU, 0-3 instances, 3600s timeout',
         '                    startup-cpu-boost, startupProbe + livenessProbe',
         'Artifact Registry:  1 repo (ai-factory-pipeline/factory)',
-        '                    Tags: latest, v5.6.0',
+        '                    Tags: latest, v5.8.0',
         'Secret Manager:     9 secrets (ANTHROPIC, PERPLEXITY, SUPABASE×2,',
         '                    NEO4J×2, TELEGRAM, GITHUB, GCP_PROJECT_ID)',
         'Cloud Scheduler:    4 jobs (janitor-clean/6h, snapshot-prune/monthly,',
@@ -9008,7 +9008,7 @@ inventory = {
     'GitHub': [
         'Repository:         1 repo (ai-factory-pipeline)',
         'Branches:           main',
-        'Tags:               v5.6.0-verified (NB3-Part 2)',
+        'Tags:               v5.8.0-verified (NB3-Part 2)',
         'Commits:            NB3-01 through NB3-16',
     ],
     'AI APIs': [
@@ -9041,7 +9041,7 @@ This is the document an operator needs to take over the system. It summarizes wh
 python -c "
 print('═══════════════════════════════════════════════════════════════')
 print('  OPERATOR HANDOVER CHECKLIST')
-print('  AI Factory Pipeline v5.6 — Production System')
+print('  AI Factory Pipeline v5.8 — Production System')
 print('═══════════════════════════════════════════════════════════════')
 print()
 
@@ -9105,7 +9105,7 @@ print('   Then redeploy: gcloud run deploy ai-factory-pipeline ...')
 print()
 
 print('10. SUPPORT')
-print('    Specification: v5.6 AI Factory Pipeline (uploaded to project)')
+print('    Specification: v5.8 AI Factory Pipeline (uploaded to project)')
 print('    Codebase:     GitHub repo (ai-factory-pipeline)')
 print('    Monitoring:   GCP Console → Monitoring → Uptime Checks')
 print('    Logs:         GCP Console → Cloud Run → Logs tab')
@@ -9127,7 +9127,7 @@ git add -A
 git commit -m "NB3-16: Final validation — 6-phase validation passed, Production Readiness Scorecard 40/40, No Magic Handoffs 16/16 verified, infrastructure inventory compiled, operator handover created"
 
 # Tag the release
-git tag -a v5.6.0-production -m "AI Factory Pipeline v5.6.0 — Production Release
+git tag -a v5.8.0-production -m "AI Factory Pipeline v5.8.0 — Production Release
 
 Notebook 3 Complete: Operational Activation
 - 16 parts delivered (NB3-01 through NB3-16)
@@ -9155,10 +9155,10 @@ Infrastructure:
   Perplexity API (Sonar Pro)"
 
 git push origin main
-git push origin v5.6.0-production
+git push origin v5.8.0-production
 
 echo ""
-echo "✅ Release tagged: v5.6.0-production"
+echo "✅ Release tagged: v5.8.0-production"
 echo "✅ Pushed to GitHub"
 ```
 
@@ -9175,7 +9175,7 @@ from datetime import datetime
 print()
 print('╔═══════════════════════════════════════════════════════════════╗')
 print('║                                                               ║')
-print('║   AI FACTORY PIPELINE v5.6                                    ║')
+print('║   AI FACTORY PIPELINE v5.8                                    ║')
 print('║   NOTEBOOK 3 — OPERATIONAL ACTIVATION                        ║')
 print('║   COMPLETION REPORT                                           ║')
 print('║                                                               ║')
@@ -9222,7 +9222,7 @@ parts = [
      'exhaustion simulation, Telegram recovery commands'),
     ('Part 16',    'Final Validation & Certification',
      '6-phase validation passed, Production Readiness Scorecard 40/40, '
-     'No Magic Handoffs 16/16, release tagged v5.6.0-production'),
+     'No Magic Handoffs 16/16, release tagged v5.8.0-production'),
 ]
 
 for part_id, title, summary in parts:
@@ -9237,7 +9237,7 @@ print('  Lines of code:       ~13,970')
 print('  Test count:          362+')
 print('  Test result:         All passing')
 print('  Git commits (NB3):   16 (NB3-01 through NB3-16)')
-print('  Git tags:            v5.6.0-verified, v5.6.0-production')
+print('  Git tags:            v5.8.0-verified, v5.8.0-production')
 print()
 
 print('━━━ INFRASTRUCTURE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -9297,8 +9297,8 @@ print()
 print('╔═══════════════════════════════════════════════════════════════╗')
 print('║                                                               ║')
 print('║   ✅  NOTEBOOK 3 COMPLETE                                    ║')
-print('║   ✅  AI FACTORY PIPELINE v5.6 — OPERATIONAL                 ║')
-print('║   ✅  RELEASE: v5.6.0-production                             ║')
+print('║   ✅  AI FACTORY PIPELINE v5.8 — OPERATIONAL                 ║')
+print('║   ✅  RELEASE: v5.8.0-production                             ║')
 print('║                                                               ║')
 print('╚═══════════════════════════════════════════════════════════════╝')
 "
@@ -9328,10 +9328,10 @@ CHECKPOINT — Part 16 Complete (FINAL)
    □ Production Readiness Scorecard: 40/40
    □ No Magic Handoffs: 16/16 verified
    □ Test suite: 362+ passing
-   □ Release tag: v5.6.0-production pushed to GitHub
+   □ Release tag: v5.8.0-production pushed to GitHub
 
 ✅ SYSTEM OPERATIONAL:
-   The AI Factory Pipeline v5.6 is a running production system.
+   The AI Factory Pipeline v5.8 is a running production system.
    An operator can describe an app idea in Telegram and the
    pipeline autonomously researches, designs, codes, builds,
    tests, deploys, verifies, and hands off the completed

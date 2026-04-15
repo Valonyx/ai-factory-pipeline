@@ -1,4 +1,4 @@
-# AI FACTORY PIPELINE v5.6
+# AI FACTORY PIPELINE v5.8
 # MASTER IMPLEMENTATION GUIDE — PART 2
 ## NB2: Production Wiring + NB3: System Activation
 
@@ -6,11 +6,11 @@
 
 > **Where you are:** NB1 is complete. You have 85+ stub Python files,
 > all tests pass, the dry-run runs S0→S8→COMPLETED, and the repo is
-> tagged `v5.6.0-stub`. Zero dollars spent.
+> tagged `v5.8.0-stub`. Zero dollars spent.
 >
 > **What this part covers:**
 > - NB2 (7–10 days, $0): Replace every stub with real API calls.
->   362 tests pass. Tag `v5.6.0`.
+>   362 tests pass. Tag `v5.8.0`.
 > - NB3 (5–7 days, first ~$10–30 in AI spend): Create all accounts,
 >   wire all secrets, deploy to Cloud Run, connect Telegram webhook,
 >   run the first real app end-to-end.
@@ -20,7 +20,7 @@
 ```bash
 cd ~/Projects/ai-factory-pipeline
 source .venv/bin/activate
-git tag | grep stub          # Should show v5.6.0-stub
+git tag | grep stub          # Should show v5.8.0-stub
 python -m pytest tests/ -v   # Should show 0 failures
 python -m factory.pipeline.runner  # Should show COMPLETED
 ```
@@ -79,7 +79,7 @@ PROD-13: Entry points + Config + CLI (FastAPI app, main.py)
 PROD-14: Deployment Infrastructure (Dockerfile, cloudbuild.yaml)
 PROD-15: Integration tests (cross-module tests)
 PROD-16: Full test suite (362 tests, all passing)
-PROD-17: Final validation + v5.6.0 tag
+PROD-17: Final validation + v5.8.0 tag
 ```
 
 ---
@@ -833,7 +833,7 @@ git commit -m "NB2-PROD12: Real Design Engine — WCAG contrast, 4px grid, brand
 Complete NB2 PROD-13 per spec §7.4.1, §8.9.
 
 Complete factory/app.py (FastAPI):
-- /health → {"status":"healthy","version":"5.6.0","stage":"ready"}
+- /health → {"status":"healthy","version":"5.8.0","stage":"ready"}
   returns 200 always (for Cloud Run liveness probe)
 - /health-deep → checks Supabase + Neo4j + Telegram connectivity
   returns 200 if all healthy, 503 if any degraded
@@ -966,7 +966,7 @@ python -m pytest tests/ -v 2>&1 | tail -3
 
 ---
 
-## STEP 19.3 — ★ PROD-17: v5.6.0 TAG — NB2 COMPLETE MILESTONE
+## STEP 19.3 — ★ PROD-17: v5.8.0 TAG — NB2 COMPLETE MILESTONE
 
 ```bash
 python -m pytest tests/ -v 2>&1 | tail -3
@@ -979,7 +979,7 @@ python -m scripts.validate_project
 # Tag the release
 git add .
 git commit -m "NB2-PROD17: ★ 362+ tests passing, all modules production-wired, stubs eliminated"
-git tag v5.6.0
+git tag v5.8.0
 ```
 
 ✅ **Expected final output:**
@@ -991,13 +991,13 @@ git tag v5.6.0
 ```
 "Mark NB2 as complete in my Implementation Tracker.
 Add note: All 17 PROD steps complete. 362 tests pass.
-Zero stubs remain. Tagged v5.6.0."
+Zero stubs remain. Tagged v5.8.0."
 ```
 
 **USE MEMORY HERE:**
 ```
 "Remember: ★ NB2 COMPLETE. All 17 PROD steps done.
-362+ tests passing. Tagged v5.6.0. Zero stubs remain.
+362+ tests passing. Tagged v5.8.0. Zero stubs remain.
 All 4 AI roles have real clients in dry-run mode.
 Ready to begin NB3 — creating external accounts and 
 activating real services for the first time."
@@ -1006,7 +1006,7 @@ activating real services for the first time."
 **USE GOOGLE CALENDAR HERE:**
 ```
 "Create calendar event for today: 
-★ NB2 Complete — v5.6.0 tagged, 362 tests pass.
+★ NB2 Complete — v5.8.0 tagged, 362 tests pass.
 Starting NB3 account creation next session."
 ```
 
@@ -1300,7 +1300,7 @@ pipeline works without Scout for initial testing.
 cd ~/Projects/ai-factory-pipeline
 git remote add origin https://github.com/YOUR_USERNAME/ai-factory-pipeline.git
 git push -u origin main
-git push origin v5.6.0
+git push origin v5.8.0
 ```
 
 ✅ **Success:** Your code is visible at
@@ -1394,7 +1394,7 @@ actual values from Step 22.1):
 
 ```bash
 cat > .env << 'ENVEOF'
-# AI Factory Pipeline v5.6 — PRODUCTION SECRETS
+# AI Factory Pipeline v5.8 — PRODUCTION SECRETS
 # DO NOT COMMIT THIS FILE
 
 ANTHROPIC_API_KEY=sk-ant-YOUR_KEY_HERE
@@ -1697,7 +1697,7 @@ docker run --rm -p 8080:8080 \
 
 sleep 5
 curl -s http://localhost:8080/health
-# Should return: {"status": "healthy", "version": "5.6.0"}
+# Should return: {"status": "healthy", "version": "5.8.0"}
 
 # Stop the local test container
 kill %1
@@ -1711,10 +1711,10 @@ docker tag ai-factory-pipeline:local \
   me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:latest
 
 docker tag ai-factory-pipeline:local \
-  me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.6.0
+  me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.8.0
 
 docker push me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:latest
-docker push me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.6.0
+docker push me-central1-docker.pkg.dev/${PROJECT_ID}/ai-factory-pipeline/factory:v5.8.0
 
 echo "✅ Image pushed to Artifact Registry"
 ```
@@ -1769,7 +1769,7 @@ curl -s "${SERVICE_URL}/health"
 
 ✅ **Expected:**
 ```json
-{"status": "healthy", "version": "5.6.0", "stage": "ready"}
+{"status": "healthy", "version": "5.8.0", "stage": "ready"}
 ```
 
 ❌ **Failure: 503 Service Unavailable**
@@ -1867,7 +1867,7 @@ asyncio.run(whitelist())
 
 ✅ **Expected response within 10 seconds:**
 ```
-🏭 AI Factory Pipeline v5.6
+🏭 AI Factory Pipeline v5.8
 
 Welcome, operator. Your account is verified.
 
@@ -2302,7 +2302,7 @@ git push origin main
 
 ---
 
-## STEP 28.3 — ★ NB3 Part 16: Certification — v5.6.0-production TAG
+## STEP 28.3 — ★ NB3 Part 16: Certification — v5.8.0-production TAG
 
 Run the final validation:
 
@@ -2334,7 +2334,7 @@ for check, method in checks.items():
 ```bash
 git add .
 git commit -m "NB3-16: ★ Production certification — all 14 criteria pass, system fully operational"
-git tag v5.6.0-production
+git tag v5.8.0-production
 git push origin main --tags
 ```
 
@@ -2344,7 +2344,7 @@ git push origin main --tags
 Add note: 'NB3 complete. Pipeline live in production. Cloud Run 
 active. Telegram bot responding. First real apps built. 
 Total NB3 AI spend: approximately $[X]. 
-Tagged v5.6.0-production.'"
+Tagged v5.8.0-production.'"
 ```
 
 **USE MEMORY HERE:**
@@ -2354,7 +2354,7 @@ Cloud Run URL: [your URL]
 Telegram bot: @[your bot username]
 Two apps built successfully.
 Total cost so far: ~$[X].
-Tagged v5.6.0-production.
+Tagged v5.8.0-production.
 Ready to begin NB4 — GitHub Actions CI/CD, MacinCloud 
 iOS builds, App Store delivery, Modify Mode, revenue ops."
 ```
@@ -2362,7 +2362,7 @@ iOS builds, App Store delivery, Modify Mode, revenue ops."
 **USE GOOGLE CALENDAR HERE:**
 ```
 "Create event for today: ★ Pipeline LIVE — NB3 Complete.
-v5.6.0-production tagged. First apps built.
+v5.8.0-production tagged. First apps built.
 System operational 24/7."
 ```
 
@@ -2378,7 +2378,7 @@ of the following are true:
 ✅ Telegram `/start` receives a response from the bot
 ✅ At least one app has been built end-to-end (S0→COMPLETED)
 ✅ `monthly_costs` table has entries in Supabase
-✅ Git shows tag `v5.6.0-production`
+✅ Git shows tag `v5.8.0-production`
 ✅ Notion tracker shows all NB3 items checked
 ✅ Memory is updated with production URL and bot username
 

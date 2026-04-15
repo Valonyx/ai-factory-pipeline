@@ -25,7 +25,7 @@ Switch to paid: Set APP_STORE_API_KEY_ID + APP_STORE_ISSUER_ID + private key.
 
 Force a specific provider: IOS_DELIVERY_PROVIDER=appstore|fastlane|firebase|airlock
 
-Spec Authority: v5.6 §4.7.2, ADR-016
+Spec Authority: v5.8 §4.7.2, ADR-016
 """
 
 from __future__ import annotations

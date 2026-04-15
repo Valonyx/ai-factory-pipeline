@@ -21,7 +21,7 @@ What it injects (only the fields that exist):
 
 Injected automatically by call_ai() — no caller changes needed.
 
-Spec Authority: v5.6 §2.2.2 (provider-agnostic AI interface)
+Spec Authority: v5.8 §2.2.2 (provider-agnostic AI interface)
 """
 
 from __future__ import annotations

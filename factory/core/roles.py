@@ -9,7 +9,7 @@ Implements:
   - §2.14  Budget Governor integration (pre-dispatch check)
   - §3.6   Circuit Breaker integration (post-dispatch cost tracking)
 
-Spec Authority: v5.6 §2.2, §2.14, §3.6
+Spec Authority: v5.8 §2.2, §2.14, §3.6
 """
 
 from __future__ import annotations

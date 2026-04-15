@@ -12,7 +12,7 @@ Size routing:
   50-200MB: Supabase Storage signed URL + SHA-256
   >200MB: Same + soft limit warning
 
-Spec Authority: v5.6 §7.5
+Spec Authority: v5.8 §7.5
 """
 
 from __future__ import annotations

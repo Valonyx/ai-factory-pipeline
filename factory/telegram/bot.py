@@ -7,7 +7,7 @@ Implements:
   - §5.2 Command handler registration (16 commands)
   - §5.3 Callback handler + free-text handler
 
-Spec Authority: v5.6 §5.1–§5.3
+Spec Authority: v5.8 §5.1–§5.3
 """
 
 from __future__ import annotations

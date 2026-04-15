@@ -7,7 +7,7 @@ Implements:
   - §7.5 send_telegram_file (binary file delivery)
   - Audit logging for all operator communications
 
-Spec Authority: v5.6 §5.4, §5.1, §7.5
+Spec Authority: v5.8 §5.4, §5.1, §7.5
 """
 
 from __future__ import annotations

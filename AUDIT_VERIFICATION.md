@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6 — Audit Verification Checklist
+# AI Factory Pipeline v5.8 — Audit Verification Checklist
 
 **Date:** 2026-04-10  
 **Auditor:** GitHub Copilot  

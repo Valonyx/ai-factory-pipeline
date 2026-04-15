@@ -10,7 +10,7 @@ Implements:
 
 Single source of truth. All modules import from here.
 
-Spec Authority: v5.6 §8.9, §2.6, §2.14
+Spec Authority: v5.8 §8.9, §2.6, §2.14
 """
 
 from __future__ import annotations

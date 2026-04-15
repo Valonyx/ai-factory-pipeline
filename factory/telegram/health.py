@@ -7,7 +7,7 @@ Implements:
   - §7.4.1 Health endpoints (/health, /health-deep)
   - §7.4.2 Cost monitoring alerts [C2]
 
-Spec Authority: v5.6 §7.3, §7.4
+Spec Authority: v5.8 §7.3, §7.4
 """
 
 from __future__ import annotations

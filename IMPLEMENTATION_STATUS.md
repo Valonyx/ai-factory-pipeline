@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6 — Implementation Status
+# AI Factory Pipeline v5.8 — Implementation Status
 
 **Audit Date:** 2026-04-07 (updated 2026-04-08)  
 **Auditor:** Claude Code (claude-sonnet-4-6)  
@@ -185,5 +185,5 @@ git commit -m "STAB-01+02: Wire real legal checks in graph.py + fix stages.py im
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
-git tag -a "v5.6.0-audited-2026-04-07" -m "Post-audit state: 88% complete, legal checks wired"
+git tag -a "v5.8.0-audited-2026-04-07" -m "Post-audit state: 88% complete, legal checks wired"
 ```

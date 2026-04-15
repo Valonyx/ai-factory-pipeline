@@ -3,7 +3,7 @@ AI Factory Pipeline v5.8 — /analytics Command Handler
 
 /analytics [7d|30d|90d] — Pipeline performance dashboard
 
-Spec Authority: v5.6 §5.2 (/analytics), NB4 Part 26
+Spec Authority: v5.8 §5.2 (/analytics), NB4 Part 26
 """
 
 from __future__ import annotations

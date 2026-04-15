@@ -26,7 +26,7 @@ Integration with Mother Memory:
   retrieved in future pipeline calls without consuming quota. The cache
   expires after EXA_CACHE_TTL_HOURS (default 4h) to keep results fresh.
 
-Spec Authority: v5.6 §2.2.3, §2.10 (Mother Memory integration)
+Spec Authority: v5.8 §2.2.3, §2.10 (Mother Memory integration)
 """
 
 from __future__ import annotations

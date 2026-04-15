@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — Activation Script (Auto-selects platform)
+# AI Factory Pipeline v5.8 — Activation Script (Auto-selects platform)
 #
 # Detects which hosting platform is available and routes accordingly:
 #
@@ -13,7 +13,7 @@
 #   DEPLOY_PLATFORM=gcp   ./scripts/activate_pipeline.sh  # force GCP
 #   DEPLOY_PLATFORM=local ./scripts/activate_pipeline.sh  # force local
 #
-# Spec Authority: v5.6 NB4 — Operational Activation
+# Spec Authority: v5.8 NB4 — Operational Activation
 
 set -euo pipefail
 
@@ -27,7 +27,7 @@ err()  { echo -e "${RED}✗${NC} $*"; exit 1; }
 info() { echo -e "${BLUE}→${NC} $*"; }
 
 echo "================================================"
-echo "  AI Factory Pipeline v5.6 — Activation"
+echo "  AI Factory Pipeline v5.8 — Activation"
 echo "================================================"
 echo ""
 
@@ -125,7 +125,7 @@ SERVICE="${CLOUD_RUN_SERVICE:-ai-factory-pipeline}"
 IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT}/${REPO}/${SERVICE}"
 
 echo "================================================"
-echo "  AI Factory Pipeline v5.6 — GCP Cloud Run"
+echo "  AI Factory Pipeline v5.8 — GCP Cloud Run"
 echo "================================================"
 echo "Project: ${GCP_PROJECT}  Region: ${REGION}"
 echo ""

@@ -340,7 +340,7 @@ python -m factory.cli --health
 
 **Generated:** 2026-04-10 by GitHub Copilot  
 **Repository:** https://github.com/Valonyx/ai-factory-pipeline  
-**Version:** v5.6.0  
+**Version:** v5.8.0  
 **Files Modified:** 3  
 **Files Created:** 4 (including this index)
 

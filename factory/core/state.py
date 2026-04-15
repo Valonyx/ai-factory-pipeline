@@ -19,7 +19,7 @@ Implements:
 All collection-type fields use Field(default_factory=...).
 No mutable default literals (= [] or = {}) anywhere per v5.4.2 [C4].
 
-Spec Authority: v5.6 §2.1–§2.14
+Spec Authority: v5.8 §2.1–§2.14
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ class AIRole(str, Enum):
 class PipelineMode(str, Enum):
     """Pipeline operation mode.
 
-    Spec: v5.6 §4.0 (NB4 Part 20)
+    Spec: v5.8 §4.0 (NB4 Part 20)
     CREATE = build a new app from scratch (default)
     MODIFY = update an existing app (codebase ingestion + diff-based codegen)
     """

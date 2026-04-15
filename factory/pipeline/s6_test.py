@@ -7,7 +7,7 @@ Implements:
   - §4.6.2 Deploy decision waiting with timeout
   - War Room feedback on test failures
 
-Spec Authority: v5.6 §4.6, §4.6.1, §4.6.2
+Spec Authority: v5.8 §4.6, §4.6.1, §4.6.2
 """
 
 from __future__ import annotations

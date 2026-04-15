@@ -74,7 +74,7 @@ class TestMessageFormatting:
     def test_welcome_message(self):
         msg = format_welcome_message("Alex")
         assert "Alex" in msg
-        assert "v5.6" in msg
+        assert "v5.8" in msg
         assert "/help" in msg
 
     def test_help_message(self):

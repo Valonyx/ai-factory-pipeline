@@ -8,7 +8,7 @@ Implements:
 Every command the pipeline generates passes through enforce_user_space()
 before execution. This is a hard security boundary.
 
-Spec Authority: v5.6 §2.5, ADR-012
+Spec Authority: v5.8 §2.5, ADR-012
 """
 
 from __future__ import annotations

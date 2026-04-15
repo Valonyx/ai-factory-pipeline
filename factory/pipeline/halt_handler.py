@@ -4,7 +4,7 @@ AI Factory Pipeline v5.8 — Halt Handler Node
 Implements:
   - §4.10 Halt handler (notify operator with diagnosis)
 
-Spec Authority: v5.6 §4.10
+Spec Authority: v5.8 §4.10
 """
 
 from __future__ import annotations

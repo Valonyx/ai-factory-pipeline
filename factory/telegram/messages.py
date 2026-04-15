@@ -6,7 +6,7 @@ Implements:
   - §5.4 Notification templates
   - Telegram 4096 character limit enforcement
 
-Spec Authority: v5.6 §5.1, §5.4
+Spec Authority: v5.8 §5.1, §5.4
 """
 
 from __future__ import annotations

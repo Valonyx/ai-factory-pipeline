@@ -13,7 +13,7 @@ The Airlock is the fallback delivery path when programmatic
 App Store / Play Store uploads fail. It does NOT bypass store
 review. It is a file transfer mechanism with instructional guidance.
 
-Spec Authority: v5.6 §7.5, §7.6
+Spec Authority: v5.8 §7.5, §7.6
 """
 
 from __future__ import annotations

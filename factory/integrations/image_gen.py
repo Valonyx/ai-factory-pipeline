@@ -12,7 +12,7 @@ Each provider returns raw image bytes (PNG).
 On failure the chain automatically tries the next provider.
 Returns None only if every provider fails.
 
-Spec Authority: v5.6 §4.3.1 (Design Asset Generation)
+Spec Authority: v5.8 §4.3.1 (Design Asset Generation)
 """
 
 from __future__ import annotations

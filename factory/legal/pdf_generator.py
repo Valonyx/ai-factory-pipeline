@@ -9,7 +9,7 @@ Implements:
   - Saves to artifacts/{project_id}/legal/legal_dossier.pdf
   - Uploads to Supabase storage bucket (graceful fallback on failure)
 
-Spec Authority: v5.6 §4.2
+Spec Authority: v5.8 §4.2
 """
 
 from __future__ import annotations

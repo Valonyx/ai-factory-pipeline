@@ -1,4 +1,4 @@
-# Operator Guide — AI Factory Pipeline v5.6
+# Operator Guide — AI Factory Pipeline v5.8
 
 This guide is for non-technical operators who interact with the pipeline through Telegram.
 

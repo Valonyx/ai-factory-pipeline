@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Janitor Agent
+AI Factory Pipeline v5.8 — Janitor Agent
 
 Implements:
   - §6.5 Janitor Agent Scheduling
@@ -16,7 +16,7 @@ Schedule (from §6.5):
 
 Run: python -m scripts.janitor [clean|prune|stats|all]
 
-Spec Authority: v5.6 §6.5
+Spec Authority: v5.8 §6.5
 """
 
 from __future__ import annotations
@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     task = sys.argv[1] if len(sys.argv) > 1 else "all"
 
-    print(f"AI Factory Pipeline v5.6 — Janitor Agent ({task})")
+    print(f"AI Factory Pipeline v5.8 — Janitor Agent ({task})")
     print("=" * 50)
 
     if task == "clean":

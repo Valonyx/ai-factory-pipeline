@@ -10,7 +10,7 @@ Implements:
 Legal checks do not appear as pipeline stages — they are injected
 by the pipeline_node wrapper at pre/post boundaries.
 
-Spec Authority: v5.6 §2.7.3
+Spec Authority: v5.8 §2.7.3
 """
 
 from __future__ import annotations

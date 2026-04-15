@@ -13,7 +13,7 @@ Auto-provisions a Firebase project for each generated app:
 Uses Firebase Management API + Google Cloud APIs.
 Requires: GOOGLE_APPLICATION_CREDENTIALS or GCP_SERVICE_ACCOUNT_KEY env var.
 
-Spec Authority: v5.6 §4.11 (Firebase full-stack provisioning)
+Spec Authority: v5.8 §4.11 (Firebase full-stack provisioning)
 """
 
 from __future__ import annotations

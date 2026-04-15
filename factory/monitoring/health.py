@@ -7,7 +7,7 @@ Implements:
   - Service dependency checks (Supabase, Neo4j, Anthropic)
   - Pipeline readiness status
 
-Spec Authority: v5.6 §7.4.1, §2.4.2
+Spec Authority: v5.8 §7.4.1, §2.4.2
 """
 
 from __future__ import annotations

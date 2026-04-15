@@ -6,5 +6,5 @@ Implements:
   - §7.1.3 Schema Initialization
   - Service connection verification
 
-Spec Authority: v5.6 §7.1
+Spec Authority: v5.8 §7.1
 """

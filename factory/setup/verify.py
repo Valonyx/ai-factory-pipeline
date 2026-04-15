@@ -14,7 +14,7 @@ Each verifier:
   - Raises on failure (caught by wizard)
   - Respects 10s timeout for network calls
 
-Spec Authority: v5.6 §7.1.2
+Spec Authority: v5.8 §7.1.2
 """
 
 from __future__ import annotations

@@ -11,7 +11,7 @@ Enhancements:
   • Query normalisation — remove stop words, cap at sensible length
   • Quality signal — prefer results with non-empty body
 
-Spec Authority: v5.6 §2.2.3
+Spec Authority: v5.8 §2.2.3
 """
 
 from __future__ import annotations

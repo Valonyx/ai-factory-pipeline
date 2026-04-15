@@ -7,7 +7,7 @@ Implements:
   - §2.1.6 StageExecution idempotency context [C6]
   - Distributed locking via Postgres advisory locks
 
-Spec Authority: v5.6 §2.1.6, §2.7.2
+Spec Authority: v5.8 §2.1.6, §2.7.2
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# Architecture Decision Records — AI Factory Pipeline v5.6
+# Architecture Decision Records — AI Factory Pipeline v5.8
 
 Index of all ADRs referenced in the specification. ADRs document significant technical decisions with context, alternatives considered, and rationale.
 
@@ -57,9 +57,9 @@ Targeted fixes applied across specification versions:
 | FIX-06 | Advisory vs Strict store compliance toggle | v5.5 | §7.6 |
 | FIX-07 | Compliance Artifact Generator at S2 | v5.5 | §4.3.1 |
 | FIX-13 | Vector search backend configuration | v5.5 | §6.7.1 |
-| FIX-19 | Scout context tier limits | v5.6 | §2.6 |
-| FIX-21 | iOS 5-step submission protocol | v5.6 | §4.7 |
-| FIX-27 | Handoff Intelligence Pack (7 doc types) | v5.6 | §4.9, §8.10 |
+| FIX-19 | Scout context tier limits | v5.8 | §2.6 |
+| FIX-21 | iOS 5-step submission protocol | v5.8 | §4.7 |
+| FIX-27 | Handoff Intelligence Pack (7 doc types) | v5.8 | §4.9, §8.10 |
 
 ---
 
@@ -88,6 +88,6 @@ What are the positive and negative outcomes?
 ## Notes
 
 - ADR numbers are not sequential — gaps indicate internal-only decisions
-- All ADRs are referenced in the v5.6 specification document with their number
+- All ADRs are referenced in the v5.8 specification document with their number
 - Superseded ADRs remain in the index with updated status
 - New ADRs require explicit review before integration into the specification

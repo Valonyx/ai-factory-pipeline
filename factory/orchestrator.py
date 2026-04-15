@@ -11,7 +11,7 @@ Implements:
 Wires all layers: Core, Telegram, Pipeline, Integrations,
 Design, Monitoring, War Room, Legal, Delivery.
 
-Spec Authority: v5.6 §2.7.1, §2.7.2, §4.0
+Spec Authority: v5.8 §2.7.1, §2.7.2, §4.0
 """
 
 from __future__ import annotations

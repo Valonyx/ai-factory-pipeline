@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Final Project Validation
+AI Factory Pipeline v5.8 — Final Project Validation
 
 Validates:
   1. Project tree completeness (all expected files exist)
@@ -11,7 +11,7 @@ Validates:
 
 Run: python -m scripts.validate_project
 
-Spec Authority: v5.6 (complete)
+Spec Authority: v5.8 (complete)
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ def validate_imports() -> tuple[int, int]:
 # ═══════════════════════════════════════════════════════════════════
 
 API_CHECKS = [
-    ("factory.__version__", "5.6.0"),
+    ("factory.__version__", "5.8.0"),
     ("factory.config.PIPELINE_VERSION", "5.6"),
     ("factory.config.MODELS.strategist", "claude-opus-4-6"),
     ("factory.config.MODELS.engineer", "claude-sonnet-4-5-20250929"),
@@ -283,7 +283,7 @@ def validate_configuration() -> tuple[int, int]:
     passed += ok; failed += (not ok)
 
     summary = get_config_summary()
-    ok = summary["version"] == "5.6.0"
+    ok = summary["version"] == "5.8.0"
     check("Config summary version", ok)
     passed += ok; failed += (not ok)
 
@@ -453,8 +453,8 @@ def validate_line_counts() -> int:
 
 def main():
     print("╔════════════════════════════════════════════════════════════╗")
-    print("║   AI Factory Pipeline v5.6 — Final Project Validation    ║")
-    print("║   Specification: v5.6 Clean Room (11,845 lines)          ║")
+    print("║   AI Factory Pipeline v5.8 — Final Project Validation    ║")
+    print("║   Specification: v5.8 Clean Room (11,845 lines)          ║")
     print(f"║   Validation Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}                     ║")
     print("╚════════════════════════════════════════════════════════════╝")
 
@@ -514,9 +514,9 @@ def main():
         print(f"""
 ╔════════════════════════════════════════════════════════════╗
 ║                                                            ║
-║     AI FACTORY PIPELINE v5.6 — IMPLEMENTATION COMPLETE     ║
+║     AI FACTORY PIPELINE v5.8 — IMPLEMENTATION COMPLETE     ║
 ║                                                            ║
-║  Spec:       v5.6 Clean Room (11,845 lines)                ║
+║  Spec:       v5.8 Clean Room (11,845 lines)                ║
 ║  Code:       ~{results['lines']:,} lines across 80+ files{' ' * (17 - len(str(results['lines'])))}║
 ║  Layers:     14 (P0-P13)                                   ║
 ║  Stages:     9 (S0-S8) + conditional routing               ║
@@ -609,7 +609,7 @@ def phase_2_config() -> dict:
             REQUIRED_SECRETS, CONDITIONAL_SECRETS,
             get_config_summary,
         )
-        assert PIPELINE_FULL_VERSION == "5.6.0"
+        assert PIPELINE_FULL_VERSION == "5.8.0"
         results["passed"] += 1
         configs = [MODELS, BUDGET, DELIVERY, COMPLIANCE, DATA_RESIDENCY, APP_STORE, WAR_ROOM]
         assert len(configs) == 7
@@ -628,7 +628,7 @@ def phase_2_config() -> dict:
         except Exception:
             results["passed"] += 1
         summary = get_config_summary()
-        assert summary["version"] == "5.6.0"
+        assert summary["version"] == "5.8.0"
         assert "models" in summary and "budget" in summary
         results["passed"] += 1
         assert len(REQUIRED_SECRETS) == 9
@@ -703,7 +703,7 @@ def phase_5_docs() -> dict:
     """Phase 5: Verify documentation completeness."""
     results: dict = {"passed": 0, "failed": 0, "errors": []}
     doc_checks = [
-        ("README.md", ["AI Factory Pipeline v5.6", "Quick Start"]),
+        ("README.md", ["AI Factory Pipeline v5.8", "Quick Start"]),
         ("docs/ARCHITECTURE.md", ["Layer Map", "Pipeline DAG"]),
         ("docs/OPERATOR_GUIDE.md", ["Telegram Commands", "Troubleshooting"]),
         ("docs/ADR_INDEX.md", ["ADR-044", "ADR-051", "FIX Index"]),

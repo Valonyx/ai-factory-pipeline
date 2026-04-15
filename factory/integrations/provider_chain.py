@@ -27,7 +27,7 @@ Configuration via .env:
   SCOUT_PROVIDER_CHAIN=perplexity,tavily,duckduckgo,exa,wikipedia,hackernews,ai_scout
   (individual providers can be removed from the chain if not needed)
 
-Spec Authority: v5.6 §2.2 (provider-agnostic role interface)
+Spec Authority: v5.8 §2.2 (provider-agnostic role interface)
 """
 
 from __future__ import annotations

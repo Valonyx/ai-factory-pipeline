@@ -19,7 +19,7 @@ Intent categories handled:
   casual_chat     — "hi", "thanks", "how are you"
   unclear         — asks the user to clarify
 
-Spec Authority: v5.6 §5.1–§5.3, §2.2 (provider-agnostic AI interface)
+Spec Authority: v5.8 §5.1–§5.3, §2.2 (provider-agnostic AI interface)
 """
 
 from __future__ import annotations

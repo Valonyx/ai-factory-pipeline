@@ -22,7 +22,7 @@ Enhancements over original:
 
 Cost: $0.00 — uses existing free AI provider tiers.
 
-Spec Authority: v5.6 §2.2.3, §2.10
+Spec Authority: v5.8 §2.2.3, §2.10
 """
 
 from __future__ import annotations

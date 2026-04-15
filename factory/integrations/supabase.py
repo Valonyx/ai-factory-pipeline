@@ -17,7 +17,7 @@ Uses supabase-py SDK (verified 2026-02-27):
   - acreate_client(url, key) for async operations
   - table("name").select/insert/upsert/update/delete().execute()
 
-Spec Authority: v5.6 §2.9, §5.6, §6.7, §7.1.3, §8.3.1
+Spec Authority: v5.8 §2.9, §5.6, §6.7, §7.1.3, §8.3.1
 """
 
 from __future__ import annotations

@@ -32,7 +32,7 @@ Does NOT trigger for:
 
 Output is appended to the Scout result before it reaches the Strategist.
 
-Spec Authority: v5.6 §2.2.3 [C5] (Research Degradation Policy),
+Spec Authority: v5.8 §2.2.3 [C5] (Research Degradation Policy),
                §4.2 (S1 Legal Gate anti-hallucination)
 """
 

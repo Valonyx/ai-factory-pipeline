@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — GCP Secret Manager Bootstrap
+AI Factory Pipeline v5.8 — GCP Secret Manager Bootstrap
 
 Implements:
   - §2.11 Secrets Management
@@ -13,7 +13,7 @@ Usage:
   python -m scripts.setup_secrets
   python -m scripts.setup_secrets --validate-only
 
-Spec Authority: v5.6 §2.11, Appendix B
+Spec Authority: v5.8 §2.11, Appendix B
 """
 
 from __future__ import annotations
@@ -265,7 +265,7 @@ def validate_secrets() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — GCP Secret Manager Setup")
+    print("AI Factory Pipeline v5.8 — GCP Secret Manager Setup")
     print("=" * 50)
 
     if "--validate" in sys.argv:

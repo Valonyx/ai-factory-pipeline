@@ -4,7 +4,7 @@ AI Factory Pipeline v5.8 — Customer Manager (/clients command)
 Manages customer records for the operator business.
 Persisted to Supabase (revenue_clients table) + local JSON fallback.
 
-Spec Authority: v5.6 §5.x (NB4 Part 25-26)
+Spec Authority: v5.8 §5.x (NB4 Part 25-26)
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — Render.com Deployment (Free, No CC)
+# AI Factory Pipeline v5.8 — Render.com Deployment (Free, No CC)
 #
 # Render free tier: 750 instance-hours/month (always-on), 512MB RAM.
 # Sign up at render.com with your GitHub account — no credit card ever needed.

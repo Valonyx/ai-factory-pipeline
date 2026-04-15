@@ -7,7 +7,7 @@ Implements:
   - Mobile: App Store processing status
   - Legal: Final compliance verification via Scout
 
-Spec Authority: v5.6 §4.8
+Spec Authority: v5.8 §4.8
 
 PATCH NOTE (NB1 Part 8):
   check_circuit_breaker() belongs to factory.intelligence.circuit_breaker

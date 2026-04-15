@@ -12,7 +12,7 @@ Implements:
 Precedence chain (ADR-043/044):
   operator MODEL_OVERRIDE > Budget Governor > MODEL_CONFIG default.
 
-Spec Authority: v5.6 §2.14
+Spec Authority: v5.8 §2.14
 """
 
 from __future__ import annotations

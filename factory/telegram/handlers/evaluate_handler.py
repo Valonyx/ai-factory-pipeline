@@ -4,7 +4,7 @@ AI Factory Pipeline v5.8 — /evaluate Command Handler
 Scores an app idea on 5 dimensions using Claude Strategist.
 Usage: /evaluate <app idea description>
 
-Spec Authority: v5.6 §5.2 (/evaluate)
+Spec Authority: v5.8 §5.2 (/evaluate)
 """
 
 from __future__ import annotations

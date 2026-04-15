@@ -7,7 +7,7 @@ Implements:
   - 4-way decision on trip (authorize / skip / pause / cancel)
   - Per-project cap ($25) and monthly global cap ($80)
 
-Spec Authority: v5.6 §3.6
+Spec Authority: v5.8 §3.6
 """
 
 from __future__ import annotations

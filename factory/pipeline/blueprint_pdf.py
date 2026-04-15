@@ -11,7 +11,7 @@ Implements:
   - Sets state.project_metadata["blueprint_doc_id"] to the artifact path
   - Writes docs/adr/{id}-stack-selection.md as a real ADR file
 
-Spec Authority: v5.6 §4.3
+Spec Authority: v5.8 §4.3
 """
 
 from __future__ import annotations

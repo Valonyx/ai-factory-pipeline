@@ -19,7 +19,7 @@ Setup:
   3. Create service account with "Release manager" role
   4. Download JSON key → set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
 
-Spec Authority: v5.6 §4.7.1
+Spec Authority: v5.8 §4.7.1
 """
 
 from __future__ import annotations

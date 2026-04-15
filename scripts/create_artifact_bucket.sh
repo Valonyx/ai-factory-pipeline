@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Factory Pipeline v5.6 — GCS Artifact Bucket Setup
+# AI Factory Pipeline v5.8 — GCS Artifact Bucket Setup
 #
 # Creates a Google Cloud Storage bucket for storing build artifacts
 # (APKs, AABs, IPAs, Docker images) produced by the pipeline.
@@ -12,7 +12,7 @@
 #   - gcloud CLI installed and authenticated (gcloud auth login)
 #   - GCP_PROJECT env var set, or a gcloud default project
 #
-# Spec Authority: v5.6 §4.5 Build Artifacts
+# Spec Authority: v5.8 §4.5 Build Artifacts
 
 set -euo pipefail
 

@@ -10,7 +10,7 @@ Implements:
 
 All thresholds derived from BUDGET_CONFIG [C2], never hardcoded.
 
-Spec Authority: v5.6 §7.4.2, §8.3
+Spec Authority: v5.8 §7.4.2, §8.3
 """
 
 from __future__ import annotations

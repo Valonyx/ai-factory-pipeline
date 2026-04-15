@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Supabase Schema Migration
+AI Factory Pipeline v5.8 — Supabase Schema Migration
 
 Implements:
   - §5.6 Session Schema (6 tables)
@@ -9,7 +9,7 @@ Implements:
 Idempotent — all CREATE TABLE use IF NOT EXISTS.
 Run: python -m scripts.migrate_supabase
 
-Spec Authority: v5.6 §5.6, §8.3.1
+Spec Authority: v5.8 §5.6, §8.3.1
 """
 
 from __future__ import annotations
@@ -298,7 +298,7 @@ def get_schema_summary() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("AI Factory Pipeline v5.6 — Supabase Migration")
+    print("AI Factory Pipeline v5.8 — Supabase Migration")
     print("=" * 50)
     result = asyncio.run(run_supabase_migration())
     print(f"\nTables: {result['tables_created']}")

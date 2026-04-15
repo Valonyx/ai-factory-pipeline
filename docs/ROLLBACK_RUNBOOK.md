@@ -1,4 +1,4 @@
-# AI Factory Pipeline v5.6 — Safety & Rollback Runbook
+# AI Factory Pipeline v5.8 — Safety & Rollback Runbook
 
 **Spec authority:** §2.9 (Time-Travel), §2.14 (Budget Governor), §4.10 (Halt Handler)  
 **Last updated:** 2026-04-12  
@@ -688,5 +688,5 @@ Is the pipeline still running?
 
 ---
 
-*AI Factory Pipeline v5.6 — Safety & Rollback Runbook*  
+*AI Factory Pipeline v5.8 — Safety & Rollback Runbook*  
 *Generated: 2026-04-12 | Spec: §2.9, §2.14, §4.10*

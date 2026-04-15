@@ -13,7 +13,7 @@ Required env vars:
   APP_STORE_PRIVATE_KEY   — P8 private key content (or path in APP_STORE_KEY_PATH)
   APP_STORE_KEY_PATH      — Path to .p8 key file (alternative to above)
 
-Spec Authority: v5.6 §4.7.2, §4.7.4 (FIX-21)
+Spec Authority: v5.8 §4.7.2, §4.7.4 (FIX-21)
 """
 
 from __future__ import annotations

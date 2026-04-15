@@ -7,7 +7,7 @@ Falls back to local JSON file if Supabase is unavailable.
 
 Commands: /invoice, /revenue, /clients
 
-Spec Authority: v5.6 §5.x (NB4 Part 25)
+Spec Authority: v5.8 §5.x (NB4 Part 25)
 """
 
 from __future__ import annotations

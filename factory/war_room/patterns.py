@@ -7,7 +7,7 @@ Implements:
   - Cross-project learning from fix patterns
   - Pattern querying for future similar errors
 
-Spec Authority: v5.6 §2.2.4, §2.10.1
+Spec Authority: v5.8 §2.2.4, §2.10.1
 """
 
 from __future__ import annotations

@@ -3,8 +3,8 @@ PROD-13 Validation: Entry Points + Config + Orchestrator + CLI
 
 Tests cover:
   Package Init (2 tests):
-    1.  __version__ == "5.6.0"
-    2.  __pipeline_version__ == "5.6"
+    1.  __version__ == "5.8.0"
+    2.  __pipeline_version__ == "5.8"
 
   Config (6 tests):
     3.  ModelConfig has correct defaults
@@ -97,12 +97,12 @@ def state():
 
 class TestPackageInit:
     def test_version(self):
-        """__version__ == '5.6.0'."""
-        assert factory.__version__ == "5.6.0"
+        """__version__ == '5.8.0'."""
+        assert factory.__version__ == "5.8.0"
 
     def test_pipeline_version(self):
-        """__pipeline_version__ == '5.6'."""
-        assert factory.__pipeline_version__ == "5.6"
+        """__pipeline_version__ == '5.8'."""
+        assert factory.__pipeline_version__ == "5.8"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -151,7 +151,7 @@ class TestConfig:
     def test_summary(self):
         """get_config_summary returns all sections."""
         s = get_config_summary()
-        assert s["version"] == "5.6.0"
+        assert s["version"] == "5.8.0"
         assert "models" in s
         assert "budget" in s
         assert "compliance" in s
@@ -265,4 +265,4 @@ class TestCLI:
         s = get_config_summary()
         serialized = json.dumps(s)
         parsed = json.loads(serialized)
-        assert parsed["version"] == "5.6.0"
+        assert parsed["version"] == "5.8.0"

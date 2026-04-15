@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.6 — Telegram Bot Runner
+AI Factory Pipeline v5.8 — Telegram Bot Runner
 
 Default mode: LOCAL POLLING (no hosting needed, works immediately).
 Online mode:  Render webhook — activated via /online Telegram command,

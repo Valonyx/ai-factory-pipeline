@@ -4,7 +4,7 @@ AI Factory Pipeline v5.8 — State Persistence
 Thin wrapper that persists PipelineState to Supabase + in-memory fallback.
 Real storage is handled by factory.integrations.supabase.
 
-Spec Authority: v5.6 §5.6, §2.9 Triple-Write
+Spec Authority: v5.8 §5.6, §2.9 Triple-Write
 """
 
 from __future__ import annotations

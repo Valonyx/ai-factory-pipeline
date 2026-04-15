@@ -5,7 +5,7 @@ Generates unified diffs between original and AI-modified files.
 Used in MODIFY mode (S3 CodeGen) to produce reviewable change sets
 instead of full file rewrites.
 
-Spec Authority: v5.6 §4.0 (NB4 Part 21-22)
+Spec Authority: v5.8 §4.0 (NB4 Part 21-22)
 """
 
 from __future__ import annotations

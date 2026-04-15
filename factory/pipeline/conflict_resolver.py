@@ -9,7 +9,7 @@ Resolution cascade:
   2. AI-assisted: Claude resolves conflicts using intent context
   3. Operator-ask: ambiguous conflicts sent to operator via Telegram
 
-Spec Authority: v5.6 §4.3 MODIFY mode
+Spec Authority: v5.8 §4.3 MODIFY mode
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ AI Factory Pipeline v5.8 — Anthropic Dispatch Compatibility Shim
 Re-exports from factory.core.roles and factory.monitoring.budget_governor
 for backwards-compatibility with test imports expecting a combined module.
 
-Spec Authority: v5.6 §2.4, §2.14
+Spec Authority: v5.8 §2.4, §2.14
 """
 
 from __future__ import annotations

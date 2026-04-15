@@ -9,7 +9,7 @@ Implements:
   - §4.7.4 iOS App Store Submission Protocol (FIX-21)
   - API-first approach (ADR-016): no portal UI login
 
-Spec Authority: v5.6 §4.7, §4.7.1–§4.7.4
+Spec Authority: v5.8 §4.7, §4.7.1–§4.7.4
 """
 
 from __future__ import annotations

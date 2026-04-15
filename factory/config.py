@@ -24,8 +24,8 @@ from typing import Optional
 # Pipeline Identity
 # ═══════════════════════════════════════════════════════════════════
 
-PIPELINE_VERSION = "5.6"
-PIPELINE_FULL_VERSION = "5.6.0"
+PIPELINE_VERSION = "5.8"
+PIPELINE_FULL_VERSION = "5.8.0"
 
 
 # ═══════════════════════════════════════════════════════════════════

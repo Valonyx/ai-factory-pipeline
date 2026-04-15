@@ -1341,8 +1341,10 @@ async def _handle_start_project_intent(
     request_confirmation(user_id, f"start_project:{description}")
     _add_to_history(user_id, "user", description)
 
+    # Show full description (up to 400 chars) so the operator can verify
+    desc_preview = description if len(description) <= 400 else description[:397] + "..."
     await update.message.reply_text(
-        f"Got it — building: \"{description[:120]}\"\n\n"
+        f"Got it — building:\n\"{desc_preview}\"\n\n"
         f"Estimated cost: {estimated_cost}\n\n"
         "Reply 'yes' to start, or anything else to cancel."
     )
@@ -1387,9 +1389,28 @@ async def _ask_app_name(
 ) -> None:
     """Step 1 of project launch: ask the operator for the app name.
 
-    Sets awaiting_app_name state so the next free-text reply is captured.
+    If the description already contains an explicit app name (e.g. 'app name: "Pulsey AI"'
+    or 'called "Pulsey AI"'), auto-extract it and skip the prompt entirely.
+    Otherwise, set awaiting_app_name state so the next free-text reply is captured.
     Operator can type a name or 'skip' to get AI-generated suggestions.
     """
+    import re as _re
+    # Patterns: 'app name: "X"', 'app name: X', 'called "X"', 'app called X'
+    _name_patterns = [
+        r'app\s+name\s*[:\-–]\s*["\u201c]([^"\u201d]{2,40})["\u201d]',
+        r'app\s+name\s*[:\-–]\s*([A-Z][A-Za-z0-9 \-]{1,39})(?:[,.\n]|$)',
+        r'(?:app\s+)?called\s+["\u201c]([^"\u201d]{2,40})["\u201d]',
+        r'(?:app\s+)?called\s+([A-Z][A-Za-z0-9 \-]{1,39})(?:[,.\n]|$)',
+        r'name[:\s]+["\u201c]([^"\u201d]{2,40})["\u201d]',
+    ]
+    for _pat in _name_patterns:
+        _m = _re.search(_pat, description, _re.IGNORECASE)
+        if _m:
+            extracted_name = _m.group(1).strip().strip('"').strip()
+            if extracted_name:
+                await _start_project(update, user_id, description, attachments, app_name=extracted_name)
+                return
+
     await set_operator_state(
         user_id,
         "awaiting_app_name",

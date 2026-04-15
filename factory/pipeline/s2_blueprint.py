@@ -786,7 +786,7 @@ async def _generate_ieee_blueprint_suite(
         write_prompt = (
             f"Write the complete {doc_name} ({abbr}) for this project.\n\n"
             f"App context:\n{reqs_summary}\n\n"
-            f"{('Additional context:\n' + extra_context + chr(10)) if extra_context else ''}"
+            f"{'Additional context:' + chr(10) + extra_context + chr(10) if extra_context else ''}"
             f"Focus: {focus}\n\n"
             f"Requirements:\n"
             f"- Professional, production-quality document\n"

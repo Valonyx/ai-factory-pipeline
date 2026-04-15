@@ -245,7 +245,7 @@ def format_welcome_message(first_name: str) -> str:
     Spec: §5.2 (/start)
     """
     return (
-        f"🏭 Welcome to AI Factory v5.6, {first_name}!\n\n"
+        f"🏭 Welcome to AI Factory v5.8, {first_name}!\n\n"
         f"🔧 Builds apps from your description.\n"
         f"📱 Stacks: FlutterFlow, React Native, Swift, "
         f"Kotlin, Unity, Python\n"
@@ -262,7 +262,7 @@ def format_help_message() -> str:
     Spec: §5.2 (/help)
     """
     return (
-        "🏭 AI Factory v5.6\n\n"
+        "🏭 AI Factory v5.8\n\n"
         "📱 Projects\n"
         "  /new [description]  — start new app\n"
         "  /status             — pipeline progress\n"

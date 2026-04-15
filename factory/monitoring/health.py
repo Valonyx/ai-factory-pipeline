@@ -31,7 +31,7 @@ logger = logging.getLogger("factory.monitoring.health")
 # §7.4.1 Health Endpoints
 # ═══════════════════════════════════════════════════════════════════
 
-PIPELINE_VERSION = "5.6"
+PIPELINE_VERSION = "5.8"
 
 
 async def health_check() -> dict:

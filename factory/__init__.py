@@ -21,5 +21,5 @@ Entry points:
   factory.cli           — CLI for local testing
 """
 
-__version__ = "5.6.0"
-__pipeline_version__ = "5.6"
+__version__ = "5.8.0"
+__pipeline_version__ = "5.8"

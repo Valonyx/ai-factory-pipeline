@@ -60,6 +60,17 @@ async def generate_image(
     Returns:
         Raw PNG/JPEG bytes, or None if all providers fail.
     """
+    # ── Mock / CI short-circuit ──
+    # When AI_PROVIDER=mock or DRY_RUN=true, skip real HTTPS calls entirely.
+    # Tests and CI runs should never hit pollinations.ai / HuggingFace / Together.
+    if (
+        os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or os.getenv("IMAGE_PROVIDER_CHAIN", "").lower() == "mock"
+    ):
+        logger.info("[image_gen] Mock/dry-run mode — skipping real image generation")
+        return None
+
     full_prompt = f"{prompt}, {style}" if style else prompt
     _seed = seed or int(time.time()) % 999999
 
@@ -121,7 +132,7 @@ async def _call_pollinations(
     )
 
     def _fetch() -> bytes:
-        req = urllib.request.Request(url, headers={"User-Agent": "AI-Factory/5.6"})
+        req = urllib.request.Request(url, headers={"User-Agent": "AI-Factory/5.8"})
         with urllib.request.urlopen(req, timeout=60) as resp:
             return resp.read()
 

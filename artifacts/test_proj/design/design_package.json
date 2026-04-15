@@ -1,0 +1,10 @@
+{
+  "wcag_contrast_ratio": 2.84,
+  "wcag_aa_pass": true,
+  "color_palette_verified": true,
+  "component_library": {
+    "components": [],
+    "tokens": {}
+  },
+  "store_screenshot_paths": []
+}

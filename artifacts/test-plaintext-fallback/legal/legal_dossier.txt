@@ -1,0 +1,13 @@
+LEGAL DOSSIER — Test App
+============================================================
+Generated: 2026-04-15T07:10:33.127093+00:00
+
+COMPLIANCE SUMMARY
+----------------------------------------
+Overall Risk: low
+Proceed: True
+Regulatory Bodies: 
+
+REGULATORY RESEARCH
+----------------------------------------
+Test research

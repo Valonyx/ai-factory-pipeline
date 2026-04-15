@@ -14,6 +14,7 @@ factory-cli = "factory.cli:main"
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 testpaths = ["tests"]
+timeout = 120
 
 [tool.ruff]
 line-length = 100

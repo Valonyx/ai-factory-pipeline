@@ -60,7 +60,7 @@ class TestHealth:
     async def test_liveness(self):
         result = await health_check()
         assert result["status"] == "ok"
-        assert result["version"] == "5.6"
+        assert result["version"] == "5.8"
 
     @pytest.mark.asyncio
     async def test_readiness(self):
@@ -69,4 +69,4 @@ class TestHealth:
         assert "checks" in result
 
     def test_pipeline_version(self):
-        assert PIPELINE_VERSION == "5.6"
+        assert PIPELINE_VERSION == "5.8"

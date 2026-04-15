@@ -850,9 +850,9 @@ class TestFullPipelineNotifications:
 
         assert result.current_stage != Stage.HALTED, \
             f"Pipeline should complete, not halt: {result.project_metadata.get('halt_reason')}"
-        # 9 stages: S0 through S8
-        assert len(notified_stages) >= 9, \
-            f"Expected ≥9 notifications, got {len(notified_stages)}: {notified_stages}"
+        # 10 stages: S0 through S9
+        assert len(notified_stages) >= 10, \
+            f"Expected ≥10 notifications, got {len(notified_stages)}: {notified_stages}"
 
     @pytest.mark.asyncio
     async def test_halted_pipeline_halts_at_halt_handler(self, fresh_state):

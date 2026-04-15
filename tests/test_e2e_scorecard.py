@@ -337,7 +337,7 @@ class TestS4Build:
             from factory.pipeline.s5_build import s5_build_node
             if requires_gui:
                 # Patch where build_with_chain is imported inside _build_gui
-                with patch("factory.pipeline.s4_build._build_gui", new_callable=AsyncMock) as mock_gui:
+                with patch("factory.pipeline.s5_build._build_gui", new_callable=AsyncMock) as mock_gui:
                     mock_gui.return_value = {
                         "success": True,
                         "artifacts": {stack_value: {"status": "success"}},

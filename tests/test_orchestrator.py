@@ -11,7 +11,7 @@ from factory.orchestrator import (
 
 class TestDAG:
     def test_stage_sequence(self):
-        assert len(STAGE_SEQUENCE) == 9
+        assert len(STAGE_SEQUENCE) == 10
         names = [s[0] for s in STAGE_SEQUENCE]
         assert names[0] == "s0_intake"
         assert names[-1] == "s9_handoff"

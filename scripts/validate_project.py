@@ -63,12 +63,13 @@ EXPECTED_FILES = {
     "factory/pipeline/s0_intake.py": "S0 Intake",
     "factory/pipeline/s1_legal.py": "S1 Legal Gate",
     "factory/pipeline/s2_blueprint.py": "S2 Blueprint",
-    "factory/pipeline/s3_codegen.py": "S3 CodeGen",
-    "factory/pipeline/s4_build.py": "S4 Build",
-    "factory/pipeline/s5_test.py": "S5 Test",
-    "factory/pipeline/s6_deploy.py": "S6 Deploy",
-    "factory/pipeline/s7_verify.py": "S7 Verify",
-    "factory/pipeline/s8_handoff.py": "S8 Handoff",
+    "factory/pipeline/s3_design.py": "S3 Design",
+    "factory/pipeline/s4_codegen.py": "S4 CodeGen",
+    "factory/pipeline/s5_build.py": "S5 Build",
+    "factory/pipeline/s6_test.py": "S6 Test",
+    "factory/pipeline/s7_deploy.py": "S7 Deploy",
+    "factory/pipeline/s8_verify.py": "S8 Verify",
+    "factory/pipeline/s9_handoff.py": "S9 Handoff",
     # P3 Integrations
     "factory/integrations/__init__.py": "Integrations init",
     "factory/integrations/supabase.py": "Supabase client",
@@ -229,7 +230,7 @@ def validate_imports() -> tuple[int, int]:
 
 API_CHECKS = [
     ("factory.__version__", "5.8.0"),
-    ("factory.config.PIPELINE_VERSION", "5.6"),
+    ("factory.config.PIPELINE_VERSION", "5.8"),
     ("factory.config.MODELS.strategist", "claude-opus-4-6"),
     ("factory.config.MODELS.engineer", "claude-sonnet-4-5-20250929"),
     ("factory.config.MODELS.quick_fix", "claude-haiku-4-5-20251001"),
@@ -314,12 +315,13 @@ SPEC_COVERAGE = {
     "§4.1": ("S0 Intake", "factory/pipeline/s0_intake.py"),
     "§4.1.1": ("S1 Legal Gate", "factory/pipeline/s1_legal.py"),
     "§4.2": ("S2 Blueprint", "factory/pipeline/s2_blueprint.py"),
-    "§4.3": ("S3 CodeGen", "factory/pipeline/s3_codegen.py"),
-    "§4.4": ("S4 Build", "factory/pipeline/s4_build.py"),
-    "§4.5": ("S5 Test", "factory/pipeline/s5_test.py"),
-    "§4.6": ("S6 Deploy", "factory/pipeline/s6_deploy.py"),
-    "§4.7": ("S7 Verify", "factory/pipeline/s7_verify.py"),
-    "§4.8": ("S8 Handoff", "factory/pipeline/s8_handoff.py"),
+    "§4.3": ("S3 Design", "factory/pipeline/s3_design.py"),
+    "§4.4": ("S4 CodeGen", "factory/pipeline/s4_codegen.py"),
+    "§4.5": ("S5 Build", "factory/pipeline/s5_build.py"),
+    "§4.6": ("S6 Test", "factory/pipeline/s6_test.py"),
+    "§4.7": ("S7 Deploy", "factory/pipeline/s7_deploy.py"),
+    "§4.8": ("S8 Verify", "factory/pipeline/s8_verify.py"),
+    "§4.8.1": ("S9 Handoff", "factory/pipeline/s9_handoff.py"),
     "§4.9": ("FIX-27 Handoff Intelligence Pack", "factory/delivery/handoff_docs.py"),
     "§5.1": ("Telegram webhook", "factory/main.py"),
     "§5.6": ("Session schema", "scripts/migrate_supabase.py"),
@@ -749,7 +751,7 @@ def phase_6_integration() -> dict:
         from factory.config import MODELS
         from factory.orchestrator import STAGE_SEQUENCE
         assert MODELS.strategist == "claude-opus-4-6"
-        assert len(STAGE_SEQUENCE) == 9
+        assert len(STAGE_SEQUENCE) == 10
         results["passed"] += 1
     except Exception as e:
         results["failed"] += 1

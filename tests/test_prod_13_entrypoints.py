@@ -164,11 +164,12 @@ class TestConfig:
 
 class TestOrchestrator:
     def test_stage_sequence(self):
-        """STAGE_SEQUENCE has 9 entries."""
-        assert len(STAGE_SEQUENCE) == 9
+        """STAGE_SEQUENCE has 10 entries (S0–S9, including S3_DESIGN)."""
+        assert len(STAGE_SEQUENCE) == 10
         names = [s[0] for s in STAGE_SEQUENCE]
         assert names[0] == "s0_intake"
-        assert names[-1] == "s8_handoff"
+        assert "s3_design" in names   # S3 Design wired into DAG (v5.8)
+        assert names[-1] == "s9_handoff"
 
     @pytest.mark.asyncio
     async def test_pipeline_node_decorator(self, state):
@@ -188,15 +189,15 @@ class TestOrchestrator:
         ] == "S0_INTAKE"
 
     def test_route_test_pass(self, state):
-        """route_after_test: pass → s6_deploy."""
+        """route_after_test: pass → s7_deploy."""
         state.s6_output = {"all_passed": True}
-        assert route_after_test(state) == "s6_deploy"
+        assert route_after_test(state) == "s7_deploy"
 
     def test_route_test_fail_retry(self, state):
-        """route_after_test: fail → s3_codegen."""
+        """route_after_test: fail → s4_codegen (retry CodeGen, not Design)."""
         state.s6_output = {"all_passed": False}
         state.retry_count = 0
-        assert route_after_test(state) == "s3_codegen"
+        assert route_after_test(state) == "s4_codegen"
         assert state.retry_count == 1
 
     def test_route_test_exhausted(self, state):
@@ -206,15 +207,15 @@ class TestOrchestrator:
         assert route_after_test(state) == "halt"
 
     def test_route_verify_pass(self, state):
-        """route_after_verify: pass → s8_handoff."""
+        """route_after_verify: pass → s9_handoff."""
         state.s8_output = {"verified": True}
-        assert route_after_verify(state) == "s8_handoff"
+        assert route_after_verify(state) == "s9_handoff"
 
     def test_route_verify_fail(self, state):
-        """route_after_verify: fail → s6_deploy."""
+        """route_after_verify: fail → s7_deploy (redeploy)."""
         state.s8_output = {"verified": False}
         state.retry_count = 0
-        assert route_after_verify(state) == "s6_deploy"
+        assert route_after_verify(state) == "s7_deploy"
         assert state.retry_count == 1
 
     @pytest.mark.asyncio

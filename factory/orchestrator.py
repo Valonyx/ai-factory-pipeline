@@ -39,14 +39,15 @@ logger = logging.getLogger("factory.orchestrator")
 
 # Stage index for % complete calculation (0-based)
 _STAGE_ORDER = [
-    "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S4_CODEGEN",
-    "S5_BUILD", "S6_TEST", "S7_DEPLOY", "S8_VERIFY", "S9_HANDOFF",
+    "S0_INTAKE", "S1_LEGAL", "S2_BLUEPRINT", "S3_DESIGN",
+    "S4_CODEGEN", "S5_BUILD", "S6_TEST", "S7_DEPLOY", "S8_VERIFY", "S9_HANDOFF",
 ]
 
 _STAGE_ARTIFACTS: dict[str, list[str]] = {
     "S0_INTAKE":    ["app_name", "app_description"],
     "S1_LEGAL":     ["legal_dossier_pdf_path", "overall_risk", "data_classification"],
     "S2_BLUEPRINT": ["blueprint_pdf_path", "selected_stack"],
+    "S3_DESIGN":    ["design_type", "mockup_paths"],
     "S4_CODEGEN":   ["github_repo", "files_generated"],
     "S5_BUILD":     ["build_status", "build_artifacts"],
     "S6_TEST":      ["test_summary", "all_passed"],
@@ -157,6 +158,7 @@ async def _persist_snapshot(state: PipelineState) -> None:
 from factory.pipeline.s0_intake import s0_intake_node
 from factory.pipeline.s1_legal import s1_legal_node
 from factory.pipeline.s2_blueprint import s2_blueprint_node
+from factory.pipeline.s3_design import s3_design_node
 from factory.pipeline.s4_codegen import s4_codegen_node
 from factory.pipeline.s5_build import s5_build_node
 from factory.pipeline.s6_test import s6_test_node
@@ -218,15 +220,16 @@ def route_after_verify(state: PipelineState) -> str:
 
 
 STAGE_SEQUENCE = [
-    ("s0_intake", s0_intake_node),
-    ("s1_legal", s1_legal_node),
+    ("s0_intake",   s0_intake_node),
+    ("s1_legal",    s1_legal_node),
     ("s2_blueprint", s2_blueprint_node),
-    ("s4_codegen", s4_codegen_node),
-    ("s5_build", s5_build_node),
-    ("s6_test", s6_test_node),
-    ("s7_deploy", s7_deploy_node),
-    ("s8_verify", s8_verify_node),
-    ("s9_handoff", s9_handoff_node),
+    ("s3_design",   s3_design_node),   # Design before CodeGen (added in v5.8)
+    ("s4_codegen",  s4_codegen_node),
+    ("s5_build",    s5_build_node),
+    ("s6_test",     s6_test_node),
+    ("s7_deploy",   s7_deploy_node),
+    ("s8_verify",   s8_verify_node),
+    ("s9_handoff",  s9_handoff_node),
 ]
 
 
@@ -234,7 +237,7 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     logger.info(f"[{state.project_id}] Pipeline START (mode={state.autonomy_mode.value})")
     budget_governor.set_spend_source(cost_tracker.monthly_total_cents)
 
-    for stage_name, stage_fn in STAGE_SEQUENCE[:6]:
+    for stage_name, stage_fn in STAGE_SEQUENCE[:7]:  # S0→S6 linear; S7+ handled by routing
         state = await stage_fn(state)
         if state.current_stage == Stage.HALTED:
             return await halt_handler_node(state)

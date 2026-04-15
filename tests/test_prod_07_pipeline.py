@@ -245,7 +245,7 @@ class TestS0Intake:
     def test_fallback_requirements(self):
         """_fallback_requirements returns valid dict."""
         req = _fallback_requirements("test app")
-        assert req["app_name"] == "test app"
+        assert req["app_name"] == "Test App"  # .title() applied by fallback
         assert "target_platforms" in req
 
 

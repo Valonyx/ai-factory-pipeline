@@ -562,12 +562,13 @@ def phase_1_imports() -> dict:
         "factory.pipeline.s0_intake",
         "factory.pipeline.s1_legal",
         "factory.pipeline.s2_blueprint",
-        "factory.pipeline.s3_codegen",
-        "factory.pipeline.s4_build",
-        "factory.pipeline.s5_test",
-        "factory.pipeline.s6_deploy",
-        "factory.pipeline.s7_verify",
-        "factory.pipeline.s8_handoff",
+        "factory.pipeline.s3_design",
+        "factory.pipeline.s4_codegen",
+        "factory.pipeline.s5_build",
+        "factory.pipeline.s6_test",
+        "factory.pipeline.s7_deploy",
+        "factory.pipeline.s8_verify",
+        "factory.pipeline.s9_handoff",
         "factory.design.contrast",
         "factory.design.grid_enforcer",
         "factory.design.vibe_check",
@@ -649,23 +650,23 @@ def phase_3_pipeline() -> dict:
             route_after_test, route_after_verify,
         )
         from factory.core.state import PipelineState
-        assert len(STAGE_SEQUENCE) == 9
+        assert len(STAGE_SEQUENCE) == 10
         names = [s[0] for s in STAGE_SEQUENCE]
-        assert names[0] == "s0_intake" and names[-1] == "s8_handoff"
+        assert names[0] == "s0_intake" and names[-1] == "s9_handoff"
         results["passed"] += 1
-        # 9 stage functions registered
+        # 10 stage functions registered
         assert all(callable(fn) for _, fn in STAGE_SEQUENCE)
         results["passed"] += 1
         state = PipelineState(project_id="val_001", operator_id="validator")
         state.project_metadata["tests_passed"] = True
-        assert route_after_test(state) == "s6_deploy"
+        assert route_after_test(state) == "s7_deploy"
         results["passed"] += 1
         state.project_metadata["tests_passed"] = False
         state.retry_count = 0
-        assert route_after_test(state) == "s3_codegen"
+        assert route_after_test(state) == "s4_codegen"
         results["passed"] += 1
         state.project_metadata["verify_passed"] = True
-        assert route_after_verify(state) == "s8_handoff"
+        assert route_after_verify(state) == "s9_handoff"
         results["passed"] += 1
     except Exception as e:
         results["failed"] += 1

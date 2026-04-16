@@ -100,6 +100,33 @@ async def _notify_stage_complete(state: PipelineState, stage_name: str) -> None:
     except Exception as e:
         logger.debug(f"Stage progress notification failed (non-fatal): {e}")
 
+    # ── Per-stage file delivery (Issue #3) ──────────────────────────
+    # Send PDF / document artifacts to Telegram as they are produced.
+    _FILE_KEYS = (
+        "legal_dossier_pdf_path",   # S1
+        "blueprint_pdf_path",       # S2
+        "handoff_doc_path",         # S9
+    )
+    try:
+        from factory.telegram.notifications import send_telegram_file as _send_file
+        for key in _FILE_KEYS:
+            path = None
+            if output and isinstance(output, dict):
+                path = output.get(key)
+            if not path:
+                path = state.project_metadata.get(key)
+            if path and __import__("os").path.isfile(str(path)):
+                await _send_file(
+                    state.operator_id,
+                    str(path),
+                    caption=f"📎 {stage_name}: {key.replace('_pdf_path','').replace('_doc_path','').replace('_',' ').title()}",
+                )
+                logger.info(
+                    f"[{state.project_id}] Delivered {key} after {stage_name}"
+                )
+    except Exception as e:
+        logger.debug(f"Stage file delivery non-fatal: {e}")
+
 
 def pipeline_node(stage: Stage):
     def decorator(fn):

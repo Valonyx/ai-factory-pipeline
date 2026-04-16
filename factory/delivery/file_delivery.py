@@ -205,19 +205,30 @@ async def send_telegram_file(
 
     # ── ≤50MB: Direct Telegram ──
     if size_mb <= TELEGRAM_FILE_LIMIT_MB:
-        await send_telegram_message(
+        from factory.telegram.notifications import (
+            send_telegram_file as _notif_send,
+        )
+        sent = await _notif_send(
             operator_id,
-            f"📎 Sending file: {filename} ({size_mb:.1f} MB)",
+            file_path,
+            caption=f"📎 {filename}",
+            filename=filename,
         )
-        # In production: bot.send_document(operator_id, file, filename=...)
-        logger.info(
-            f"[{project_id}] Direct Telegram send: "
-            f"{filename} ({size_mb:.1f} MB)"
-        )
+        if sent:
+            logger.info(
+                f"[{project_id}] Direct Telegram send: "
+                f"{filename} ({size_mb:.1f} MB)"
+            )
+        else:
+            logger.warning(
+                f"[{project_id}] Telegram send failed — "
+                f"bot unavailable, file not delivered: {filename}"
+            )
         return {
             "method": "telegram_direct",
             "size_mb": round(size_mb, 1),
             "filename": filename,
+            "sent": sent,
         }
 
     # ── >50MB: Supabase Storage + signed URL ──

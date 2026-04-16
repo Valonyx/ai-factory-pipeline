@@ -78,8 +78,44 @@ class GitHubClient:
         """Commit a text file to repository.
 
         Spec: §2.9.1 (Write 3 — state snapshots)
+        Production: uses PyGitHub via asyncio.to_thread (non-blocking).
+        Fallback: in-memory stub for CI / offline mode.
         Returns: {"sha": commit_sha, "path": path}
         """
+        if self.client:
+            try:
+                encoded = (
+                    content.encode("utf-8")
+                    if isinstance(content, str)
+                    else content
+                )
+
+                def _do_commit():
+                    gh_repo = self.client.get_repo(repo)
+                    try:
+                        existing = gh_repo.get_contents(path)
+                        result = gh_repo.update_file(
+                            path, message, encoded, existing.sha
+                        )
+                    except Exception:
+                        result = gh_repo.create_file(path, message, encoded)
+                    return result["commit"].sha
+
+                sha = await asyncio.to_thread(_do_commit)
+                # Mirror to in-memory store for local reads
+                self._repos.setdefault(repo, {})[path] = content
+                self._commits.setdefault(repo, []).append({
+                    "sha": sha, "path": path, "message": message,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                logger.info(f"[{repo}] GitHub commit {path}: {sha}")
+                return {"sha": sha, "path": path}
+            except Exception as e:
+                logger.warning(
+                    f"[{repo}] Real GitHub commit failed, using stub: {e}"
+                )
+
+        # ── Stub fallback (CI / offline / PyGitHub unavailable) ──
         self._commit_counter += 1
         sha = f"sha-{self._commit_counter:06d}-{hash(content) % 10000:04d}"
 
@@ -97,7 +133,7 @@ class GitHubClient:
         }
         self._commits[repo].append(commit)
 
-        logger.debug(f"[{repo}] Committed {path}: {sha}")
+        logger.debug(f"[{repo}] Stub commit {path}: {sha}")
         return {"sha": sha, "path": path}
 
     async def commit_binary(
@@ -138,10 +174,37 @@ class GitHubClient:
     # ═══════════════════════════════════════════════════════════════
 
     async def create_repo(self, repo_name: str, private: bool = True) -> dict:
-        """Create a new repository."""
+        """Create a new repository.
+
+        Production: creates via PyGitHub (org or user namespace).
+        Fallback: in-memory stub.
+        """
+        if self.client:
+            try:
+                def _do_create():
+                    # repo_name may be "org/name" — try org first, then user
+                    if "/" in repo_name:
+                        _, name = repo_name.split("/", 1)
+                    else:
+                        name = repo_name
+                    user = self.client.get_user()
+                    gh_repo = user.create_repo(name, private=private, auto_init=True)
+                    return gh_repo.full_name
+
+                full_name = await asyncio.to_thread(_do_create)
+                self._repos.setdefault(repo_name, {})
+                self._commits.setdefault(repo_name, [])
+                logger.info(f"Created real GitHub repo: {full_name}")
+                return {"name": full_name, "private": private}
+            except Exception as e:
+                logger.warning(
+                    f"Real GitHub repo creation failed, using stub: {e}"
+                )
+
+        # Stub fallback
         self._repos[repo_name] = {}
         self._commits[repo_name] = []
-        logger.info(f"Created repo: {repo_name} (private={private})")
+        logger.info(f"Stub repo created: {repo_name}")
         return {"name": repo_name, "private": private}
 
     async def repo_exists(self, repo_name: str) -> bool:

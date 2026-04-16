@@ -43,6 +43,7 @@ from factory.core.state import (
 )
 from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
+from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
 
 logger = logging.getLogger("factory.pipeline.s4_codegen")
 
@@ -433,34 +434,35 @@ async def _run_tech_inventory(
 
     # ── Step 1: Strategist identifies all needed tech for this specific project ──
     logger.info(f"[{state.project_id}] Tech inventory: Strategist identifying required tech")
+    _tech_inv_base = (
+        f"List ALL tech services, APIs, SDKs, and providers required to "
+        f"fully implement '{app_name}'.\n\n"
+        f"Stack: {stack_value}\n"
+        f"Features: {features[:15]}\n"
+        f"Auth method: {auth_method}\n"
+        f"Services from blueprint: {services}\n"
+        f"Env vars specified: {list(env_vars_bp.keys())[:20]}\n"
+        f"Has payments: {has_payments}\n"
+        f"Has maps: {has_maps}\n"
+        f"Has push notifications: {has_push}\n"
+        f"Has AI features: {has_ai_feat}\n\n"
+        f"Return ONLY a JSON array:\n"
+        f'[\n'
+        f'  {{\n'
+        f'    "id": "snake_case_id",\n'
+        f'    "name": "Service Name",\n'
+        f'    "category": "database|auth|payments|push|analytics|maps|storage|email|sms|ai|ci_cd|framework|other",\n'
+        f'    "why_needed": "one sentence explaining why this app needs it",\n'
+        f'    "env_vars": ["ENV_VAR_NAME"],\n'
+        f'    "required": true\n'
+        f'  }}\n'
+        f']\n\n'
+        f"Only include services that are truly necessary. "
+        f"Be specific — use exact service names (e.g. Moyasar, not just Payments)."
+    )
     strategist_raw = await call_ai(
         role=AIRole.STRATEGIST,
-        prompt=(
-            f"List ALL tech services, APIs, SDKs, and providers required to "
-            f"fully implement '{app_name}'.\n\n"
-            f"Stack: {stack_value}\n"
-            f"Features: {features[:15]}\n"
-            f"Auth method: {auth_method}\n"
-            f"Services from blueprint: {services}\n"
-            f"Env vars specified: {list(env_vars_bp.keys())[:20]}\n"
-            f"Has payments: {has_payments}\n"
-            f"Has maps: {has_maps}\n"
-            f"Has push notifications: {has_push}\n"
-            f"Has AI features: {has_ai_feat}\n\n"
-            f"Return ONLY a JSON array:\n"
-            f'[\n'
-            f'  {{\n'
-            f'    "id": "snake_case_id",\n'
-            f'    "name": "Service Name",\n'
-            f'    "category": "database|auth|payments|push|analytics|maps|storage|email|sms|ai|ci_cd|framework|other",\n'
-            f'    "why_needed": "one sentence explaining why this app needs it",\n'
-            f'    "env_vars": ["ENV_VAR_NAME"],\n'
-            f'    "required": true\n'
-            f'  }}\n'
-            f']\n\n'
-            f"Only include services that are truly necessary. "
-            f"Be specific — use exact service names (e.g. Moyasar, not just Payments)."
-        ),
+        prompt=_inject_cc(_tech_inv_base, state, current_stage="s4_codegen", compact=True),
         state=state,
         action="plan_architecture",
     )

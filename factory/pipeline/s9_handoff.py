@@ -29,6 +29,7 @@ from factory.core.state import (
 from factory.core.roles import call_ai
 from factory.telegram.notifications import send_telegram_message, notify_operator
 from factory.pipeline.graph import pipeline_node, register_stage_node
+from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
 
 logger = logging.getLogger("factory.pipeline.s9_handoff")
 
@@ -168,20 +169,21 @@ async def generate_handoff_intelligence_pack(
     # ── Per-Project Documents (always generated) ──
 
     # 1. Quick Start Guide
+    _qs_base = (
+        f"Generate a Quick Start Guide for a zero-IT operator.\n\n"
+        f"PROJECT CONTEXT:\n{project_context}\n\n"
+        f"REQUIREMENTS:\n"
+        f"- Plain language, no jargon\n"
+        f"- Every command must be copy-pasteable with REAL values\n"
+        f"- Numbered steps: what you're doing, exact command/URL, "
+        f"what success looks like, what to do if it fails\n"
+        f"- Cover: accessing the app, verifying it runs, restarting, "
+        f"checking logs, updating simple content, requesting a rebuild\n"
+        f"- Format as Markdown\n"
+    )
     docs["QUICK_START.md"] = await call_ai(
         role=AIRole.ENGINEER,
-        prompt=(
-            f"Generate a Quick Start Guide for a zero-IT operator.\n\n"
-            f"PROJECT CONTEXT:\n{project_context}\n\n"
-            f"REQUIREMENTS:\n"
-            f"- Plain language, no jargon\n"
-            f"- Every command must be copy-pasteable with REAL values\n"
-            f"- Numbered steps: what you're doing, exact command/URL, "
-            f"what success looks like, what to do if it fails\n"
-            f"- Cover: accessing the app, verifying it runs, restarting, "
-            f"checking logs, updating simple content, requesting a rebuild\n"
-            f"- Format as Markdown\n"
-        ),
+        prompt=_inject_cc(_qs_base, state, current_stage="s9_handoff", compact=True),
         state=state,
         action="general",
     )

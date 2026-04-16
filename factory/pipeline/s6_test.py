@@ -31,6 +31,7 @@ from factory.core.roles import call_ai
 from factory.core.execution import ExecutionModeManager
 from factory.core.user_space import enforce_user_space
 from factory.pipeline.graph import pipeline_node, register_stage_node
+from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
 
 logger = logging.getLogger("factory.pipeline.s6_test")
 

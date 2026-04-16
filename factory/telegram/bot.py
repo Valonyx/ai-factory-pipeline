@@ -1014,8 +1014,40 @@ async def handle_callback(update: Any, context: Any):
             )
 
     elif data.startswith("restore_confirm_"):
-        parts = data.split("_")
-        await query.edit_message_text("⏪ Restoring... (stub for dry-run)")
+        # data format: "restore_confirm_{snapshot_id}"
+        try:
+            snapshot_id = int(data.split("restore_confirm_")[1])
+        except (ValueError, IndexError):
+            await query.edit_message_text("⚠️ Invalid restore snapshot ID.")
+            return
+        active = await get_active_project(user_id)
+        if not active:
+            await query.edit_message_text("No active project to restore.")
+            return
+        project_id = active["project_id"]
+        await query.edit_message_text(
+            f"⏪ Restoring snapshot #{snapshot_id} for `{project_id}`…",
+            parse_mode="Markdown",
+        )
+        try:
+            from factory.integrations.supabase import restore_state
+            restored = await restore_state(project_id, snapshot_id)
+            if restored is None:
+                await query.edit_message_text(
+                    f"❌ Snapshot #{snapshot_id} not found for `{project_id}`.",
+                    parse_mode="Markdown",
+                )
+                return
+            await update_project_state(restored)
+            await query.edit_message_text(
+                f"✅ Restored to snapshot #{snapshot_id} — "
+                f"stage: `{restored.current_stage.value}`\n"
+                f"Use /continue to resume or /status to check.",
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            logger.error(f"Restore callback error: {e}", exc_info=True)
+            await query.edit_message_text("⚠️ Restore error — check logs.")
 
     elif data.startswith("cancel_confirm_"):
         pid = data.replace("cancel_confirm_", "")

@@ -30,6 +30,7 @@ from factory.core.roles import call_ai
 from factory.core.execution import ExecutionModeManager, _get_project_workspace
 from factory.core.user_space import enforce_user_space
 from factory.pipeline.graph import pipeline_node, register_stage_node
+from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
 
 logger = logging.getLogger("factory.pipeline.s5_build")
 
@@ -389,14 +390,15 @@ async def _attempt_build_fix(
 
     Spec: §4.5 Phase 4 error recovery
     """
+    _fix_base = (
+        f"Build error:\n{error[:2000]}\n\n"
+        f"Suggest a fix command or file change. "
+        f"Return JSON: {{\"fix_type\": \"command|file\", "
+        f"\"fix\": \"...\", \"resolved\": true/false}}"
+    )
     fix = await call_ai(
         role=AIRole.QUICK_FIX,
-        prompt=(
-            f"Build error:\n{error[:2000]}\n\n"
-            f"Suggest a fix command or file change. "
-            f"Return JSON: {{\"fix_type\": \"command|file\", "
-            f"\"fix\": \"...\", \"resolved\": true/false}}"
-        ),
+        prompt=_inject_cc(_fix_base, state, current_stage="s5_build", compact=True),
         state=state,
         action="general",
     )

@@ -35,6 +35,7 @@ from factory.core.state import (
 )
 from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
+from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
 
 logger = logging.getLogger("factory.pipeline.s3_design")
 
@@ -448,19 +449,20 @@ async def _generate_standard_design(
     screens  = blueprint_data.get("screens", [])
 
     # Component library spec
+    _comp_base = (
+        f"Write a Component Library Specification for '{app_name}'.\n\n"
+        f"Design system: {vibe.get('design_system', 'material3')}\n"
+        f"Visual style: {vibe.get('visual_style', 'minimal')}\n"
+        f"Color palette: {json.dumps(vibe.get('color_palette', {}))}\n"
+        f"Screens: {[s.get('name') for s in screens[:12]]}\n\n"
+        f"List all reusable UI components with: name, purpose, variants, "
+        f"state (default/hover/pressed/disabled), props. "
+        f"Cover: buttons, inputs, cards, navigation, modals, loaders. "
+        f"Return Markdown."
+    )
     comp_lib_raw = await call_ai(
         role=AIRole.STRATEGIST,
-        prompt=(
-            f"Write a Component Library Specification for '{app_name}'.\n\n"
-            f"Design system: {vibe.get('design_system', 'material3')}\n"
-            f"Visual style: {vibe.get('visual_style', 'minimal')}\n"
-            f"Color palette: {json.dumps(vibe.get('color_palette', {}))}\n"
-            f"Screens: {[s.get('name') for s in screens[:12]]}\n\n"
-            f"List all reusable UI components with: name, purpose, variants, "
-            f"state (default/hover/pressed/disabled), props. "
-            f"Cover: buttons, inputs, cards, navigation, modals, loaders. "
-            f"Return Markdown."
-        ),
+        prompt=_inject_cc(_comp_base, state, current_stage="s3_design", compact=True),
         state=state,
         action="plan_architecture",
     )
@@ -558,22 +560,23 @@ async def _generate_game_assets(
 
     # ── 1. GDD ──────────────────────────────────────────────────────
     logger.info(f"[{state.project_id}] Game assets: generating GDD")
+    _gdd_base = (
+        f"Write a complete Game Design Document (GDD) for this game.\n\n"
+        f"{base_ctx}\n"
+        f"Sections required:\n"
+        f"## Game Overview — genre, target audience (age/region), platform, ESRB/PEGI rating\n"
+        f"## Core Gameplay Loop — the 30-second, 5-minute, and 30-minute loops\n"
+        f"## Mechanics — movement, actions, interactions, physics, rules\n"
+        f"## Win/Fail Conditions — objectives, failure states, checkpoints\n"
+        f"## Progression System — levels, XP, unlocks, difficulty curve\n"
+        f"## Economy — in-game currency, IAP items, premium vs free content\n"
+        f"## Controls & Input — {platform_note[:100]}\n"
+        f"## KSA Market Fit — cultural considerations, Arabic localisation, GCAM rating\n\n"
+        f"Return professional Markdown."
+    )
     gdd_raw = await call_ai(
         role=AIRole.STRATEGIST,
-        prompt=(
-            f"Write a complete Game Design Document (GDD) for this game.\n\n"
-            f"{base_ctx}\n"
-            f"Sections required:\n"
-            f"## Game Overview — genre, target audience (age/region), platform, ESRB/PEGI rating\n"
-            f"## Core Gameplay Loop — the 30-second, 5-minute, and 30-minute loops\n"
-            f"## Mechanics — movement, actions, interactions, physics, rules\n"
-            f"## Win/Fail Conditions — objectives, failure states, checkpoints\n"
-            f"## Progression System — levels, XP, unlocks, difficulty curve\n"
-            f"## Economy — in-game currency, IAP items, premium vs free content\n"
-            f"## Controls & Input — {platform_note[:100]}\n"
-            f"## KSA Market Fit — cultural considerations, Arabic localisation, GCAM rating\n\n"
-            f"Return professional Markdown."
-        ),
+        prompt=_inject_cc(_gdd_base, state, current_stage="s3_design", compact=True),
         state=state,
         action="plan_architecture",
     )

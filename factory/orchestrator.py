@@ -301,6 +301,99 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     return state
 
 
+async def resume_pipeline(state: PipelineState) -> PipelineState:
+    """Resume pipeline from state.current_stage.
+
+    Spec: §2.7.1 — used by /continue and callback restore flow.
+    Finds the current stage in STAGE_SEQUENCE and runs from that point;
+    handles S7+ routing loops identically to run_pipeline().
+
+    If current_stage is HALTED the caller must have already set
+    state.current_stage back to the target stage before calling this.
+    """
+    logger.info(
+        f"[{state.project_id}] Pipeline RESUME from {state.current_stage.value}"
+    )
+    budget_governor.set_spend_source(cost_tracker.monthly_total_cents)
+
+    current = state.current_stage.value  # e.g. "s4_codegen"
+    _linear = STAGE_SEQUENCE[:7]         # (name, fn) pairs for S0→S6
+    _linear_names = [n for n, _ in _linear]
+
+    # ── Linear portion S0–S6 ────────────────────────────────────────
+    if current in _linear_names:
+        start_idx = _linear_names.index(current)
+        for stage_name, stage_fn in _linear[start_idx:]:
+            state = await stage_fn(state)
+            if state.current_stage == Stage.HALTED:
+                return await halt_handler_node(state)
+            await _notify_stage_complete(state, stage_name.upper())
+
+        # After S6 — test routing loop (same as run_pipeline)
+        while True:
+            route = route_after_test(state)
+            if route == "halt":
+                return await halt_handler_node(state)
+            if route == "s4_codegen":
+                state = await s4_codegen_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                await _notify_stage_complete(state, "S4_CODEGEN")
+                state = await s5_build_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                await _notify_stage_complete(state, "S5_BUILD")
+                state = await s6_test_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                await _notify_stage_complete(state, "S6_TEST")
+                continue
+            break  # route == "s7_deploy"
+        current = "s7_deploy"
+
+    # ── S7 Deploy ───────────────────────────────────────────────────
+    if current == "s7_deploy":
+        state = await s7_deploy_node(state)
+        if state.current_stage == Stage.HALTED:
+            return await halt_handler_node(state)
+        await _notify_stage_complete(state, "S7_DEPLOY")
+        current = "s8_verify"
+
+    # ── S8 Verify ───────────────────────────────────────────────────
+    if current == "s8_verify":
+        state = await s8_verify_node(state)
+        if state.current_stage == Stage.HALTED:
+            return await halt_handler_node(state)
+        await _notify_stage_complete(state, "S8_VERIFY")
+
+        while True:
+            route = route_after_verify(state)
+            if route == "halt":
+                return await halt_handler_node(state)
+            if route == "s7_deploy":
+                state = await s7_deploy_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                await _notify_stage_complete(state, "S7_DEPLOY")
+                state = await s8_verify_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                await _notify_stage_complete(state, "S8_VERIFY")
+                continue
+            break  # route == "s9_handoff"
+        current = "s9_handoff"
+
+    # ── S9 Handoff ──────────────────────────────────────────────────
+    if current == "s9_handoff":
+        state = await s9_handoff_node(state)
+        if state.current_stage == Stage.HALTED:
+            return await halt_handler_node(state)
+        await _notify_stage_complete(state, "S9_HANDOFF")
+
+    logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
+    return state
+
+
 async def run_pipeline_from_description(
     description: str,
     operator_id: str = "local-operator",

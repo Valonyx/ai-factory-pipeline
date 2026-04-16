@@ -460,9 +460,40 @@ async def cmd_continue(update: Any, context: Any):
         state.current_stage = state.previous_stage
 
     await update_project_state(state)
+    resume_stage = state.current_stage.value
     await update.message.reply_text(
-        f"▶️ Resuming from {state.current_stage.value}..."
+        f"▶️ Resuming from `{resume_stage}`…",
+        parse_mode="Markdown",
     )
+
+    async def _run_continue():
+        try:
+            from factory.orchestrator import resume_pipeline
+            from factory.telegram.notifications import send_telegram_message
+            final = await resume_pipeline(state)
+            if final.current_stage.value == "halted":
+                reason = final.project_metadata.get("halt_reason", "unknown")
+                await send_telegram_message(
+                    user_id,
+                    f"⛔ Pipeline halted at `{resume_stage}`: {reason}",
+                )
+            else:
+                await send_telegram_message(
+                    user_id,
+                    f"✅ Pipeline resumed and completed from `{resume_stage}`!\n"
+                    f"Use /status to view results.",
+                )
+        except Exception as e:
+            logger.error(f"[/continue] resume_pipeline error: {e}", exc_info=True)
+            try:
+                from factory.telegram.notifications import send_telegram_message
+                await send_telegram_message(
+                    user_id, f"⚠️ Resume error: {e}"
+                )
+            except Exception:
+                pass
+
+    _bg(_run_continue())
 
 
 @require_auth

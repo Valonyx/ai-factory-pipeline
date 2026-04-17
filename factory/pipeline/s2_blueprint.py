@@ -372,6 +372,48 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
 
     state.s2_output = blueprint_data
 
+    # ── Quality Gate (Issue 17) ──────────────────────────────────────
+    # Skip gates in dry-run / test mode (DRY_RUN=true).
+    if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+        from factory.core.quality_gates import (
+            check_min_list, check_no_placeholders,
+            raise_if_failed, GateResult, QualityGateFailure,
+        )
+        from factory.core.halt import HaltCode, HaltReason, set_halt
+
+        bp = state.s2_output or state.project_metadata
+        _gate_results = []
+
+        features = bp.get("feature_list") or bp.get("FEATURE_LIST") or []
+        _gate_results.append(check_min_list(features, 5, "feature_list"))
+
+        journeys = bp.get("user_journeys") or bp.get("USER_JOURNEYS") or []
+        _gate_results.append(check_min_list(journeys, 3, "user_journeys"))
+
+        events = (bp.get("analytics_plan") or {}).get("events") or bp.get("analytics_events") or []
+        _gate_results.append(check_min_list(events, 5, "analytics_events"))
+
+        desc = bp.get("description") or bp.get("app_description") or ""
+        if isinstance(desc, str) and desc:
+            _gate_results.append(check_no_placeholders(desc, "description"))
+
+        try:
+            raise_if_failed(
+                "S2_BLUEPRINT", _gate_results,
+                recommended_action="retry S2_BLUEPRINT — regenerate with more detail",
+            )
+        except QualityGateFailure as qgf:
+            set_halt(state, HaltReason(
+                code=HaltCode.QUALITY_GATE_FAILED,
+                title="Blueprint failed quality gate",
+                detail=qgf.format_for_telegram()[:600],
+                stage="S2_BLUEPRINT",
+                failing_gate="blueprint_content",
+                remediation_steps=["Retry S2 with /continue", "/cancel"],
+            ))
+            state.legal_halt = True
+            return state
+
     # ══════════════════════════════════════
     # Phase 5: Compliance Artifacts (FIX-07)
     # ══════════════════════════════════════

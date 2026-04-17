@@ -56,6 +56,10 @@ logger = logging.getLogger("factory.telegram.bot")
 
 _background_tasks: set = set()
 
+# Per-project task registry — maps project_id → asyncio.Task
+# Allows /cancel to actually cancel a running pipeline coroutine.
+_project_tasks: dict = {}
+
 
 def _bg(coro) -> "asyncio.Task":
     """Create a background task and keep a hard reference until it finishes."""
@@ -64,6 +68,37 @@ def _bg(coro) -> "asyncio.Task":
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+def register_project_task(project_id: str, task: "asyncio.Task") -> None:
+    """Register a pipeline task under its project_id.
+
+    Stores in _project_tasks (for cancellation) and _background_tasks
+    (for GC-prevention).  Replaces any previous task for the same project_id.
+    """
+    _project_tasks[project_id] = task
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(lambda _t: _project_tasks.pop(project_id, None))
+
+
+def cancel_project_task(project_id: str) -> bool:
+    """Cancel the asyncio.Task running the pipeline for project_id.
+
+    Returns True if a task was found and cancel() was called,
+    False if no task existed or the task was already done.
+    """
+    import asyncio as _asyncio
+    task = _project_tasks.get(project_id)
+    if task is None:
+        return False
+    if task.done():
+        _project_tasks.pop(project_id, None)
+        return False
+    task.cancel()
+    _project_tasks.pop(project_id, None)
+    logger.info(f"[{project_id}] Pipeline task cancellation requested via cancel_project_task")
+    return True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -501,7 +536,8 @@ async def cmd_continue(update: Any, context: Any):
             except Exception:
                 pass
 
-    _bg(_run_continue())
+    cont_task = _bg(_run_continue())
+    register_project_task(state.project_id, cont_task)
 
 
 @require_auth
@@ -1037,7 +1073,8 @@ async def cmd_modify(update: Any, context: Any):
             except Exception:
                 pass
 
-    _bg(_run_modify())
+    mod_task = _bg(_run_modify())
+    register_project_task(project_id, mod_task)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1830,7 +1867,8 @@ async def _start_project(
             except Exception:
                 pass
 
-    _bg(_run_and_notify())
+    task = _bg(_run_and_notify())
+    register_project_task(project_id, task)
 
 
 # ═══════════════════════════════════════════════════════════════════

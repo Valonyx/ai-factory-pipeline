@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -147,6 +148,56 @@ async def s7_deploy_node(state: PipelineState) -> PipelineState:
         return state
 
     # ══════════════════════════════════════════
+    # Issue 4: Deploy-less pre-check — skip store uploads when creds absent
+    # ══════════════════════════════════════════
+    platforms = (
+        (state.intake or {}).get("platforms")
+        or state.project_metadata.get("platforms")
+        or []
+    )
+    deploy_targets: list = []
+    store_targets: list = []
+    if platforms:
+        try:
+            from factory.core.platform_targets import resolve_deploy_targets
+            mapping = resolve_deploy_targets(platforms)
+            deploy_targets = mapping.get("deploy_targets", [])
+            store_targets = mapping.get("store_targets", [])
+        except (ValueError, Exception):
+            pass
+
+    _has_apple = bool(os.environ.get("APPLE_ID") and os.environ.get("APP_SPECIFIC_PASSWORD"))
+    _has_google = bool(
+        os.environ.get("GOOGLE_PLAY_SERVICE_ACCOUNT")
+        or os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+    )
+
+    _needs_apple = any(t in store_targets for t in ("app_store", "testflight"))
+    _needs_google = any(t in store_targets for t in ("google_play", "google_play_internal"))
+    _skip_to_airlock = (
+        (_needs_apple and not _has_apple)
+        or (_needs_google and not _has_google)
+    )
+
+    if _skip_to_airlock:
+        missing_stores = []
+        if _needs_apple and not _has_apple:
+            missing_stores.append("App Store (APPLE_ID + APP_SPECIFIC_PASSWORD not set)")
+        if _needs_google and not _has_google:
+            missing_stores.append("Google Play (GOOGLE_PLAY_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT not set)")
+        notify_msg = (
+            f"⚠️ No store credentials found for: {', '.join(missing_stores)}.\n"
+            f"Packaging your app for direct Telegram delivery instead."
+        )
+        try:
+            await send_telegram_message(state.operator_id, notify_msg)
+        except Exception:
+            pass
+        state.project_metadata["deploy_method"] = "telegram_airlock"
+        state.project_metadata["skip_store_upload"] = True
+        logger.info(f"[{state.project_id}] Deploy-less routing: {missing_stores}")
+
+    # ══════════════════════════════════════════
     # Phase 1: Platform Icon Generation (v5.4.1 Patch 1)
     # ══════════════════════════════════════════
     brand_assets = state.project_metadata.get("brand_assets", [])
@@ -177,15 +228,27 @@ async def s7_deploy_node(state: PipelineState) -> PipelineState:
     # Phase 3: Android Deployment
     # ══════════════════════════════════════════
     if "android" in target_platforms and stack != TechStack.SWIFT:
-        android_result = await _deploy_android(state, stack, exec_mgr)
-        deploy_results["android"] = android_result
+        if state.project_metadata.get("skip_store_upload"):
+            # Credentials missing — go straight to airlock
+            artifact_path = (state.s5_output or {}).get("artifacts", {}).get("android", {}).get("path", "app-release.aab")
+            android_airlock = await airlock_deliver(state=state, platform="android", binary_path=artifact_path, error="deploy-less: no store credentials")
+            deploy_results["android"] = {"success": True, "method": "airlock_telegram", "airlock": android_airlock}
+        else:
+            android_result = await _deploy_android(state, stack, exec_mgr)
+            deploy_results["android"] = android_result
 
     # ══════════════════════════════════════════
     # Phase 4: iOS Deployment
     # ══════════════════════════════════════════
     if "ios" in target_platforms and stack != TechStack.KOTLIN:
-        ios_result = await _deploy_ios(state, stack, exec_mgr)
-        deploy_results["ios"] = ios_result
+        if state.project_metadata.get("skip_store_upload"):
+            # Credentials missing — go straight to airlock
+            ipa_path = (state.s5_output or {}).get("artifacts", {}).get("ios", {}).get("path", "build/export/App.ipa")
+            ios_airlock = await airlock_deliver(state=state, platform="ios", binary_path=ipa_path, error="deploy-less: no store credentials")
+            deploy_results["ios"] = {"success": True, "method": "airlock_telegram", "airlock": ios_airlock}
+        else:
+            ios_result = await _deploy_ios(state, stack, exec_mgr)
+            deploy_results["ios"] = ios_result
 
     state.s7_output = {
         "deployments": deploy_results,

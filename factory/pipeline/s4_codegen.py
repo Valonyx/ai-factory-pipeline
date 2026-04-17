@@ -1961,6 +1961,15 @@ async def _codegen_full_generation(
         scout=True,
     )
 
+    # Issue 21 §8: inject structured retrieval context (requirements, screens, etc.)
+    try:
+        from factory.core.context_bridge import pack_context as _pack_context
+        _structured_ctx = await _pack_context(state, "S4_CODEGEN", budget_tokens=3000)
+        if _structured_ctx:
+            code_prompt = _structured_ctx + "\n\n---\n\n" + code_prompt
+    except Exception as _pc_err:
+        logger.debug(f"[{state.project_id}] pack_context failed (non-fatal): {_pc_err}")
+
     result = await call_ai(
         role=AIRole.ENGINEER,
         prompt=code_prompt,

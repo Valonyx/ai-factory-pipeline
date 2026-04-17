@@ -890,6 +890,11 @@ class PipelineState(BaseModel):
     warnings: list[dict] = Field(default_factory=list)
     errors: list[dict] = Field(default_factory=list)
 
+    # ── Abort / Lifecycle ──
+    pipeline_aborted: bool = False          # set True by /cancel; checked at every stage boundary
+    pipeline_deadline: Optional[str] = None  # ISO-8601 UTC; set at project creation; wall-clock guard
+    stage_visit_counts: dict[str, int] = Field(default_factory=dict)  # stage_name → visit count
+
     # ── Timestamps ──
     created_at: str = ""
     updated_at: str = ""

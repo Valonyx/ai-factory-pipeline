@@ -90,6 +90,34 @@ async def s8_verify_node(state: PipelineState) -> PipelineState:
         "check_count": len(checks),
     }
 
+    # Issue 19: when verification fails, capture the actual failure surface
+    # (list of failed check types + their detail) so downstream halt handlers
+    # render something actionable instead of "Reason: unknown".
+    if not all_passed:
+        failed = [c for c in checks if not c.get("passed", False)]
+        failure_lines = [
+            f"{c.get('type', 'check')}: "
+            f"{c.get('detail') or c.get('note') or c.get('status') or c.get('url') or 'no detail'}"
+            for c in failed
+        ]
+        failure_detail = "; ".join(failure_lines) or "no check detail captured"
+        from factory.core.halt import HaltCode, HaltReason
+        reason = HaltReason(
+            code=HaltCode.STAGE_VERIFICATION_FAILED,
+            title=f"S8 Verify failed ({len(failed)} of {len(checks)} checks)",
+            detail=failure_detail[:1500],
+            stage="S8_VERIFY",
+            failing_gate="deploy_verification",
+            remediation_steps=[
+                "Inspect deployment logs for the failed check",
+                "Re-run S7 deploy with /continue after fixing",
+                f"/restore State_#{state.snapshot_id or 0}",
+            ],
+        )
+        state.project_metadata["s8_failure_reason"] = reason.to_dict()
+        state.project_metadata["halt_reason_struct"] = reason.to_dict()
+        state.project_metadata["halt_reason"] = str(reason)
+
     logger.info(
         f"[{state.project_id}] S8 Verify: "
         f"passed={all_passed}, checks={len(checks)}"
@@ -166,10 +194,18 @@ def _verify_mobile(platform: str, deploy: dict) -> dict:
             "note": "Binary sent to operator for manual upload",
         }
     else:
+        # Issue 19: Capture actual failure surface rather than literal "unknown".
+        err = deploy.get("error") or deploy.get("status_detail")
+        status_detail = (
+            f"method={method}, success={deploy.get('success', False)}"
+            + (f", error={err}" if err else "")
+        )
         return {
             "type": f"{platform}_deploy",
             "passed": deploy.get("success", False),
-            "status": "unknown",
+            "status": deploy.get("status") or status_detail,
+            "method": method,
+            "detail": status_detail,
         }
 
 

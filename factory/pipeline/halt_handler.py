@@ -30,7 +30,7 @@ async def halt_handler_node(state: PipelineState) -> PipelineState:
 
     logger.warning(
         f"[{state.project_id}] Pipeline HALTED at {state.current_stage.value}: "
-        f"{state.legal_halt_reason or 'unknown reason'}"
+        f"{state.legal_halt_reason or state.project_metadata.get('halt_reason') or 'no diagnostic detail captured'}"
     )
     return state
 

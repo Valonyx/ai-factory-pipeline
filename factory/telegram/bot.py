@@ -472,7 +472,11 @@ async def cmd_continue(update: Any, context: Any):
             from factory.telegram.notifications import send_telegram_message
             final = await resume_pipeline(state)
             if final.current_stage.value == "halted":
-                reason = final.project_metadata.get("halt_reason", "unknown")
+                reason = (
+                    final.project_metadata.get("halt_reason")
+                    or final.legal_halt_reason
+                    or "no diagnostic detail captured"
+                )
                 await send_telegram_message(
                     user_id,
                     f"⛔ Pipeline halted at `{resume_stage}`: {reason}",
@@ -998,7 +1002,11 @@ async def cmd_modify(update: Any, context: Any):
             from factory.telegram.notifications import send_telegram_message
             final = await run_pipeline(state)
             if final.current_stage.value == "halted":
-                reason = final.project_metadata.get("halt_reason", "unknown")
+                reason = (
+                    final.project_metadata.get("halt_reason")
+                    or final.legal_halt_reason
+                    or "no diagnostic detail captured"
+                )
                 await send_telegram_message(user_id, f"MODIFY halted [{project_id}]: {reason}")
             else:
                 await send_telegram_message(
@@ -1724,7 +1732,8 @@ async def _start_project(
                         final,
                         reason=final.project_metadata.get("halt_reason", "")
                         or final.legal_halt_reason
-                        or final.project_metadata.get("last_error", "unknown"),
+                        or final.project_metadata.get("last_error", "")
+                        or "no diagnostic detail captured",
                     ),
                 )
             else:

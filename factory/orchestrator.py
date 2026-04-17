@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import traceback
 from datetime import datetime, timezone
 from functools import wraps
 from typing import Optional, Callable, Awaitable
 
 from factory.core.state import PipelineState, Stage, AutonomyMode
+from factory.core.halt import HaltCode, HaltReason, set_halt
 from factory.legal.checks import legal_check_hook
 from factory.monitoring.budget_governor import (
     budget_governor, BudgetExhaustedError, BudgetIntakeBlockedError,
@@ -143,16 +145,48 @@ def pipeline_node(stage: Stage):
             except BudgetExhaustedError as e:
                 logger.critical(f"[{state.project_id}] BLACK tier halt: {e}")
                 _transition_to(state, Stage.HALTED)
-                state.project_metadata["halt_reason"] = "budget_exhausted"
+                set_halt(state, HaltReason(
+                    code=HaltCode.BUDGET_EXHAUSTED,
+                    title="Budget exhausted",
+                    detail=f"BLACK tier budget guard triggered: {e}",
+                    stage=stage.value,
+                    remediation_steps=[
+                        "Raise monthly budget with /budget <USD>",
+                        "Wait for next billing cycle",
+                    ],
+                ))
                 return state
             except BudgetIntakeBlockedError as e:
                 logger.warning(f"[{state.project_id}] RED tier intake blocked: {e}")
                 _transition_to(state, Stage.HALTED)
-                state.project_metadata["halt_reason"] = "intake_blocked"
+                set_halt(state, HaltReason(
+                    code=HaltCode.INTAKE_BLOCKED,
+                    title="Intake blocked — budget near cap",
+                    detail=f"RED tier intake guard triggered: {e}",
+                    stage=stage.value,
+                    remediation_steps=[
+                        "Raise monthly budget with /budget <USD>",
+                        "Cancel stale projects with /cancel",
+                    ],
+                ))
                 return state
             except Exception as e:
+                tb_tail = "\n".join(traceback.format_exc().splitlines()[-3:])
                 logger.error(f"[{state.project_id}] Stage {stage.value} ERROR: {e}", exc_info=True)
                 state.project_metadata["last_error"] = str(e)[:500]
+                set_halt(state, HaltReason(
+                    code=HaltCode.UNCAUGHT_EXCEPTION,
+                    title="Unexpected error",
+                    detail=f"{type(e).__name__}: {e}\n{tb_tail}",
+                    stage=stage.value,
+                    remediation_steps=[
+                        "Report this bug to the operator team",
+                        f"/restore State_#{state.snapshot_id or 0}",
+                        "/cancel",
+                    ],
+                ))
+                _transition_to(state, Stage.HALTED)
+                return state
             await legal_check_hook(state, stage, "post")
             if state.legal_halt:
                 _transition_to(state, Stage.HALTED)
@@ -196,21 +230,51 @@ from factory.pipeline.s9_handoff import s9_handoff_node
 
 async def halt_handler_node(state: PipelineState) -> PipelineState:
     _transition_to(state, Stage.HALTED)
-    reason = (
-        state.legal_halt_reason
-        or state.project_metadata.get("halt_reason", "unknown")
-        or state.project_metadata.get("last_error", "unknown")
+
+    # Prefer structured HaltReason if one was attached via set_halt().
+    struct = state.project_metadata.get("halt_reason_struct")
+    if struct:
+        # Rehydrate into HaltReason and render full Telegram block.
+        try:
+            reason_obj = HaltReason(
+                code=HaltCode(struct["code"]),
+                title=struct["title"],
+                detail=struct["detail"],
+                stage=struct.get("stage", state.current_stage.value),
+                failing_gate=struct.get("failing_gate"),
+                remediation_steps=list(struct.get("remediation_steps") or []),
+                restore_options=list(struct.get("restore_options") or ["/continue", "/cancel"]),
+            )
+            logger.warning(
+                f"[{state.project_id}] Pipeline HALTED: "
+                f"[{reason_obj.code.value}] {reason_obj.title}"
+            )
+            await send_telegram_message(state.operator_id, reason_obj.format_for_telegram())
+            return state
+        except (KeyError, ValueError) as e:
+            logger.error(f"[{state.project_id}] halt_reason_struct malformed: {e}")
+
+    # Fallback — no structured payload. Build one from whatever free-text
+    # signals exist. Never render the literal string "unknown".
+    legal = (state.legal_halt_reason or "").strip()
+    stored = (state.project_metadata.get("halt_reason") or "").strip()
+    last_error = (state.project_metadata.get("last_error") or "").strip()
+    detail_parts = [p for p in (legal, stored, last_error) if p and p.lower() != "unknown"]
+    detail = " | ".join(detail_parts) or "No diagnostic detail was captured at the halt site."
+
+    reason_obj = HaltReason(
+        code=HaltCode.UNCAUGHT_EXCEPTION,
+        title="Pipeline halted",
+        detail=detail,
+        stage=state.current_stage.value,
+        remediation_steps=[
+            f"/restore State_#{state.snapshot_id or 0}",
+            "/continue",
+            "/cancel",
+        ],
     )
-    logger.warning(f"[{state.project_id}] Pipeline HALTED: {reason}")
-    await send_telegram_message(
-        state.operator_id,
-        f"⛔ Pipeline halted at {state.current_stage.value}\n\n"
-        f"Reason: {reason}\n\n"
-        f"Options:\n"
-        f"  /continue — Resume after resolving\n"
-        f"  /force_continue — Override and proceed\n"
-        f"  /cancel — Cancel this project",
-    )
+    logger.warning(f"[{state.project_id}] Pipeline HALTED: {reason_obj}")
+    await send_telegram_message(state.operator_id, reason_obj.format_for_telegram())
     return state
 
 

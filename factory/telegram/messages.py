@@ -202,9 +202,39 @@ def format_cost_message(state: PipelineState) -> str:
 def format_halt_message(state: PipelineState, reason: str = "") -> str:
     """Format the halt notification.
 
-    Spec: §4.10 (Halt Handler)
+    Spec: §4.10 (Halt Handler) + v5.8.12 Issue 19 (structured halt payload).
+    If a structured HaltReason is attached in project_metadata, render it;
+    otherwise fall back to the legacy free-text path (but never show the
+    literal word "unknown" as the reason — Issue 19).
     """
-    reason = reason or state.legal_halt_reason or "Unknown (check errors)"
+    struct = state.project_metadata.get("halt_reason_struct")
+    if struct:
+        try:
+            from factory.core.halt import HaltCode, HaltReason
+            obj = HaltReason(
+                code=HaltCode(struct["code"]),
+                title=struct["title"],
+                detail=struct["detail"],
+                stage=struct.get("stage", state.current_stage.value),
+                failing_gate=struct.get("failing_gate"),
+                remediation_steps=list(struct.get("remediation_steps") or []),
+                restore_options=list(struct.get("restore_options") or ["/continue", "/cancel"]),
+            )
+            return truncate_message(obj.format_for_telegram())
+        except (KeyError, ValueError):
+            pass  # fall through to legacy rendering
+
+    # Legacy path — never emit the literal string "unknown".
+    if not reason:
+        candidates = [
+            state.legal_halt_reason,
+            state.project_metadata.get("halt_reason"),
+            state.project_metadata.get("last_error"),
+        ]
+        reason = next(
+            (c for c in candidates if c and c.strip() and c.strip().lower() != "unknown"),
+            "No diagnostic detail captured",
+        )
     errors = state.errors[-5:] if state.errors else []
     war_room = state.war_room_history[-3:] if state.war_room_history else []
 

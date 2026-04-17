@@ -445,6 +445,12 @@ async def _call_single_ai_provider(
     if provider == "mistral":
         from factory.integrations.mistral_provider import call_mistral
         return await call_mistral(prompt, contract)
+    if provider == "cloudflare":
+        from factory.integrations.cloudflare_provider import call_cloudflare
+        return await call_cloudflare(prompt, contract)
+    if provider == "github_models":
+        from factory.integrations.github_models_provider import call_github_models
+        return await call_github_models(prompt, contract)
     if provider == "mock":
         return (f"[MOCK:{contract.role.value}] {prompt[:80]}", 0.0001)
     raise ValueError(f"Unknown AI provider: {provider}")

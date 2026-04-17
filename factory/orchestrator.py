@@ -60,6 +60,18 @@ _STAGE_ARTIFACTS: dict[str, list[str]] = {
     "S9_HANDOFF":   ["handoff_doc_path", "program_docs"],
 }
 
+# Per-stage artifact delivery map: stage_name → list of (state_output_key, caption_label)
+_STAGE_ARTIFACTS_DELIVERY: dict[str, list[tuple[str, str]]] = {
+    "S1_LEGAL":    [("legal_dossier_pdf_path", "Legal Dossier")],
+    "S2_BLUEPRINT":[("blueprint_pdf_path", "Master Blueprint")],
+    "S3_DESIGN":   [("design_package_path", "Design Package")],
+    "S4_CODEGEN":  [("codegen_archive_path", "Code Archive"), ("github_repo", None)],
+    "S5_BUILD":    [("build_log_path", "Build Log"), ("apk_path", "APK"), ("ipa_path", "IPA")],
+    "S6_TEST":     [("test_report_path", "Test Report")],
+    "S8_VERIFY":   [("verify_report_path", "Verification Report")],
+    "S9_HANDOFF":  [("handoff_doc_path", "Handoff Document"), ("program_docs_path", "Program Docs")],
+}
+
 
 async def _notify_stage_complete(state: PipelineState, stage_name: str) -> None:
     """Send structured stage-completion progress to the operator.
@@ -108,32 +120,34 @@ async def _notify_stage_complete(state: PipelineState, stage_name: str) -> None:
     except Exception as e:
         logger.debug(f"Stage progress notification failed (non-fatal): {e}")
 
-    # ── Per-stage file delivery (Issue #3) ──────────────────────────
-    # Send PDF / document artifacts to Telegram as they are produced.
-    _FILE_KEYS = (
-        "legal_dossier_pdf_path",   # S1
-        "blueprint_pdf_path",       # S2
-        "handoff_doc_path",         # S9
-    )
-    try:
-        from factory.telegram.notifications import send_telegram_file as _send_file
-        for key in _FILE_KEYS:
-            path = None
-            if output and isinstance(output, dict):
-                path = output.get(key)
-            if not path:
-                path = state.project_metadata.get(key)
-            if path and __import__("os").path.isfile(str(path)):
-                await _send_file(
-                    state.operator_id,
-                    str(path),
-                    caption=f"📎 {stage_name}: {key.replace('_pdf_path','').replace('_doc_path','').replace('_',' ').title()}",
-                )
-                logger.info(
-                    f"[{state.project_id}] Delivered {key} after {stage_name}"
-                )
-    except Exception as e:
-        logger.debug(f"Stage file delivery non-fatal: {e}")
+    # ── Per-stage file delivery (Issue 3 — comprehensive) ─────────────
+    stage_upper = stage_name.upper()
+    artifact_specs = _STAGE_ARTIFACTS_DELIVERY.get(stage_upper, [])
+    if artifact_specs:
+        try:
+            from factory.telegram.notifications import send_telegram_file as _send_file
+            for key, label in artifact_specs:
+                path = None
+                if output and isinstance(output, dict):
+                    path = output.get(key)
+                if not path:
+                    path = state.project_metadata.get(key)
+                # github_repo key: send as text link, not file
+                if key == "github_repo" and path:
+                    try:
+                        await notify_operator(
+                            state, NotificationType.STAGE_TRANSITION,
+                            f"📦 Code repository: {path}"
+                        )
+                    except Exception:
+                        pass
+                    continue
+                if path and __import__("os").path.isfile(str(path)):
+                    caption = f"📎 {label or key.replace('_path','').replace('_',' ').title()}"
+                    await _send_file(state.operator_id, str(path), caption=caption)
+                    logger.info(f"[{state.project_id}] Delivered {key} after {stage_name}")
+        except Exception as _e:
+            logger.debug(f"Stage file delivery non-fatal: {_e}")
 
 
 def pipeline_node(stage: Stage):

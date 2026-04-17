@@ -710,6 +710,7 @@ async def cmd_providers(update: Any, context: Any):
                 lines.append(f"  💾 {name}: write-mirror (standby read){pend_str}")
         return "\n".join(lines)
 
+    from factory.core.provider_intelligence import provider_intelligence
     msg = (
         "🤖 AI Provider Chain:\n"
         + _format_ai_chain(ai_chain)
@@ -719,6 +720,7 @@ async def cmd_providers(update: Any, context: Any):
         + _format_memory_chain()
         + "\n\n_All chains auto-recover when quotas reset.\n"
         "Higher-priority backends always take priority once available._"
+        + "\n\n" + provider_intelligence.status_message()
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -1967,6 +1969,10 @@ async def setup_bot() -> Any:
 
         # Start orphan-task sweeper (Issue 16 — cleans stale pipeline tasks)
         _bg(_orphan_task_sweeper())
+
+        # Start provider upgrade poller (Issue 20 — restores exhausted providers)
+        from factory.core.provider_intelligence import provider_intelligence
+        provider_intelligence.start_upgrade_poller(interval_seconds=60)
 
         from telegram.ext import MessageHandler as MH
         from telegram.error import TelegramError

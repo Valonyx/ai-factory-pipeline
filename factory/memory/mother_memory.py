@@ -164,6 +164,7 @@ async def store_insight(
     insight_type: str = "preference",  # preference | fact | lesson | error
     importance: int = 3,               # 1 (trivial) – 5 (critical)
     project_id: Optional[str] = None,
+    tags: Optional[dict] = None,       # arbitrary key-value metadata (Issue 21)
 ) -> str:
     """Store a long-term insight (extracted from conversation or pipeline)."""
     insight_id = f"ins_{uuid.uuid4().hex[:12]}"
@@ -176,6 +177,7 @@ async def store_insight(
         "insight_type": insight_type,
         "importance": importance,
         "project_id": project_id or "",
+        "tags": tags or {},
         "ts": ts,
     }
 
@@ -188,6 +190,120 @@ async def store_insight(
         logger.debug(f"[mother-memory] chain store_insight error: {e}")
 
     return insight_id
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Structured-Node Store Helpers (Issue 21 §5a)
+# ═══════════════════════════════════════════════════════════════════
+
+async def store_requirement(
+    project_id: str, operator_id: str,
+    req_id: str, description: str, priority: str,
+    acceptance_criteria: str, source_stage: str,
+) -> None:
+    """Store a product requirement node."""
+    content = f"REQ:{req_id}|{priority}|{description[:400]}|AC:{acceptance_criteria[:200]}"
+    await store_insight(
+        operator_id=operator_id,
+        project_id=project_id,
+        content=content,
+        insight_type="requirement",
+        importance=8,
+        tags={"source_stage": source_stage, "req_id": req_id},
+    )
+
+
+async def store_screen(
+    project_id: str, operator_id: str,
+    screen_id: str, name: str, purpose: str,
+    components: list[str], api_bindings: list[str],
+) -> None:
+    """Store a UI screen node."""
+    content = (
+        f"SCREEN:{screen_id}|{name}|{purpose[:200]}"
+        f"|components:{','.join(components[:10])}"
+        f"|apis:{','.join(api_bindings[:10])}"
+    )
+    await store_insight(
+        operator_id=operator_id,
+        project_id=project_id,
+        content=content,
+        insight_type="screen",
+        importance=7,
+        tags={"screen_id": screen_id, "screen_name": name},
+    )
+
+
+async def store_api_endpoint(
+    project_id: str, operator_id: str,
+    path: str, method: str,
+    request_schema: str, response_schema: str, auth: str,
+) -> None:
+    """Store an API endpoint node."""
+    content = (
+        f"API:{method.upper()} {path}"
+        f"|req:{request_schema[:150]}|resp:{response_schema[:150]}|auth:{auth}"
+    )
+    await store_insight(
+        operator_id=operator_id,
+        project_id=project_id,
+        content=content,
+        insight_type="api_endpoint",
+        importance=7,
+        tags={"path": path, "method": method.upper()},
+    )
+
+
+async def store_data_model(
+    project_id: str, operator_id: str,
+    name: str, fields: str, relations: str,
+) -> None:
+    """Store a data model node."""
+    content = f"MODEL:{name}|fields:{fields[:200]}|relations:{relations[:150]}"
+    await store_insight(
+        operator_id=operator_id,
+        project_id=project_id,
+        content=content,
+        insight_type="data_model",
+        importance=7,
+        tags={"model_name": name},
+    )
+
+
+async def store_legal_clause(
+    project_id: str, operator_id: str,
+    doc: str, section: str, body: str, jurisdiction: str, citation: str,
+) -> None:
+    """Store a legal clause node."""
+    content = f"LEGAL:{doc}|{section}|{jurisdiction}|{citation}|{body[:300]}"
+    await store_insight(
+        operator_id=operator_id,
+        project_id=project_id,
+        content=content,
+        insight_type="legal_clause",
+        importance=9,
+        tags={"doc": doc, "jurisdiction": jurisdiction},
+    )
+
+
+async def store_source_file(
+    project_id: str, operator_id: str,
+    path: str, purpose: str, exported_symbols: list[str], sloc: int,
+) -> None:
+    """Store a generated source file reference node."""
+    content = (
+        f"FILE:{path}|{purpose[:150]}"
+        f"|exports:{','.join(exported_symbols[:10])}"
+        f"|sloc:{sloc}"
+    )
+    await store_insight(
+        operator_id=operator_id,
+        project_id=project_id,
+        content=content,
+        insight_type="source_file",
+        importance=5,
+        tags={"file_path": path, "sloc": str(sloc)},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════

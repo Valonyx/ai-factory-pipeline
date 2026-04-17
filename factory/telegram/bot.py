@@ -478,6 +478,109 @@ async def cmd_snapshots(update: Any, context: Any):
 
 
 @require_auth
+async def cmd_diff(update: Any, context: Any):
+    """Issue 2: /diff <snap_a> <snap_b> — Show diff between two snapshots."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project.")
+        return
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text("Usage: /diff <snap_a> <snap_b>\nExample: /diff 3 5")
+        return
+    try:
+        a, b = int(args[0]), int(args[1])
+    except ValueError:
+        await update.message.reply_text("Snapshot IDs must be numbers.")
+        return
+    project_id = active.get("project_id", "")
+    from factory.integrations.supabase import diff_snapshots
+    d = await diff_snapshots(project_id, a, b)
+    if "error" in d:
+        await update.message.reply_text(f"❌ {d['error']}")
+        return
+    lines = [
+        f"📊 Diff: Snapshot #{a} → #{b}",
+        f"Stage: {d['stage_a']} → {d['stage_b']}",
+        f"Cost delta: ${d['cost_delta']:+.4f}",
+    ]
+    for change in d.get("fields_changed", []):
+        lines.append(f"  • {change}")
+    if not d.get("fields_changed"):
+        lines.append("  (no tracked field changes)")
+    await update.message.reply_text("\n".join(lines))
+
+
+@require_auth
+async def cmd_rerun(update: Any, context: Any):
+    """Issue 1: /rerun <stage> — Re-run pipeline from a given stage."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project. Use /new.")
+        return
+    args = (context.args or [])
+    if not args:
+        await update.message.reply_text(
+            "Usage: /rerun <stage>\nExample: /rerun s4\nStages: s0 s1 s2 s3 s4 s5 s6 s7 s8 s9"
+        )
+        return
+    target = args[0]
+    from factory.pipeline.stage_regression import request_regression, analyze_regression_impact, resolve_stage
+    canonical = resolve_stage(target)
+    if not canonical:
+        await update.message.reply_text(f"Unknown stage '{target}'. Try: s0 s1 s2 s3 s4 s5 s6 s7 s8 s9")
+        return
+    impact = await analyze_regression_impact(active.get("stage", "S9_HANDOFF"), canonical)
+    await update.message.reply_text(
+        f"⚠️ Regression impact:\n{impact.get('warning','')}\n"
+        f"Stages to re-run: {', '.join(impact.get('stages_to_rerun', []))}\n\n"
+        f"Confirm with /rerun_confirm {target}"
+    )
+
+
+@require_auth
+async def cmd_rerun_confirm(update: Any, context: Any):
+    """Issue 1: /rerun_confirm <stage> — Execute regression."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text("No active project.")
+        return
+    project_id = active.get("project_id", "")
+    args = (context.args or [])
+    if not args:
+        await update.message.reply_text("Usage: /rerun_confirm <stage>")
+        return
+    target = args[0]
+
+    async def _notify(msg: str):
+        await update.message.reply_text(msg)
+
+    await update.message.reply_text("Starting regression…")
+    _bg(_run_and_notify_regression(project_id, target, user_id, _notify))
+
+
+async def _run_and_notify_regression(project_id, target, user_id, notify_fn):
+    from factory.pipeline.stage_regression import request_regression
+    from factory.telegram.notifications import send_telegram_message
+
+    async def _nfn(msg):
+        try:
+            await send_telegram_message(user_id, msg)
+        except Exception:
+            pass
+
+    result = await request_regression(project_id, target, user_id, notify_fn=_nfn)
+    if result is None:
+        await send_telegram_message(user_id, "❌ Regression failed — check /snapshots.")
+    else:
+        from factory.telegram.messages import project_display_name as _pdn
+        await send_telegram_message(user_id, f"✅ Regression complete for {_pdn(result)}.")
+
+
+@require_auth
 async def cmd_continue(update: Any, context: Any):
     """§5.2: /continue — Resume halted pipeline."""
     user_id = str(update.effective_user.id)
@@ -2007,6 +2110,9 @@ async def setup_bot() -> Any:
         # ── Time travel ──
         app.add_handler(CommandHandler("restore", cmd_restore))
         app.add_handler(CommandHandler("snapshots", cmd_snapshots))
+        app.add_handler(CommandHandler("diff", cmd_diff))
+        app.add_handler(CommandHandler("rerun", cmd_rerun))
+        app.add_handler(CommandHandler("rerun_confirm", cmd_rerun_confirm))
 
         # ── Pipeline flow ──
         app.add_handler(CommandHandler("continue", cmd_continue))

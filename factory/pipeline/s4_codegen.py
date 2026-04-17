@@ -2086,6 +2086,20 @@ async def _codegen_full_generation(
         },
     }
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        await store_stage_insight(
+            "s4_codegen", state,
+            fact=(
+                f"CodeGen: {state.s4_output.get('file_count', 0)} files. "
+                f"Repo: {state.s4_output.get('github_repo', 'local')}"
+            ),
+            category="codegen",
+        )
+    except Exception as _si_err:
+        logger.debug(f"[{state.project_id}] S4 store_stage_insight failed (non-fatal): {_si_err}")
+
     # ── Quality Gate (Issue 17) ──────────────────────────────────────
     # Skip gates in dry-run / test mode (DRY_RUN=true).
     if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):

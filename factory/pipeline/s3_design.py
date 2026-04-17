@@ -267,6 +267,20 @@ async def s3_design_node(state: PipelineState) -> PipelineState:
     # ── 7. Mother Memory ──
     await _write_design_to_mother_memory(state, project_type, state.s3_output)
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        await store_stage_insight(
+            "s3_design", state,
+            fact=(
+                f"Design type: {state.s3_output.get('design_type', state.s3_output.get('project_type', ''))}. "
+                f"Assets: {len(state.s3_output.get('design_assets', state.s3_output.get('platform_assets', [])))}"
+            ),
+            category="design",
+        )
+    except Exception as _si_err:
+        logger.debug(f"[{state.project_id}] S3 store_stage_insight failed (non-fatal): {_si_err}")
+
     # ── Operator summary notification ──
     try:
         from factory.telegram.notifications import notify_operator

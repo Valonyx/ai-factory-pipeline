@@ -539,6 +539,22 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # ══════════════════════════════════════
     await _write_blueprint_to_mother_memory(state, blueprint_data, selected_stack)
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        bp_out = state.s2_output or {}
+        await store_stage_insight(
+            "s2_blueprint", state,
+            fact=(
+                f"Selected stack: {state.selected_stack.value if state.selected_stack else ''}. "
+                f"Features: {len(bp_out.get('feature_list', []))}. "
+                f"Screens: {len(bp_out.get('screens', []))}"
+            ),
+            category="blueprint",
+        )
+    except Exception as _si_err:
+        logger.debug(f"[{state.project_id}] S2 store_stage_insight failed (non-fatal): {_si_err}")
+
     logger.info(
         f"[{state.project_id}] S2 complete: "
         f"stack={selected_stack.value}, "

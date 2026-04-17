@@ -145,6 +145,20 @@ async def s6_test_node(state: PipelineState) -> PipelineState:
     state.s6_output = test_output
     state.project_metadata["tests_passed"] = test_output.get("passed", False)
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        await store_stage_insight(
+            "s6_test", state,
+            fact=(
+                f"Tests: {state.s6_output.get('tests_passed', 0)}/"
+                f"{state.s6_output.get('tests_executed', state.s6_output.get('total_tests', 0))} passed"
+            ),
+            category="test",
+        )
+    except Exception as _si_err:
+        logger.debug(f"[{state.project_id}] S6 store_stage_insight failed (non-fatal): {_si_err}")
+
     # ── Step 4: Pre-deploy gate (FIX-08) ──
     if test_output.get("passed", False):
         deploy_approved = await pre_deploy_gate(state)

@@ -193,6 +193,24 @@ async def s7_deploy_node(state: PipelineState) -> PipelineState:
         ),
     }
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        _url = next(
+            (v.get("url","") for v in deploy_results.values() if isinstance(v, dict) and v.get("url")),
+            ""
+        )
+        await store_stage_insight(
+            "s7_deploy", state,
+            fact=(
+                f"Deploy URL: {_url} "
+                f"status: {'success' if state.s7_output.get('all_success') else 'partial'}"
+            ),
+            category="deploy",
+        )
+    except Exception as _si_err:
+        logger.debug(f"[{state.project_id}] S7 store_stage_insight failed (non-fatal): {_si_err}")
+
     logger.info(
         f"[{state.project_id}] S7 Deploy: "
         f"platforms={list(deploy_results.keys())}, "

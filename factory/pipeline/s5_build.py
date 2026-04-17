@@ -184,6 +184,23 @@ async def s5_build_node(state: PipelineState) -> PipelineState:
         ),
     }
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        await store_stage_insight(
+            "s5_build", state,
+            fact=(
+                f"Build: {state.s5_output.get('build_status', 'source_only' if state.s5_output.get('source_only') else 'attempted')}. "
+                f"Platforms: {state.s5_output.get('build_platforms', [])}"
+            ),
+            category="build",
+        )
+    except Exception as _si_err:
+        import logging as _l
+        _l.getLogger("factory.pipeline.s5_build").debug(
+            f"[{state.project_id}] S5 store_stage_insight failed (non-fatal): {_si_err}"
+        )
+
     # War Room for build failures (skip for source_only — no binary to fix)
     if not build_result.get("success") and build_result.get("errors") and not source_only:
         for error in build_result["errors"][:3]:

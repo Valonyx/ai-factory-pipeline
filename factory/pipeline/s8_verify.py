@@ -90,6 +90,24 @@ async def s8_verify_node(state: PipelineState) -> PipelineState:
         "check_count": len(checks),
     }
 
+    # ── Issue 11 re-verify: store stage insight ──
+    try:
+        from factory.core.stage_enrichment import store_stage_insight
+        _health_url = next(
+            (c.get("url","") for c in checks if c.get("type") == "web_health" and c.get("url")),
+            ""
+        )
+        await store_stage_insight(
+            "s8_verify", state,
+            fact=(
+                f"Verify: {'PASS' if all_passed else 'FAIL'}. "
+                f"URL: {_health_url}"
+            ),
+            category="verify",
+        )
+    except Exception as _si_err:
+        logger.debug(f"[{state.project_id}] S8 store_stage_insight failed (non-fatal): {_si_err}")
+
     # Issue 19: when verification fails, capture the actual failure surface
     # (list of failed check types + their detail) so downstream halt handlers
     # render something actionable instead of "Reason: unknown".

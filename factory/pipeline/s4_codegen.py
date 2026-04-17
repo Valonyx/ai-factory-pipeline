@@ -2077,6 +2077,73 @@ async def _codegen_full_generation(
         },
     }
 
+    # ── Quality Gate (Issue 17) ──────────────────────────────────────
+    # Skip gates in dry-run / test mode (DRY_RUN=true).
+    if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+        from factory.core.quality_gates import GateResult, raise_if_failed, QualityGateFailure
+        from factory.core.halt import HaltCode, HaltReason, set_halt
+        from factory.core.mode_router import MasterMode
+
+        _gen_files: dict = (state.s4_output or {}).get("generated_files") or {}
+        file_count = len(_gen_files)
+
+        min_files = {
+            MasterMode.BASIC: 10,
+            MasterMode.BALANCED: 50,
+            MasterMode.CUSTOM: 50,
+            MasterMode.TURBO: 150,
+        }.get(state.master_mode, 50)
+
+        _gate_results = [
+            GateResult(
+                name="min_file_count",
+                passed=file_count >= min_files,
+                observed=file_count,
+                required=min_files,
+                message=f"Generated {file_count} files, need >={min_files}" if file_count < min_files else "",
+            ),
+        ]
+
+        total_sloc = sum(
+            len([ln for ln in content.splitlines() if ln.strip()])
+            for content in _gen_files.values()
+            if isinstance(content, str)
+        )
+        min_sloc = {
+            MasterMode.BASIC: 200,
+            MasterMode.BALANCED: 2000,
+            MasterMode.CUSTOM: 2000,
+            MasterMode.TURBO: 8000,
+        }.get(state.master_mode, 2000)
+
+        _gate_results.append(GateResult(
+            name="min_sloc",
+            passed=total_sloc >= min_sloc,
+            observed=total_sloc,
+            required=min_sloc,
+            message=(
+                f"Total SLOC {total_sloc} < {min_sloc} (skeleton output suspected)"
+                if total_sloc < min_sloc else ""
+            ),
+        ))
+
+        try:
+            raise_if_failed(
+                "S4_CODEGEN", _gate_results,
+                recommended_action="retry S4_CODEGEN with higher model",
+            )
+        except QualityGateFailure as qgf:
+            set_halt(state, HaltReason(
+                code=HaltCode.QUALITY_GATE_FAILED,
+                title="CodeGen failed quality gate",
+                detail=qgf.format_for_telegram()[:600],
+                stage="S4_CODEGEN",
+                failing_gate="codegen_output",
+                remediation_steps=["Retry CodeGen with /continue", "/cancel"],
+            ))
+            state.legal_halt = True
+            return state
+
     # ── Commit to GitHub repo ──
     await _commit_to_github(state, files, app_name, stack)
 

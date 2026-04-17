@@ -223,12 +223,20 @@ class TestSimpleExecutor:
 class TestS0Intake:
     @pytest.mark.asyncio
     async def test_empty_message(self, state):
-        """Empty intake → fallback requirements."""
+        """Empty intake with no explicit app name → halt with APP_NAME_MISSING.
+
+        v5.8.12 Issue 14: S0 must never silently fabricate an app name from
+        an empty/ambiguous description. Instead it sets legal_halt and
+        attaches a structured HaltReason.
+        """
         state.intake_message = ""
         with patch("factory.pipeline.s0_intake.call_ai", new=AsyncMock()):
             result = await s0_intake_node(state)
         assert result.s0_output is not None
-        assert result.s0_output["app_name"] == "Untitled"
+        assert result.s0_output.get("app_name") in (None, "")
+        assert result.legal_halt is True
+        struct = result.project_metadata.get("halt_reason_struct") or {}
+        assert struct.get("code") == "APP_NAME_MISSING"
 
     @pytest.mark.asyncio
     async def test_populates_output(self, state, mock_call_ai):
@@ -243,9 +251,13 @@ class TestS0Intake:
         assert result.s0_output["app_category"] == "food"
 
     def test_fallback_requirements(self):
-        """_fallback_requirements returns valid dict."""
+        """_fallback_requirements returns valid dict.
+
+        v5.8.12 Issue 14: fallback never fabricates app_name. The name
+        is enforced by the authority resolver in _extract_requirements.
+        """
         req = _fallback_requirements("test app")
-        assert req["app_name"] == "Test App"  # .title() applied by fallback
+        assert req["app_name"] is None
         assert "target_platforms" in req
 
 

@@ -1355,6 +1355,49 @@ async def handle_message(update: Any, context: Any):
         return
 
     active = await get_active_project(user_id)
+
+    # ── Issue 14 §4: modification-intent guard ──────────────────────────
+    # If the message starts with a modification verb (change/update/modify/
+    # add/remove/fix/make/set/replace/rename), route to the modification
+    # handler instead of starting a new S0 intake. Prevents "Change platform
+    # to web" from becoming an app name.
+    _MOD_VERBS = (
+        "change", "update", "modify", "add", "remove", "fix",
+        "make", "set", "replace", "rename",
+    )
+    _leading = text.strip().lstrip("/.,:;!?-— ").lower()
+    _first_word = _leading.split(" ", 1)[0] if _leading else ""
+    if _first_word in _MOD_VERBS:
+        if active:
+            # Route to modification handler. If one does not accept raw free
+            # text (cmd_modify requires repo URL), fall back to inserting the
+            # description into modification_description on the active state.
+            try:
+                from factory.core.state import PipelineState
+                state = PipelineState.model_validate(active.get("state_json", {}))
+                state.modification_description = text.strip()
+                try:
+                    await update_project_state(state)
+                except Exception as e:
+                    logger.warning(f"modify persist failed: {e}")
+                await update.message.reply_text(
+                    f"📝 Modification queued for `{state.intake.get('app_name') or state.idea_name or active.get('project_id', 'project')}`:\n"
+                    f"> {text.strip()[:200]}\n\n"
+                    "Use /continue to apply on the next build cycle, or /modify "
+                    "<repo_url> <desc> for a full modification run."
+                )
+            except Exception as e:
+                logger.error(f"modification routing failed: {e}")
+                await update.message.reply_text(
+                    "I couldn't route that modification. Try /modify <repo> <desc>."
+                )
+            return
+        else:
+            await update.message.reply_text(
+                "I don't have an active project to modify. Start one with /new."
+            )
+            return
+
     intent, confidence = await classify_intent(text)
 
     logger.info(f"[{user_id}] intent={intent} confidence={confidence:.2f} msg={text[:60]}")

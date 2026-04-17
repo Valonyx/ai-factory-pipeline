@@ -169,7 +169,7 @@ def _init_stack_metadata(
 
     Spec: §4.3
     """
-    app_name_slug = requirements.get("app_name", "app").lower().replace(" ", "")
+    app_name_slug = (requirements.get("app_name") or "app").lower().replace(" ", "")
 
     initializers = {
         TechStack.FLUTTERFLOW: lambda: {

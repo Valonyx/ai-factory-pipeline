@@ -817,6 +817,10 @@ class PipelineState(BaseModel):
     operator_id: str
     intake_message: Optional[str] = None  # Raw Telegram message from operator
     idea_name: Optional[str] = None       # Short name derived from intake
+    # v5.8.12 Issue 14 — authoritative intake payload. Downstream stages MUST
+    # read app_name from state.intake["app_name"], never re-extract. Mirrored
+    # to state.idea_name for back-compat.
+    intake: dict[str, Any] = Field(default_factory=dict)
     snapshot_id: Optional[int] = None
     snapshot_count: int = 0  # alias counter for orchestrator decorator
     program_id: Optional[str] = None

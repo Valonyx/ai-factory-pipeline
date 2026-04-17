@@ -33,7 +33,10 @@ def fresh_state():
         operator_id="test-operator",
     )
     state.autonomy_mode = AutonomyMode.AUTOPILOT
-    state.project_metadata["raw_input"] = "Build a test app"
+    # Issue 14: S0 now halts without an explicit app name. Include one in
+    # the raw_input so the default fixture still runs a full pipeline.
+    state.project_metadata["raw_input"] = 'app name: "Test App" — build a test app'
+    state.project_metadata["app_name"] = "Test App"
     state.project_metadata["tests_passed"] = True
     state.project_metadata["verify_passed"] = True
     return state

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -92,6 +93,9 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     # ── Finalise ──
     state.s0_output = requirements
     if requirements.get("app_name"):
+        # Issue 14: authoritative storage for app_name. Every downstream
+        # stage reads from state.intake["app_name"].
+        state.intake["app_name"] = requirements["app_name"]
         if not state.idea_name:
             state.idea_name = requirements["app_name"]
         # Fix #8: write back into project_metadata so bot.py completion message
@@ -133,13 +137,120 @@ register_stage_node("s0_intake", s0_intake_node)
 # ═══════════════════════════════════════════════════════════════════
 
 
+# ── Explicit app-name extraction (Issue 14) ──────────────────────────
+#
+# Priority-ordered patterns, case-insensitive, unicode-safe. The first
+# match that validates wins and skips the AI extractor for the name.
+# Quote character class accepts ASCII " ', curly “ ” ‘ ’, and Arabic
+# « » so that users typing on non-US keyboards still round-trip.
+# Non-raw string so \u escapes decode to actual unicode quote chars. Used
+# both in strip() (literal set of quote characters) and inside a regex
+# character class (where each codepoint is matched literally).
+_QUOTE_OPEN = "\"'\u201c\u201d\u2018\u2019\u00ab\u00bb"
+# Regex-class version — escape the literal double-quote only if needed
+# (inside [] it's fine without escaping, but we escape backslash-free).
+_QUOTE_CHARS = _QUOTE_OPEN
+_APP_NAME_PATTERNS: tuple[str, ...] = (
+    rf'app\s*name\s*[:=]\s*[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}\n]+?)[{_QUOTE_CHARS}]',
+    # No-quote form: take the token run up to the first "breaker"
+    # (newline, comma, period, semicolon, or an em/en/hyphen dash as
+    # a separator). Trailing whitespace trimmed by _validate_app_name.
+    rf'app\s*name\s*[:=]\s*([^\n,.;]+?)(?=\s+[\-\u2014\u2013]\s|[,.;\n]|$)',
+    rf'\bname\s*[:=]\s*[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}\n]+?)[{_QUOTE_CHARS}]',
+    rf'\bcalled\s+[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}\n]+?)[{_QUOTE_CHARS}]',
+    rf'\bcall\s+it\s+[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}\n]+?)[{_QUOTE_CHARS}]',
+    rf'\bnamed\s+[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}\n]+?)[{_QUOTE_CHARS}]',
+)
+
+# Imperative verbs that must NOT be treated as app names — these are
+# modification / command verbs. Issue 14 §2.
+_IMPERATIVE_VERBS: frozenset[str] = frozenset({
+    "change", "update", "modify", "add", "remove", "fix", "make",
+    "set", "delete", "rename", "replace",
+})
+
+
+def _validate_app_name(candidate: Optional[str]) -> Optional[str]:
+    """Validate and normalise a candidate app name.
+
+    Issue 14 §2:
+      - strip surrounding quotes / whitespace
+      - reject if starts with an imperative verb (case-insensitive)
+      - reject if fewer than 2 alphanumeric characters
+      - reject if longer than 60 characters
+    Returns the normalised name or None if invalid.
+    """
+    if candidate is None:
+        return None
+    # Strip common quotes + whitespace.
+    name = candidate.strip().strip(_QUOTE_OPEN).strip()
+    if not name:
+        return None
+    if len(name) > 60:
+        return None
+    # Count alphanumeric characters (unicode-aware via str.isalnum()).
+    alnum = sum(1 for ch in name if ch.isalnum())
+    if alnum < 2:
+        return None
+    first_word = re.split(r"\s+", name, maxsplit=1)[0].lower()
+    if first_word in _IMPERATIVE_VERBS:
+        return None
+    return name
+
+
+def _extract_app_name_explicit(raw_text: str) -> Optional[str]:
+    """Run the priority-ordered regex list and return the first validated match.
+
+    Issue 14 §1: this runs BEFORE any AI call; a successful explicit match
+    skips AI name extraction entirely.
+    """
+    if not raw_text:
+        return None
+    for pat in _APP_NAME_PATTERNS:
+        m = re.search(pat, raw_text, flags=re.IGNORECASE | re.UNICODE)
+        if not m:
+            continue
+        validated = _validate_app_name(m.group(1))
+        if validated:
+            return validated
+
+    # Windowed fallback: any quoted string within 40 chars of the word "name".
+    lower = raw_text.lower()
+    idx = lower.find("name")
+    while idx != -1:
+        window_start = max(0, idx - 40)
+        window_end = min(len(raw_text), idx + 40)
+        window = raw_text[window_start:window_end]
+        qm = re.search(
+            rf'[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}\n]+?)[{_QUOTE_CHARS}]',
+            window,
+            flags=re.UNICODE,
+        )
+        if qm:
+            validated = _validate_app_name(qm.group(1))
+            if validated:
+                return validated
+        idx = lower.find("name", idx + 1)
+    return None
+
+
 async def _extract_requirements(
     raw_input: str,
     attachments: list,
     state: PipelineState,
 ) -> dict:
-    """Call Quick Fix to extract structured requirements from free text."""
+    """Call Quick Fix to extract structured requirements from free text.
+
+    Issue 14: run explicit-pattern app-name extraction BEFORE the AI call.
+    If the explicit extractor finds a validated name, it is authoritative
+    and overrides any name the AI might propose. If no explicit name is
+    present the AI is instructed to return app_name=null (never guess).
+    If both paths leave app_name missing/invalid, halt with APP_NAME_MISSING.
+    """
     from factory.core.stage_enrichment import enrich_prompt
+    from factory.core.halt import HaltCode, HaltReason, set_halt
+
+    explicit_name = _extract_app_name_explicit(raw_input or "")
 
     extraction_prompt = (
         f"Extract structured requirements from this app description.\n\n"
@@ -150,10 +261,22 @@ async def _extract_requirements(
             f"Attachments: {len(attachments)} files provided "
             f"({', '.join(a.get('type', 'unknown') for a in attachments)})\n"
         )
+    if explicit_name:
+        extraction_prompt += (
+            f"\nThe operator explicitly stated the app name as: {explicit_name!r}. "
+            f"Use EXACTLY this value for app_name (do not rephrase).\n"
+        )
+    else:
+        extraction_prompt += (
+            "\nIMPORTANT: If the user did NOT explicitly state an app name, "
+            "return app_name as null. Never guess, never extract a noun phrase "
+            "from the description. The app name must come from an explicit "
+            "user statement only.\n"
+        )
     extraction_prompt += (
         f"\nReturn ONLY valid JSON:\n"
         f'{{\n'
-        f'  "app_name": "short name",\n'
+        f'  "app_name": "short name or null",\n'
         f'  "app_description": "1-2 sentence summary",\n'
         f'  "app_category": "e-commerce|social|fitness|fintech|education|'
         f'delivery|marketplace|utility|game|healthcare|other",\n'
@@ -180,13 +303,55 @@ async def _extract_requirements(
     )
 
     try:
-        return json.loads(result)
+        parsed = json.loads(result)
     except (json.JSONDecodeError, TypeError):
         logger.warning(
             f"[{state.project_id}] S0: Failed to parse Quick Fix JSON, "
-            f"using fallback extraction"
+            f"using fallback extraction (app_name will be enforced separately)"
         )
-        return _fallback_requirements(raw_input)
+        parsed = _fallback_requirements(raw_input)
+
+    # ── Issue 14: app_name authority resolution ────────────────────
+    # 1) Operator-pre-seeded app_name (via /new prompt flow in bot.py) wins.
+    # 2) Explicit regex extraction from raw input wins over AI.
+    # 3) AI-proposed name is validated against the same rules.
+    # 4) If still missing/invalid, HALT — never silently guess.
+    preseeded = (state.project_metadata.get("app_name") or "").strip() or None
+    validated_preseed = _validate_app_name(preseeded) if preseeded else None
+    if validated_preseed:
+        parsed["app_name"] = validated_preseed
+    elif explicit_name:
+        parsed["app_name"] = explicit_name
+    else:
+        ai_name = parsed.get("app_name")
+        validated_ai = _validate_app_name(ai_name) if isinstance(ai_name, str) else None
+        if validated_ai:
+            parsed["app_name"] = validated_ai
+        else:
+            # No name from any path — halt with a specific, actionable reason.
+            halt = HaltReason(
+                code=HaltCode.APP_NAME_MISSING,
+                title="App name not provided",
+                detail=(
+                    "The operator's intake message did not contain an explicit "
+                    "app name (e.g. `app name: \"My App\"` or `called \"My App\"`). "
+                    "Guessing a name from a description is disabled to prevent "
+                    "wrong titles like `To Do List` on a pulse-tracker app."
+                ),
+                stage="S0_INTAKE",
+                failing_gate="app_name_required",
+                remediation_steps=[
+                    "Reply with: app name: \"Your App\"",
+                    "Then /continue to resume S0 intake",
+                ],
+            )
+            set_halt(state, halt)
+            # Still return a best-effort structure so the caller doesn't KeyError;
+            # the orchestrator will pick up legal_halt on its next legal_check_hook.
+            parsed["app_name"] = None
+            parsed["_halt_reason"] = halt.to_dict()
+
+    return parsed
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -629,11 +794,11 @@ def _fallback_requirements(raw_text: str) -> dict:
     Spec: §4.0 S0 Intake — graceful degradation.
     Full raw_text preserved (no truncation) to avoid information loss.
     """
-    import re as _re
-    _first_words = _re.sub(r"[^a-zA-Z0-9 ]", " ", raw_text).split()
-    _fallback_name = " ".join(_first_words[:3]).title() or "Untitled"
+    # Issue 14: Never fabricate an app_name from the description. If the
+    # caller didn't state one explicitly, leave it None so the authority
+    # resolver halts with APP_NAME_MISSING instead of silently guessing.
     return {
-        "app_name": _fallback_name,
+        "app_name": None,
         "app_description": raw_text[:2000],   # was [:500] — widened
         "app_category": "other",
         "target_platforms": ["ios", "android"],

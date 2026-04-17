@@ -1,11 +1,11 @@
-MASTER BLUEPRINT — Halal Delivery
+MASTER BLUEPRINT — Change Platform To
 ============================================================
-Generated: 2026-04-17T17:42:51.130282+00:00
-Stack: flutterflow
+Generated: 2026-04-16T03:12:52.868731+00:00
+Stack: react_native
 
 EXECUTIVE SUMMARY
 ----------------------------------------
-Halal Delivery is a mobile application targeting KSA users. This blueprint defines the product specification for the development pipeline.
+Change Platform To is a mobile application targeting KSA users. This blueprint defines the product specification for the development pipeline.
 
 Core features include: .
 
@@ -14,7 +14,7 @@ The application will be built and deployed to KSA me-central1 region for full PD
 
 EXECUTIVE_SUMMARY
 ----------------------------------------
-"Halal Delivery is a mobile application targeting KSA users. This blueprint defines the product specification for the development pipeline.\n\nCore features include: .\n\nThe application will be built and deployed to KSA me-central1 region for full PDPL compliance."
+"Change Platform To is a mobile application targeting KSA users. This blueprint defines the product specification for the development pipeline.\n\nCore features include: .\n\nThe application will be built and deployed to KSA me-central1 region for full PDPL compliance."
 
 PERSONAS
 ----------------------------------------
@@ -99,7 +99,9 @@ RELEASE_PLAN
 {
   "v0_1": {
     "milestone": "MVP",
-    "features": [],
+    "features": [
+      "Home"
+    ],
     "timeline": "6 weeks"
   },
   "v1_0": {

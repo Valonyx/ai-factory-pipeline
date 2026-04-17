@@ -152,7 +152,12 @@ class TestS0Intake:
 
     @pytest.mark.asyncio
     async def test_s0_fallback_on_ai_failure(self):
-        """S0 falls back gracefully when AI call fails."""
+        """S0 halts cleanly when AI fails AND no explicit app name is given.
+
+        v5.8.12 Issue 14: graceful degradation no longer means fabricating
+        a name. With no explicit `app name: ...` in the raw input and the AI
+        unavailable, S0 must halt with APP_NAME_MISSING rather than guess.
+        """
         state = make_state()
         state.project_metadata["raw_input"] = "Simple todo app"
 
@@ -162,9 +167,13 @@ class TestS0Intake:
             from factory.pipeline.s0_intake import s0_intake_node
             result = await s0_intake_node(state)
 
-        # Should not raise — must have fallback output
+        # Must not raise — output structure is present.
         assert result.s0_output is not None
-        assert result.current_stage == Stage.S0_INTAKE
+        # App name must be absent and the state must be halted.
+        assert result.s0_output.get("app_name") in (None, "")
+        assert result.legal_halt is True
+        struct = result.project_metadata.get("halt_reason_struct") or {}
+        assert struct.get("code") == "APP_NAME_MISSING"
 
 
 # ─── S2 Blueprint Scorecard ──────────────────────────────────────────

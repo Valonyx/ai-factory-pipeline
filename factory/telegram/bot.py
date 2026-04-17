@@ -244,10 +244,11 @@ async def cmd_new_project(update: Any, context: Any):
 
     if active:
         from factory.telegram.messages import project_display_name
+        _name = project_display_name(active)
+        _stage = active.get("current_stage", "?")
         await update.message.reply_text(
-            f"📋 Active project: {project_display_name(active)} "
-            f"at {active['current_stage']}\n"
-            f"Use /cancel first, or /continue."
+            f'You have an active project "{_name}" at {_stage}. '
+            f"Cancel it with /cancel or pause with /pause before starting a new one."
         )
         return
 
@@ -1878,6 +1879,52 @@ async def _start_project(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Orphan-Task Sweeper (Issue 16)
+# Periodically cleans up finished/cancelled tasks and surfaces
+# any project whose pipeline task died but whose Supabase row
+# was not archived (e.g. due to an unhandled exception).
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _orphan_task_sweeper() -> None:
+    """Background sweeper — runs every 30 seconds.
+
+    On each sweep:
+    1. Removes any done/cancelled task from _project_tasks.
+    2. Cancels tasks whose project is no longer in _active_projects_fallback
+       (i.e. was archived externally while the task kept running).
+    3. Logs warnings for any orphaned tasks found.
+    """
+    import asyncio as _asyncio
+    while True:
+        try:
+            await _asyncio.sleep(30)
+            for project_id, task in list(_project_tasks.items()):
+                if task.done():
+                    # Clean up finished / already-cancelled tasks
+                    _project_tasks.pop(project_id, None)
+                    logger.debug(
+                        f"[sweeper] Removed done task for {project_id}"
+                    )
+                    continue
+
+                # Check whether the project is still active in the fallback dict
+                still_active = any(
+                    p.get("project_id") == project_id
+                    for p in _active_projects_fallback.values()
+                )
+                if not still_active:
+                    # Project was archived externally — cancel the runaway task
+                    logger.warning(
+                        f"[sweeper] Orphan task detected for archived project "
+                        f"{project_id} — cancelling"
+                    )
+                    cancel_project_task(project_id)
+        except Exception as exc:
+            logger.warning(f"[sweeper] Unexpected error in orphan sweeper: {exc}")
+
+
+# ═══════════════════════════════════════════════════════════════════
 # §5.1 Bot Setup
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1917,6 +1964,9 @@ async def setup_bot() -> Any:
             except Exception as e:
                 logger.warning(f"[bot] Memory chain init failed (will retry on demand): {e}")
         _bg(_init_memory_chain())
+
+        # Start orphan-task sweeper (Issue 16 — cleans stale pipeline tasks)
+        _bg(_orphan_task_sweeper())
 
         from telegram.ext import MessageHandler as MH
         from telegram.error import TelegramError

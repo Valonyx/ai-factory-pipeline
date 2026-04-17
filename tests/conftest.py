@@ -79,6 +79,7 @@ def force_mock_ai_provider():
         "AI_PROVIDER": "mock",
         "SCOUT_PROVIDER": "mock",
         "DRY_RUN": "true",   # bypasses pre_deploy_gate 15-min Telegram polling loop
+        "SKIP_CREDENTIAL_PREFLIGHT": "true",  # bypasses credential pre-flight in tests
     }):
         yield
 

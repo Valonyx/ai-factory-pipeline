@@ -161,16 +161,19 @@ class TestRunPipelineHaltsOnMissingCredential:
             )
         ]
 
-        with patch(
-            "factory.core.credentials.check_credentials",
-            return_value=fake_all_results,
-        ), patch(
-            "factory.core.credentials.get_missing_critical",
-            return_value=fake_missing,
-        ), patch(
-            "factory.core.credentials.format_credential_error",
-            return_value="Missing: TELEGRAM_BOT_TOKEN",
-        ):
+        # Override SKIP_CREDENTIAL_PREFLIGHT so the pre-flight actually runs,
+        # then mock the credential functions so we control what they return.
+        with patch.dict(os.environ, {"SKIP_CREDENTIAL_PREFLIGHT": "false"}, clear=False), \
+             patch(
+                 "factory.core.credentials.check_credentials",
+                 return_value=fake_all_results,
+             ), patch(
+                 "factory.core.credentials.get_missing_critical",
+                 return_value=fake_missing,
+             ), patch(
+                 "factory.core.credentials.format_credential_error",
+                 return_value="Missing: TELEGRAM_BOT_TOKEN",
+             ):
             from factory.orchestrator import run_pipeline
             result = await run_pipeline(fresh_state)
 

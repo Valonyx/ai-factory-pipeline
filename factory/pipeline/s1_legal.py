@@ -160,6 +160,48 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
     )
 
     legal_output["iterations_run"] = iterations_run
+
+    # ── Quality Gate (Issue 17) ──────────────────────────────────────
+    # Skip gates in dry-run / test mode (DRY_RUN=true).
+    if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+        from factory.core.quality_gates import (
+            check_no_placeholders, check_min_length, check_min_list,
+            raise_if_failed, QualityGateFailure, GateResult,
+        )
+        from factory.core.halt import HaltCode, HaltReason, set_halt
+
+        _gate_results = []
+        docs: dict = state.legal_documents or {}
+        for doc_name, content in docs.items():
+            if not isinstance(content, str):
+                continue
+            _gate_results.append(check_no_placeholders(content, doc_name))
+            _gate_results.append(check_min_length(content, 3000, doc_name))
+
+        doc_count = len([k for k, v in docs.items() if isinstance(v, str) and len(v) > 100])
+        _gate_results.append(GateResult(
+            name="min_doc_count",
+            passed=doc_count >= 4,
+            observed=doc_count,
+            required=4,
+            message=f"Need >=4 legal documents, got {doc_count}" if doc_count < 4 else "",
+        ))
+
+        try:
+            raise_if_failed("S1_LEGAL", _gate_results, recommended_action="retry S1_LEGAL")
+        except QualityGateFailure as qgf:
+            set_halt(state, HaltReason(
+                code=HaltCode.QUALITY_GATE_FAILED,
+                title="Legal documents failed quality gate",
+                detail=qgf.format_for_telegram()[:600],
+                stage="S1_LEGAL",
+                failing_gate="legal_content",
+                remediation_steps=["Retry S1 with /continue", "/cancel"],
+            ))
+            state.legal_halt = True
+            state.s1_output = legal_output
+            return state
+
     state.s1_output = legal_output
 
     logger.info(

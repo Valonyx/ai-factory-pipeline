@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import traceback
 from datetime import datetime, timezone
 from functools import wraps
@@ -392,30 +393,33 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     budget_governor.set_spend_source(cost_tracker.monthly_total_cents)
 
     # ── Credential pre-flight ────────────────────────────────────────
-    from factory.core.credentials import check_credentials, get_missing_critical, format_credential_error
-    _cred_results = check_credentials()
-    _missing_critical = get_missing_critical(_cred_results)
-    # If BOTH anthropic and google_ai are missing → true CRITICAL gap
-    _ai_creds_absent = (
-        not any(r.present for r in _cred_results if r.service_id in ("anthropic", "google_ai"))
-    )
-    _real_missing = [r for r in _missing_critical if r.service_id != "google_ai" or _ai_creds_absent]
-    if _real_missing:
-        error_msg = format_credential_error(_real_missing)
-        set_halt(state, HaltReason(
-            code=HaltCode.CREDENTIAL_MISSING,
-            title="Missing required credentials",
-            detail=error_msg[:800],
-            stage="S0_INTAKE",
-            remediation_steps=[r.fix_steps[0] for r in _real_missing if r.fix_steps],
-            restore_options=["/cancel"],
-        ))
-        _transition_to(state, Stage.HALTED)
-        try:
-            await send_telegram_message(state.operator_id, error_msg)
-        except Exception:
-            pass
-        return await halt_handler_node(state)
+    # Set SKIP_CREDENTIAL_PREFLIGHT=true to bypass in test/dry-run environments.
+    _skip_preflight = os.environ.get("SKIP_CREDENTIAL_PREFLIGHT", "").lower() in ("true", "1", "yes")
+    if not _skip_preflight:
+        from factory.core.credentials import check_credentials, get_missing_critical, format_credential_error
+        _cred_results = check_credentials()
+        _missing_critical = get_missing_critical(_cred_results)
+        # If BOTH anthropic and google_ai are missing → true CRITICAL gap
+        _ai_creds_absent = (
+            not any(r.present for r in _cred_results if r.service_id in ("anthropic", "google_ai"))
+        )
+        _real_missing = [r for r in _missing_critical if r.service_id != "google_ai" or _ai_creds_absent]
+        if _real_missing:
+            error_msg = format_credential_error(_real_missing)
+            set_halt(state, HaltReason(
+                code=HaltCode.CREDENTIAL_MISSING,
+                title="Missing required credentials",
+                detail=error_msg[:800],
+                stage="S0_INTAKE",
+                remediation_steps=[r.fix_steps[0] for r in _real_missing if r.fix_steps],
+                restore_options=["/cancel"],
+            ))
+            _transition_to(state, Stage.HALTED)
+            try:
+                await send_telegram_message(state.operator_id, error_msg)
+            except Exception:
+                pass
+            return await halt_handler_node(state)
 
     # 2d-iv — set wall-clock deadline (4 hours from first run)
     if not state.pipeline_deadline:

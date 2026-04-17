@@ -26,6 +26,7 @@ from typing import Optional, Callable, Awaitable
 
 from factory.core.state import PipelineState, Stage, AutonomyMode
 from factory.core.halt import HaltCode, HaltReason, set_halt
+from factory.core.quality_gates import QualityGateFailure
 from factory.legal.checks import legal_check_hook
 from factory.monitoring.budget_governor import (
     budget_governor, BudgetExhaustedError, BudgetIntakeBlockedError,
@@ -199,6 +200,18 @@ def pipeline_node(stage: Stage):
                         "Cancel stale projects with /cancel",
                     ],
                 ))
+                return state
+            except QualityGateFailure as qgf:
+                logger.warning(f"[{state.project_id}] Quality gate failed at {stage.value}: {qgf}")
+                set_halt(state, HaltReason(
+                    code=HaltCode.QUALITY_GATE_FAILED,
+                    title=f"Quality gate failed — {stage.value}",
+                    detail=qgf.format_for_telegram()[:600],
+                    stage=stage.value,
+                    failing_gate=qgf.failed_gates[0].name if qgf.failed_gates else None,
+                    remediation_steps=["Retry with /continue", "/cancel"],
+                ))
+                _transition_to(state, Stage.HALTED)
                 return state
             except Exception as e:
                 tb_tail = "\n".join(traceback.format_exc().splitlines()[-3:])

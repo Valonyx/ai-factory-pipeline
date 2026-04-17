@@ -711,7 +711,9 @@ class TestTelegramNewProjectChain:
 
         mock_update.message.reply_text.assert_called_once()
         reply_text = mock_update.message.reply_text.call_args[0][0]
-        assert "proj-existing" in reply_text or "Active project" in reply_text
+        # v5.8.12 Phase 2 (2e): message now says "You have an active project"
+        # and shows humanized project name (not raw project_id).
+        assert "active project" in reply_text.lower()
 
 
 # ═══════════════════════════════════════════════════════════════════

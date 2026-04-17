@@ -290,6 +290,12 @@ async def _persist_snapshot(state: PipelineState) -> None:
     state.snapshot_id = (state.snapshot_id or 0) + 1
     state.snapshot_count = (getattr(state, "snapshot_count", 0) or 0) + 1
     logger.debug(f"[{state.project_id}] Snapshot #{state.snapshot_id} at {state.current_stage.value}")
+    # Persist to Supabase (non-fatal — snapshot loss is acceptable; pipeline must not halt)
+    try:
+        from factory.integrations.supabase import upsert_pipeline_state
+        await upsert_pipeline_state(state.project_id, state)
+    except Exception as _snap_err:
+        logger.warning(f"[{state.project_id}] Snapshot #{state.snapshot_id} persist failed (non-fatal): {_snap_err}")
 
 
 # Import stage node functions directly (already decorated in their modules)

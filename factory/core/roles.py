@@ -261,19 +261,23 @@ async def _call_anthropic(
     state: Optional["PipelineState"] = None,
     action: str = "general",
 ) -> tuple[str, float]:
-    """Call AI provider using ModeRouter + cascading provider chain.
+    """Call AI provider using ProviderIntelligence + ModeRouter + cascading chain.
 
-    Spec: §2.2.2, v5.8 §Phase1.5
-    Provider selection is driven by the active MasterMode via ModeRouter:
-      BASIC    — free providers only (gemini → groq → openrouter → cerebras)
-      BALANCED — paid for CRITICAL calls, cheapest paid for STANDARD, free for BULK
-      CUSTOM   — operator-specified provider preference, balanced fallback
-      TURBO    — highest-performance provider (anthropic opus first); upgrades
-                 all anthropic calls to claude-opus-4-6
+    Spec: §2.2.2, v5.8 §Phase1.5, v5.8.12 Issue 7
+    Provider selection chain (Issue 7 integration):
+      1. ProviderIntelligence.get_chain_for_role(role, mode) → role-filtered,
+         capability-enforced ordered list.
+      2. ModeRouter.select() picks from that list according to MasterMode rules
+         (free-only for BASIC, cost-priority for BALANCED/TURBO, etc.).
+      3. Fallback loop tries next provider on error/quota exhaustion.
+      4. provider_intelligence.record_call() updates latency + success metrics
+         after every attempt (success or failure).
 
-    QuotaTracker (v5.8) records every call for monthly quota enforcement.
-    Old ProviderChain kept in sync for backwards-compatibility with ScoutOrchestrator.
+    QuotaTracker records every call for monthly enforcement.
+    ProviderChain kept in sync for ScoutOrchestrator compatibility.
     """
+    import time as _time
+
     from factory.integrations.provider_chain import (
         ai_chain, is_quota_error, is_auth_error, parse_retry_delay,
     )
@@ -281,6 +285,7 @@ async def _call_anthropic(
         MasterMode, AI_PROVIDERS, ChainContext, CallCriticality, ModeRouter,
     )
     from factory.core.quota_tracker import get_quota_tracker
+    from factory.core.provider_intelligence import provider_intelligence
 
     # CI / test mock shortcut — preserve existing test infrastructure
     if os.getenv("AI_PROVIDER", "").lower() == "mock":
@@ -307,6 +312,21 @@ async def _call_anthropic(
             if getattr(state, "current_stage", None) else ""
         )
 
+    # ── Issue 7: ProviderIntelligence role-specific chain ─────────
+    # get_chain_for_role() filters AI_PROVIDERS to only those that:
+    #   (a) appear in the role×mode preferred list (ROLE_PROVIDERS)
+    #   (b) have the required capability for this role
+    # Result: STRATEGIST gets reasoning-capable providers first;
+    #         QUICK_FIX gets chat providers; etc.
+    role_name  = contract.role.value.upper()
+    mode_name  = master_mode.value.upper()
+    role_chain = provider_intelligence.get_chain_for_role(role_name, mode_name)
+
+    _ai_by_name = {p.name: p for p in AI_PROVIDERS}
+    role_filtered = [_ai_by_name[n] for n in role_chain if n in _ai_by_name]
+    # Safety: if all filtered out (edge case), fall back to full list
+    providers_to_use = role_filtered or AI_PROVIDERS
+
     qt = get_quota_tracker()
     router = ModeRouter(
         mode=master_mode,
@@ -323,8 +343,8 @@ async def _call_anthropic(
         estimated_tokens=max(len(prompt) // 4, 100),
     )
 
-    # ── ModeRouter-driven provider loop ──
-    current_provider = await router.select(AI_PROVIDERS, ctx)
+    # ── ModeRouter-driven provider loop (role-filtered list) ──
+    current_provider = await router.select(providers_to_use, ctx)
     tried: set[str] = set()
 
     while current_provider and current_provider.name not in tried:
@@ -349,11 +369,16 @@ async def _call_anthropic(
             except Exception:
                 pass  # keep original contract on any error
 
+        t0 = _time.monotonic()
         try:
             result = await _call_single_ai_provider(
                 provider_name, prompt, effective_contract
             )
             text, cost = result
+            latency_ms = (_time.monotonic() - t0) * 1000
+
+            # ── Issue 7: record success metrics ──
+            provider_intelligence.record_call(provider_name, latency_ms, success=True)
 
             # Record usage in v5.8 QuotaTracker (non-fatal, async)
             tokens_est = max(len(prompt) // 4 + len(text) // 4, 10)
@@ -368,45 +393,48 @@ async def _call_anthropic(
             ai_chain.mark_success(provider_name)
             if len(tried) > 1:
                 logger.info(
-                    f"[ModeRouter/{master_mode.value}] AI call succeeded on: "
+                    f"[PI/{role_name}/{mode_name}] AI call succeeded on: "
                     f"{provider_name} (after {len(tried) - 1} fallback(s))"
                 )
             return result
 
         except Exception as e:
+            latency_ms = (_time.monotonic() - t0) * 1000
+            # ── Issue 7: record failure metrics ──
+            provider_intelligence.record_call(provider_name, latency_ms, success=False)
+
             err = str(e)
+            remaining_providers = [p for p in providers_to_use if p.name not in tried]
             if is_quota_error(err):
                 reset_in = parse_retry_delay(err)
                 ai_chain.mark_quota_exhausted(provider_name, reset_in)
+                provider_intelligence.on_provider_exhausted(provider_name, reset_in or 86400)
                 logger.warning(
-                    f"[ModeRouter/{master_mode.value}] {provider_name} quota "
+                    f"[PI/{role_name}/{mode_name}] {provider_name} quota "
                     f"exhausted — requesting next provider from router"
                 )
                 next_p = await router.on_quota_exhausted(
-                    current_provider, AI_PROVIDERS, ctx
+                    current_provider, remaining_providers or providers_to_use, ctx
                 )
                 if next_p.name == provider_name:
-                    # Router signalled halt (BASIC: all free exhausted)
                     break
                 current_provider = next_p
             elif is_auth_error(err):
                 ai_chain.mark_error(provider_name, f"auth: {err[:80]}")
                 logger.error(
-                    f"[ModeRouter] {provider_name} auth failed — trying next"
+                    f"[PI/{role_name}/{mode_name}] {provider_name} auth failed — trying next"
                 )
-                remaining = [p for p in AI_PROVIDERS if p.name not in tried]
-                if not remaining:
+                if not remaining_providers:
                     break
-                current_provider = await router.select(remaining, ctx)
+                current_provider = await router.select(remaining_providers, ctx)
             else:
                 ai_chain.mark_error(provider_name, err[:80])
                 logger.warning(
-                    f"[ModeRouter] {provider_name} error: {err[:80]} — trying next"
+                    f"[PI/{role_name}/{mode_name}] {provider_name} error: {err[:80]} — trying next"
                 )
-                remaining = [p for p in AI_PROVIDERS if p.name not in tried]
-                if not remaining:
+                if not remaining_providers:
                     break
-                current_provider = await router.select(remaining, ctx)
+                current_provider = await router.select(remaining_providers, ctx)
 
     # All providers exhausted
     mode_hint = (
@@ -414,7 +442,7 @@ async def _call_anthropic(
         if master_mode == MasterMode.BASIC else ""
     )
     logger.error(
-        f"[ModeRouter/{master_mode.value}] All AI providers exhausted.{mode_hint}"
+        f"[PI/{role_name}/{mode_name}] All AI providers exhausted.{mode_hint}"
     )
     return (f"[all-providers-exhausted] {prompt[:80]}", 0.0)
 

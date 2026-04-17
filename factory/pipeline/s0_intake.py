@@ -364,18 +364,46 @@ async def _select_platforms(state: PipelineState, requirements: dict) -> list[st
 
     COPILOT: interactive multi-select from 14 canonical options.
     AUTOPILOT: use AI-extracted platforms (capped to canonical set).
+
+    v5.8.12 Issue 22: no silent default. If the operator did NOT specify a
+    platform and the copilot flow returns empty, HALT with
+    PLATFORMS_NOT_SELECTED rather than forcing iOS+Android. Forced defaults
+    caused "Platform: web" intake messages to still deploy to App Store.
     """
     from factory.telegram.decisions import present_platform_multiselect, ALL_PLATFORMS
+    from factory.core.halt import HaltCode, HaltReason, set_halt
 
-    # Build default from AI extraction (map legacy names to canonical IDs)
-    ai_platforms = requirements.get("target_platforms", ["ios", "android"])
+    # Build default from AI extraction (map legacy names to canonical IDs).
+    ai_platforms = requirements.get("target_platforms") or []
     canonical_ids = {p["id"] for p in ALL_PLATFORMS}
     _legacy_map = {"ios": "ios", "android": "android", "web": "web"}
-    default = [_legacy_map.get(p, p) for p in ai_platforms if _legacy_map.get(p, p) in canonical_ids]
-    if not default:
-        default = ["ios", "android"]
+    default = [
+        _legacy_map.get(p, p) for p in ai_platforms
+        if _legacy_map.get(p, p) in canonical_ids
+    ]
+    # No default synthesis: if the operator said nothing we pass an empty
+    # default and the copilot flow asks explicitly.
+    selected = await present_platform_multiselect(state, default=default)
 
-    return await present_platform_multiselect(state, default=default)
+    if not selected:
+        halt = HaltReason(
+            code=HaltCode.PLATFORMS_NOT_SELECTED,
+            title="No platform chosen",
+            detail=(
+                "The operator did not select any target platform. The pipeline "
+                "refuses to silently pick iOS+Android because that caused "
+                "App Store deploys for web-only projects."
+            ),
+            stage="S0_INTAKE",
+            failing_gate="platforms_required",
+            remediation_steps=[
+                "Reply with: platforms: web  (or ios / android / desktop_*)",
+                "Then /continue to resume S0 intake",
+            ],
+        )
+        set_halt(state, halt)
+        return []
+    return selected
 
 
 # ═══════════════════════════════════════════════════════════════════

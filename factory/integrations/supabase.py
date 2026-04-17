@@ -327,6 +327,54 @@ async def restore_state(
         return None
 
 
+async def diff_snapshots(
+    project_id: str,
+    snapshot_a: int,
+    snapshot_b: int,
+) -> dict:
+    """Return a human-readable diff between two snapshots.
+
+    Returns dict with keys: stage_a, stage_b, cost_delta, fields_changed.
+    """
+    client = get_supabase_client()
+    try:
+        resp = (
+            client.table("state_snapshots")
+            .select("snapshot_id, stage, state_json, created_at")
+            .eq("project_id", project_id)
+            .in_("snapshot_id", [snapshot_a, snapshot_b])
+            .execute()
+        )
+        data = {r["snapshot_id"]: r for r in (resp.data or [])}
+        if snapshot_a not in data or snapshot_b not in data:
+            return {"error": f"One or both snapshots not found: {snapshot_a}, {snapshot_b}"}
+        a = data[snapshot_a]
+        b = data[snapshot_b]
+        sa = a.get("state_json") or {}
+        sb = b.get("state_json") or {}
+        cost_a = sa.get("total_cost_usd", 0.0) if isinstance(sa, dict) else 0.0
+        cost_b = sb.get("total_cost_usd", 0.0) if isinstance(sb, dict) else 0.0
+        changed = []
+        for k in ("current_stage", "selected_stack", "pipeline_mode", "autonomy_mode"):
+            va = (sa.get(k) if isinstance(sa, dict) else None)
+            vb = (sb.get(k) if isinstance(sb, dict) else None)
+            if va != vb:
+                changed.append(f"{k}: {va!r} → {vb!r}")
+        return {
+            "snapshot_a": snapshot_a,
+            "snapshot_b": snapshot_b,
+            "stage_a": a.get("stage"),
+            "stage_b": b.get("stage"),
+            "cost_delta": round(cost_b - cost_a, 4),
+            "fields_changed": changed,
+            "created_at_a": a.get("created_at"),
+            "created_at_b": b.get("created_at"),
+        }
+    except Exception as e:
+        logger.error(f"diff_snapshots failed: {e}")
+        return {"error": str(e)}
+
+
 # ═══════════════════════════════════════════════════════════════════
 # §5.6 Active Projects (Session Schema)
 # ═══════════════════════════════════════════════════════════════════

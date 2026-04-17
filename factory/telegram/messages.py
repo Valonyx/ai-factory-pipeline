@@ -92,6 +92,58 @@ NOTIFICATION_EMOJI: dict[str, str] = {
 # ═══════════════════════════════════════════════════════════════════
 
 
+def project_display_name(project_or_state: Any) -> str:
+    """Return a human-facing name for a project.
+
+    v5.8.12 Issue 15: user-facing Telegram strings must never show the
+    raw `proj_<hex>` identifier. Resolution order:
+      1. state.intake["app_name"]
+      2. project_metadata["app_name"] / project["app_name"]
+      3. project["name"]
+      4. state.idea_name
+      5. humanized suffix — "Project <short-id>"
+
+    Accepts either a PipelineState (duck-typed) or a plain dict (e.g. the
+    Supabase active_project row).
+    """
+    if project_or_state is None:
+        return "your project"
+
+    # Dict path (Supabase active_project row or bare dict).
+    if isinstance(project_or_state, dict):
+        d = project_or_state
+        intake = d.get("intake") or {}
+        name = (
+            (intake.get("app_name") if isinstance(intake, dict) else None)
+            or d.get("app_name")
+            or d.get("name")
+            or d.get("idea_name")
+        )
+        if name:
+            return str(name)
+        pid = str(d.get("project_id") or d.get("id") or "")
+        short = pid.replace("proj_", "").replace("proj-", "")[:8] or "unknown"
+        return f"Project {short}"
+
+    # Object path (PipelineState or similar).
+    intake = getattr(project_or_state, "intake", None) or {}
+    name = None
+    if isinstance(intake, dict):
+        name = intake.get("app_name")
+    if not name:
+        meta = getattr(project_or_state, "project_metadata", None) or {}
+        name = meta.get("app_name") if isinstance(meta, dict) else None
+    if not name:
+        name = getattr(project_or_state, "app_name", None)
+    if not name:
+        name = getattr(project_or_state, "idea_name", None)
+    if name:
+        return str(name)
+    pid = str(getattr(project_or_state, "project_id", "") or "")
+    short = pid.replace("proj_", "").replace("proj-", "")[:8] or "unknown"
+    return f"Project {short}"
+
+
 def truncate_message(text: str, max_length: int = 4096) -> str:
     """Truncate message to Telegram's limit.
 
@@ -150,7 +202,7 @@ def format_status_message(state: PipelineState) -> str:
         elapsed_str = "N/A"
 
     msg = (
-        f"📊 {state.project_id}\n"
+        f"📊 {project_display_name(state)}\n"
         f"{progress}\n"
         f"Stage: {state.current_stage.value}\n"
         f"Stack: {stack_str}\n"
@@ -177,7 +229,7 @@ def format_cost_message(state: PipelineState) -> str:
 
     Spec: §5.2 (/cost)
     """
-    msg = f"💰 {state.project_id}\n\n"
+    msg = f"💰 {project_display_name(state)}\n\n"
 
     # Show all phase budget categories (even if $0)
     all_phases = {**{k: 0.0 for k in PHASE_BUDGET_LIMITS}, **state.phase_costs}
@@ -339,8 +391,11 @@ def format_project_started(
     mode_str = MODE_EMOJI.get(state.execution_mode.value, "")
     auto_str = AUTONOMY_EMOJI.get(state.autonomy_mode.value, "")
 
+    # Issue 15: prefer the app name; fall back to a humanized id only if
+    # state truly carries nothing else.
+    display = project_display_name(state)
     return (
-        f"🚀 Project {project_id} started!\n"
+        f"🚀 {display} started!\n"
         f"Mode: {mode_str} {state.execution_mode.value}\n"
         f"Autonomy: {auto_str} {state.autonomy_mode.value}\n"
         f"Processing..."

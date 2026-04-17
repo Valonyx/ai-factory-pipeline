@@ -86,19 +86,25 @@ class TestMessageFormatting:
         assert "/warroom" in msg
 
     def test_status_message(self):
-        state = PipelineState(project_id="test-proj", operator_id="123")
+        # Issue 15: status renders the app name, not the raw project_id.
+        state = PipelineState(project_id="proj_test001", operator_id="123")
+        state.intake = {"app_name": "Test App"}
         state.current_stage = Stage.S4_CODEGEN
         state.total_cost_usd = 1.50
         msg = format_status_message(state)
-        assert "test-proj" in msg
+        assert "Test App" in msg
+        assert "proj_test001" not in msg
         assert "S4_CODEGEN" in msg
         assert "$1.50" in msg
 
     def test_cost_message(self):
-        state = PipelineState(project_id="cost-proj", operator_id="123")
+        # Issue 15: cost breakdown renders the app name, not the raw id.
+        state = PipelineState(project_id="proj_cost001", operator_id="123")
+        state.intake = {"app_name": "Cost App"}
         state.phase_costs["scout_research"] = 0.50
         msg = format_cost_message(state)
-        assert "cost-proj" in msg
+        assert "Cost App" in msg
+        assert "proj_cost001" not in msg
         assert "scout_research" in msg
         assert "$0.50" in msg
 

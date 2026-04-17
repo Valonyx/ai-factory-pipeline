@@ -202,8 +202,9 @@ async def cmd_new_project(update: Any, context: Any):
     active = await get_active_project(user_id)
 
     if active:
+        from factory.telegram.messages import project_display_name
         await update.message.reply_text(
-            f"📋 Active project: {active['project_id']} "
+            f"📋 Active project: {project_display_name(active)} "
             f"at {active['current_stage']}\n"
             f"Use /cancel first, or /continue."
         )
@@ -383,7 +384,9 @@ async def cmd_restore(update: Any, context: Any):
         return
 
     project_id = active["project_id"]
-    await update.message.reply_text(f"⏪ Restoring snapshot #{snapshot_id} for {project_id}...")
+    from factory.telegram.messages import project_display_name
+    _display = project_display_name(active)
+    await update.message.reply_text(f"⏪ Restoring snapshot #{snapshot_id} for {_display}...")
     try:
         from factory.integrations.supabase import restore_state
         restored = await restore_state(project_id, snapshot_id)
@@ -418,7 +421,8 @@ async def cmd_snapshots(update: Any, context: Any):
         if not snaps:
             await update.message.reply_text("No snapshots yet for this project.")
             return
-        lines = [f"📸 Snapshots for {project_id}:\n"]
+        from factory.telegram.messages import project_display_name
+        lines = [f"📸 Snapshots for {project_display_name(active)}:\n"]
         for s in snaps:
             lines.append(
                 f"  State_#{s['snapshot_id']} — {s.get('stage', '?')} "
@@ -510,9 +514,11 @@ async def cmd_cancel(update: Any, context: Any):
         return
 
     project_id = active["project_id"]
+    from factory.telegram.messages import project_display_name
+    display = project_display_name(active)
     await archive_project(project_id)
     await update.message.reply_text(
-        f"🗑️ {project_id} archived. Snapshots preserved."
+        f"🗑️ {display} archived. Snapshots preserved."
     )
 
 
@@ -960,8 +966,9 @@ async def cmd_modify(update: Any, context: Any):
 
     active = await get_active_project(user_id)
     if active:
+        from factory.telegram.messages import project_display_name
         await update.message.reply_text(
-            f"Active project {active['project_id']} in progress.\n"
+            f"Active project {project_display_name(active)} in progress.\n"
             "Use /cancel first, then /modify."
         )
         return
@@ -987,8 +994,12 @@ async def cmd_modify(update: Any, context: Any):
     )
 
     await update_project_state(state)
+    # Issue 15: MODIFY is the only place a project id appears before the
+    # app name exists. Show the repo name (human-recognizable) prominently
+    # and keep the id as a parenthetical so logs remain cross-referenceable.
+    _repo_display = repo_url.rstrip("/").split("/")[-1] or "repo"
     await update.message.reply_text(
-        f"MODIFY mode started — [{project_id}]\n\n"
+        f"MODIFY mode started for {_repo_display}\n\n"
         f"Repo: {repo_url}\n"
         f"Change: {description[:200]}\n\n"
         "Cloning repo and analyzing codebase..."
@@ -1007,17 +1018,22 @@ async def cmd_modify(update: Any, context: Any):
                     or final.legal_halt_reason
                     or "no diagnostic detail captured"
                 )
-                await send_telegram_message(user_id, f"MODIFY halted [{project_id}]: {reason}")
+                from factory.telegram.messages import project_display_name
+                _display = project_display_name(final)
+                await send_telegram_message(user_id, f"MODIFY halted for {_display}: {reason}")
             else:
+                from factory.telegram.messages import project_display_name
+                _display = project_display_name(final)
                 await send_telegram_message(
                     user_id,
-                    f"MODIFY complete for [{project_id}]! Use /status to see the diff."
+                    f"MODIFY complete for {_display}! Use /status to see the diff."
                 )
         except Exception as e:
             logger.error(f"[{project_id}] MODIFY error: {e}")
             try:
                 from factory.telegram.notifications import send_telegram_message
-                await send_telegram_message(user_id, f"MODIFY error [{project_id}]: {e}")
+                from factory.telegram.messages import project_display_name as _pdn
+                await send_telegram_message(user_id, f"MODIFY error for {_pdn(state)}: {e}")
             except Exception:
                 pass
 
@@ -1064,17 +1080,17 @@ async def handle_callback(update: Any, context: Any):
             await query.edit_message_text("No active project to restore.")
             return
         project_id = active["project_id"]
+        from factory.telegram.messages import project_display_name
+        _display = project_display_name(active)
         await query.edit_message_text(
-            f"⏪ Restoring snapshot #{snapshot_id} for `{project_id}`…",
-            parse_mode="Markdown",
+            f"⏪ Restoring snapshot #{snapshot_id} for {_display}…",
         )
         try:
             from factory.integrations.supabase import restore_state
             restored = await restore_state(project_id, snapshot_id)
             if restored is None:
                 await query.edit_message_text(
-                    f"❌ Snapshot #{snapshot_id} not found for `{project_id}`.",
-                    parse_mode="Markdown",
+                    f"❌ Snapshot #{snapshot_id} not found for {_display}.",
                 )
                 return
             await update_project_state(restored)
@@ -1423,8 +1439,9 @@ async def handle_message(update: Any, context: Any):
     elif intent == "cancel_project":
         if active:
             request_confirmation(user_id, "cancel_project")
+            from factory.telegram.messages import project_display_name
             await update.message.reply_text(
-                f"You're about to cancel project {active.get('project_id', '?')} "
+                f"You're about to cancel {project_display_name(active)} "
                 f"(currently at {active.get('current_stage', '?')}).\n\n"
                 "This cannot be undone. Reply 'yes' to confirm, or anything else to abort."
             )
@@ -1482,9 +1499,11 @@ async def _execute_confirmed_action(
         active = await get_active_project(user_id)
         if active:
             project_id = active.get("project_id", "")
+            from factory.telegram.messages import project_display_name
+            _display = project_display_name(active)
             await archive_project(project_id)
             await update.message.reply_text(
-                f"Project {project_id} has been cancelled and archived."
+                f"{_display} has been cancelled and archived."
             )
         else:
             await update.message.reply_text("No active project found.")

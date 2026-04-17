@@ -481,15 +481,17 @@ def _fallback_respond(message: str, active_project: dict | None) -> str:
     msg = message.lower()
 
     if active_project:
-        proj_id = active_project.get("project_id", "?")
+        # Issue 15: show the app name, never the raw proj_<hex> id.
+        from factory.telegram.messages import project_display_name
+        display = project_display_name(active_project)
         stage = active_project.get("current_stage", "?")
         if any(w in msg for w in ["status", "progress", "stage", "how", "update"]):
             return (
-                f"Your project {proj_id} is currently at stage: {stage}.\n"
+                f"Your project {display} is currently at stage: {stage}.\n"
                 "Use /status for full details."
             )
         if any(w in msg for w in ["cancel", "stop", "abort"]):
-            return f"To cancel {proj_id}, use /cancel or reply 'yes' after I ask for confirmation."
+            return f"To cancel {display}, use /cancel or reply 'yes' after I ask for confirmation."
         if any(w in msg for w in ["cost", "budget", "spend"]):
             return "Use /cost to see current spending for this project."
 

@@ -372,6 +372,60 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
 
     state.s2_output = blueprint_data
 
+    # ── Store blueprint nodes in Mother Memory (Issue 21 §6) ──────────
+    try:
+        from factory.memory.mother_memory import (
+            store_requirement, store_screen, store_api_endpoint, store_data_model,
+        )
+        bp_out = state.s2_output or {}
+        pid = state.project_id
+        oid = state.operator_id
+
+        for i, feat in enumerate(bp_out.get("feature_list", [])[:20]):
+            if isinstance(feat, dict):
+                await store_requirement(
+                    project_id=pid, operator_id=oid,
+                    req_id=feat.get("id", f"R{i+1}"),
+                    description=feat.get("name","") or feat.get("description",""),
+                    priority=feat.get("priority","medium"),
+                    acceptance_criteria=feat.get("acceptance_criteria",""),
+                    source_stage="S2_BLUEPRINT",
+                )
+
+        for i, screen in enumerate(bp_out.get("screens", [])[:20]):
+            if isinstance(screen, dict):
+                await store_screen(
+                    project_id=pid, operator_id=oid,
+                    screen_id=screen.get("id", f"SCR{i+1}"),
+                    name=screen.get("name", f"Screen{i+1}"),
+                    purpose=screen.get("purpose",""),
+                    components=screen.get("components", []),
+                    api_bindings=screen.get("api_bindings", []),
+                )
+
+        for ep in (bp_out.get("api_endpoints") or bp_out.get("api_spec") or [])[:15]:
+            if isinstance(ep, dict):
+                await store_api_endpoint(
+                    project_id=pid, operator_id=oid,
+                    path=ep.get("path",""),
+                    method=ep.get("method","GET"),
+                    request_schema=str(ep.get("request_schema","")),
+                    response_schema=str(ep.get("response_schema","")),
+                    auth=ep.get("auth",""),
+                )
+
+        for dm in (bp_out.get("data_model") or bp_out.get("data_models") or [])[:10]:
+            if isinstance(dm, dict):
+                await store_data_model(
+                    project_id=pid, operator_id=oid,
+                    name=dm.get("name","") or dm.get("collection",""),
+                    fields=str(dm.get("fields","")),
+                    relations=str(dm.get("relations","")),
+                )
+        logger.info(f"[{pid}] S2 blueprint nodes stored in Mother Memory")
+    except Exception as _mm_err:
+        logger.warning(f"[{state.project_id}] Mother Memory S2 store error (non-fatal): {_mm_err}")
+
     # ── Quality Gate (Issue 17) ──────────────────────────────────────
     # Skip gates in dry-run / test mode (DRY_RUN=true).
     if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):

@@ -86,6 +86,9 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     if logo_asset:
         state.brand_assets.append(logo_asset)
         requirements["logo_ready"] = True
+        # Issue 13: persist logo_path to authoritative intake store
+        if logo_asset.get("logo_path"):
+            state.intake["logo_path"] = logo_asset["logo_path"]
 
     # ── Step 7: Master Mode selection ──
     requirements = await _mode_selection(state, requirements)
@@ -521,6 +524,28 @@ async def _scope_confirmation(
 # ═══════════════════════════════════════════════════════════════════
 
 
+def _save_logo_to_disk(logo_bytes: bytes, project_id: str, app_name: str) -> Optional[str]:
+    """Save logo bytes to brand/ inside the project workspace.
+
+    Issue 13: ensures state.intake["logo_path"] points to a real file.
+    Returns the file path on success, None on failure.
+    """
+    import os as _os
+    try:
+        from factory.core.execution import _get_project_workspace
+        workspace = _get_project_workspace(project_id, app_name)
+        brand_dir = _os.path.join(workspace, "brand")
+        _os.makedirs(brand_dir, exist_ok=True)
+        logo_path = _os.path.join(brand_dir, "logo.png")
+        with open(logo_path, "wb") as _f:
+            _f.write(logo_bytes)
+        logger.info(f"[{project_id}] Logo saved: {logo_path}")
+        return logo_path
+    except Exception as e:
+        logger.warning(f"[{project_id}] Logo disk save failed (non-fatal): {e}")
+        return None
+
+
 async def _logo_flow(state: PipelineState, requirements: dict) -> Optional[dict]:
     """Run the logo selection flow.
 
@@ -638,10 +663,16 @@ async def _logo_flow_copilot(state: PipelineState, requirements: dict) -> Option
             selected_bytes = next((b for b in variants if b), None)
 
         if selected_bytes:
+            # Issue 13: save bytes to disk so downstream stages have a real path
+            logo_path = _save_logo_to_disk(
+                selected_bytes, state.project_id,
+                requirements.get("app_name", ""),
+            )
             return {
                 "asset_type": "logo",
                 "logo_bytes_len": len(selected_bytes),
                 "logo_prompt": logo_prompt,
+                "logo_path": logo_path,
                 "source": logo_source,
                 "variant": int(pick),
             }
@@ -681,10 +712,15 @@ async def _logo_flow_auto(state: PipelineState, requirements: dict) -> Optional[
                 except Exception as e:
                     logger.warning(f"[{state.project_id}] AUTOPILOT logo send failed: {e}")
 
+            # Issue 13: save bytes to disk so downstream stages have a real path
+            logo_path = _save_logo_to_disk(
+                logo_bytes, state.project_id, app_name,
+            )
             return {
                 "asset_type": "logo",
                 "logo_bytes_len": len(logo_bytes),
                 "logo_prompt": logo_prompt,
+                "logo_path": logo_path,
                 "source": "auto",
             }
     except Exception as e:

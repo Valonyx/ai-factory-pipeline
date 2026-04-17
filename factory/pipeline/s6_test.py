@@ -1,11 +1,13 @@
 """
-AI Factory Pipeline v5.8 — S6 Test Node
+AI Factory Pipeline v5.8.12 — S6 Test Node
 
 Implements:
   - §4.6 S6 Test (generate + run + analyze tests)
   - §4.6.1 Pre-Deploy Operator Acknowledgment Gate (FIX-08)
   - §4.6.2 Deploy decision waiting with timeout
   - War Room feedback on test failures
+  - Issue 10: cascade diagnosis → S4 regression on failure
+  - Issue 10: tests_executed ≥ 10 quality gate
 
 Spec Authority: v5.8 §4.6, §4.6.1, §4.6.2
 """
@@ -62,6 +64,10 @@ _STATIC_ANALYSIS_COMMANDS: dict[TechStack, str] = {
 # Pre-deploy gate timeouts
 COPILOT_DEPLOY_TIMEOUT = 3600   # 1 hour
 AUTOPILOT_DEPLOY_TIMEOUT = int(os.getenv("AUTOPILOT_DEPLOY_TIMEOUT", "900"))  # 15 min, override via env
+
+# Issue 10: minimum test count; failures trigger cascade regression to S4
+MIN_TESTS_EXECUTED = 10
+MAX_CODEGEN_REGRESSIONS = 2
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -142,8 +148,35 @@ async def s6_test_node(state: PipelineState) -> PipelineState:
     test_output["source_only"] = source_only
     test_output["build_success"] = build_success
     test_output["test_mode"] = "static_analysis" if source_only else "full_test_suite"
+
+    # ── Issue 10: tests_executed quality gate ──────────────────────
+    # Skip in DRY_RUN / test mode to avoid breaking existing mock tests.
+    _dry = os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+    if not _dry:
+        total_tests = test_output.get("total_tests", 0)
+        if total_tests < MIN_TESTS_EXECUTED:
+            test_output["passed"] = False
+            test_output.setdefault("failures", []).append({
+                "file": "test_suite",
+                "test": "tests_executed_gate",
+                "error": (
+                    f"Only {total_tests} tests ran; "
+                    f"minimum is {MIN_TESTS_EXECUTED}. "
+                    "Test suite appears incomplete."
+                ),
+                "severity": "critical",
+            })
+            logger.warning(
+                f"[{state.project_id}] S6 tests_executed gate: "
+                f"{total_tests} < {MIN_TESTS_EXECUTED} minimum"
+            )
+
     state.s6_output = test_output
     state.project_metadata["tests_passed"] = test_output.get("passed", False)
+
+    # ── Issue 10: cascade diagnosis → S4 regression on failure ────
+    if not test_output.get("passed", True) and not _dry:
+        await _cascade_on_test_failure(state, test_output)
 
     # ── Issue 11 re-verify: store stage insight ──
     try:
@@ -308,6 +341,161 @@ async def _analyze_test_results(
             "security_critical": False,
             "failures": [],
         }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Issue 10: Cascade Diagnosis + Regression
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _diagnose_test_failures(
+    state: PipelineState,
+    test_output: dict,
+) -> dict:
+    """Ask STRATEGIST to diagnose test failures and produce S4 fix instructions."""
+    failures = test_output.get("failures", [])[:10]
+
+    diagnosis_raw = await call_ai(
+        role=AIRole.STRATEGIST,
+        prompt=(
+            f"Diagnose these test failures and list the root causes.\n\n"
+            f"Test summary:\n"
+            f"- total_tests: {test_output.get('total_tests', 0)}\n"
+            f"- failed_tests: {test_output.get('failed_tests', 0)}\n"
+            f"- failures: {json.dumps(failures, indent=2)[:2000]}\n\n"
+            f"Return ONLY valid JSON (no markdown):\n"
+            f'{{\n'
+            f'  "root_cause": "brief summary",\n'
+            f'  "issues": [{{"file": "...", "problem": "...", "suggested_fix": "..."}}],\n'
+            f'  "s4_instruction": "specific instruction for code regeneration"\n'
+            f'}}'
+        ),
+        state=state,
+        action="general",
+    )
+    try:
+        return json.loads(diagnosis_raw)
+    except json.JSONDecodeError:
+        return {
+            "root_cause": "parse_error",
+            "issues": [{"problem": "Could not parse diagnosis", "suggested_fix": "Regenerate code"}],
+            "s4_instruction": "Fix all failing tests — re-generate code more carefully.",
+        }
+
+
+async def _cascade_on_test_failure(
+    state: PipelineState,
+    test_output: dict,
+) -> None:
+    """Diagnose failures and trigger a S4_CODEGEN regression if under retry cap.
+
+    Issue 10: cascade diagnosis → regression.
+    - Attempt counter stored in state.project_metadata["codegen_regression_count"].
+    - Cap: MAX_CODEGEN_REGRESSIONS (2 attempts).
+    - Diagnosis stored in state.project_metadata["test_failure_diagnosis"] and
+      Mother Memory so the S4 re-run can read the fix instructions.
+    - Current pipeline halted with QUALITY_GATE_FAILED so the re-run takes over.
+    """
+    from factory.core.halt import HaltCode, HaltReason, set_halt
+
+    diagnosis = await _diagnose_test_failures(state, test_output)
+    state.project_metadata["test_failure_diagnosis"] = diagnosis
+
+    reg_count = state.project_metadata.get("codegen_regression_count", 0)
+
+    # Persist diagnosis to Mother Memory so the next S4 run picks it up
+    try:
+        from factory.memory.mother_memory import store_insight
+        await store_insight(
+            state,
+            insight=(
+                f"Test regression #{reg_count + 1}: "
+                f"{diagnosis.get('root_cause', '?')} — "
+                f"S4 instruction: {diagnosis.get('s4_instruction', '')[:300]}"
+            ),
+            category="test_failure",
+            tags={"regression_trigger": True, "attempt": reg_count + 1},
+        )
+    except Exception as _mm_err:
+        logger.debug(f"[{state.project_id}] cascade: MM write failed (non-fatal): {_mm_err}")
+
+    if reg_count < MAX_CODEGEN_REGRESSIONS:
+        state.project_metadata["codegen_regression_count"] = reg_count + 1
+
+        try:
+            from factory.telegram.notifications import send_telegram_message
+            await send_telegram_message(
+                state.operator_id,
+                f"🔁 Tests failed "
+                f"({test_output.get('failed_tests', '?')} failures). "
+                f"Root cause: {diagnosis.get('root_cause', '?')}\n\n"
+                f"Re-generating code (attempt "
+                f"{reg_count + 1}/{MAX_CODEGEN_REGRESSIONS})…",
+            )
+        except Exception:
+            pass
+
+        # Fire regression asynchronously — current pipeline halts cleanly below
+        import asyncio
+        from factory.pipeline.stage_regression import request_regression
+
+        _proj = state.project_id
+        _oper = state.operator_id
+
+        async def _run_regression() -> None:
+            async def _notify(msg: str) -> None:
+                try:
+                    from factory.telegram.notifications import send_telegram_message
+                    await send_telegram_message(_oper, msg)
+                except Exception:
+                    pass
+
+            try:
+                await request_regression(
+                    _proj, "S4_CODEGEN", _oper, notify_fn=_notify,
+                )
+            except Exception as _reg_err:
+                logger.warning(f"[{_proj}] cascade regression failed: {_reg_err}")
+                await _notify(f"⚠️ Regression failed: {_reg_err}")
+
+        asyncio.create_task(_run_regression())
+
+        set_halt(state, HaltReason(
+            code=HaltCode.QUALITY_GATE_FAILED,
+            title=(
+                f"Test failures: regression to S4 triggered "
+                f"(attempt {reg_count + 1}/{MAX_CODEGEN_REGRESSIONS})"
+            ),
+            detail=json.dumps(diagnosis.get("issues", [])[:3])[:400],
+            stage="S6_TEST",
+            failing_gate="test_suite",
+            remediation_steps=["Re-run in progress automatically…", "/cancel to abort"],
+        ))
+        state.legal_halt = True
+
+    else:
+        # Retry cap exhausted — permanent halt
+        set_halt(state, HaltReason(
+            code=HaltCode.QUALITY_GATE_FAILED,
+            title=(
+                f"Test failures: max regressions ({MAX_CODEGEN_REGRESSIONS}) exhausted"
+            ),
+            detail=(
+                f"Repeated codegen re-runs did not fix test failures. "
+                f"Root cause: {diagnosis.get('root_cause', '?')}"
+            ),
+            stage="S6_TEST",
+            failing_gate="test_suite_permanent",
+            remediation_steps=[
+                "Review generated code for structural issues",
+                "/cancel to abort",
+            ],
+        ))
+        state.legal_halt = True
+        logger.error(
+            f"[{state.project_id}] S6: max regressions exhausted — "
+            f"permanent halt"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════

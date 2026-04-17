@@ -2167,16 +2167,56 @@ async def _codegen_full_generation(
             state.legal_halt = True
             return state
 
+    # ── Issue 12: Write generated files to local workspace ──────────
+    # Ensures S5 and S6 have real files on disk to build/test against.
+    workspace_path = await write_files_to_disk(
+        files, state.project_id, app_name,
+    )
+    state.s4_output["workspace_path"] = workspace_path
+    state.s4_output["files_written"] = len(files)
+
     # ── Commit to GitHub repo ──
     await _commit_to_github(state, files, app_name, stack)
 
     logger.info(
         f"[{state.project_id}] S4 CodeGen complete: "
-        f"{len(files)} files, {len(tech_items)} tech items "
+        f"{len(files)} files written to {workspace_path}, "
+        f"{len(tech_items)} tech items "
         f"({sum(1 for i in tech_items if i.wired)} wired), "
         f"stack={stack.value}"
     )
     return state
+
+
+async def write_files_to_disk(
+    files: dict,
+    project_id: str,
+    app_name: str,
+) -> str:
+    """Write generated files to the local project workspace.
+
+    Issue 12: ensures S5/S6 have real source files on disk to build/test.
+    Returns the workspace path.  Non-fatal: logs warnings on partial failure.
+    """
+    from factory.core.execution import _get_project_workspace, write_file
+
+    workspace = _get_project_workspace(project_id, app_name)
+    written = 0
+    for rel_path, content in files.items():
+        if not isinstance(content, str):
+            continue
+        full_path = os.path.join(workspace, rel_path)
+        success = await write_file(full_path, content, project_id)
+        if success:
+            written += 1
+        else:
+            logger.warning(f"[{project_id}] write_files_to_disk: failed {rel_path}")
+
+    logger.info(
+        f"[{project_id}] write_files_to_disk: "
+        f"{written}/{len(files)} files → {workspace}"
+    )
+    return workspace
 
 
 async def _commit_to_github(

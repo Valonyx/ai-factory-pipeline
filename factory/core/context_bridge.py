@@ -26,7 +26,7 @@ Spec Authority: v5.8 §2.2.2 (provider-agnostic AI interface)
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from factory.core.state import PipelineState
@@ -220,6 +220,77 @@ def build_context_block(state: "PipelineState") -> str:
 
     lines.append("╚══ END PROJECT MEMORY ══\n")
     return "\n".join(lines)
+
+
+async def pack_context(
+    state: "PipelineState",
+    stage: str,
+    budget_tokens: int = 2000,
+) -> str:
+    """Return the highest-value context slice for a given stage + token budget.
+
+    Issue 21 §8: Instead of stuffing all prior state, surgically pick the
+    most relevant slices and respect the token budget. Falls back to
+    build_context_block() when token budget is generous.
+
+    Token estimate: 1 token ≈ 4 chars.
+    """
+    from factory.memory.retrieval import (
+        get_requirements, get_screens, get_api_spec,
+        get_data_models, get_legal_clauses_for,
+        get_related_files,
+    )
+
+    budget_chars = budget_tokens * 4
+    project_id = getattr(state, "project_id", "")
+
+    # ── Stage-specific priority slices ─────────────────────────────
+    slices: list[str] = []
+
+    if stage in ("S4_CODEGEN", "S5_BUILD"):
+        reqs = await get_requirements(project_id)
+        screens = await get_screens(project_id)
+        api = await get_api_spec(project_id)
+        models = await get_data_models(project_id)
+        for label, items in (
+            ("Requirements", reqs), ("Screens", screens),
+            ("API Endpoints", api), ("Data Models", models),
+        ):
+            if items:
+                block = f"[{label}]\n" + "\n".join(
+                    r.get("content","")[:200] for r in items[:10]
+                )
+                slices.append(block)
+
+    elif stage in ("S1_LEGAL", "S8_VERIFY"):
+        clauses = await get_legal_clauses_for(project_id)
+        if clauses:
+            slices.append(
+                "[Legal Clauses]\n" + "\n".join(
+                    r.get("content","")[:200] for r in clauses[:8]
+                )
+            )
+
+    elif stage in ("S6_TEST", "S7_DEPLOY", "S9_HANDOFF"):
+        files = await get_related_files(project_id)
+        if files:
+            slices.append(
+                "[Source Files]\n" + "\n".join(
+                    r.get("content","")[:150] for r in files[:15]
+                )
+            )
+
+    # ── Trim to budget ──────────────────────────────────────────────
+    combined = "\n\n".join(slices)
+    if len(combined) > budget_chars:
+        combined = combined[:budget_chars] + "\n[...truncated — use retrieval tools for more]"
+
+    # ── Fallback: base context block ────────────────────────────────
+    base = build_context_block(state)
+    base_trimmed = base[:max(0, budget_chars - len(combined))]
+
+    parts = [p for p in (base_trimmed, combined) if p.strip()]
+    return "\n\n".join(parts) if parts else ""
 
 
 def inject_context(prompt: str, state: "PipelineState") -> str:

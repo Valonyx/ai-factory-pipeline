@@ -195,6 +195,8 @@ async def archive_project(project_id: str) -> None:
     """Archive project — moves from active to archived in Supabase.
 
     Spec: §5.6
+    Also cancels any running pipeline task for the project so the
+    asyncio coroutine is stopped promptly (Issue 16).
     """
     for op_id in list(_active_projects_fallback.keys()):
         proj = _active_projects_fallback.get(op_id, {})
@@ -202,6 +204,8 @@ async def archive_project(project_id: str) -> None:
             state = PipelineState.model_validate(proj["state_json"])
             await _sb_archive(project_id, state)
             _active_projects_fallback.pop(op_id, None)
+            # Signal any running pipeline to stop
+            cancel_project_task(project_id)
             return
     # If not in fallback, find via Supabase and archive there
     try:
@@ -216,6 +220,8 @@ async def archive_project(project_id: str) -> None:
             logger.info(f"Project {project_id} archive requested (Supabase)")
     except Exception as e:
         logger.warning(f"archive_project fallback failed: {e}")
+    # Signal any running pipeline to stop (even if not in fallback dict)
+    cancel_project_task(project_id)
 
 
 # ═══════════════════════════════════════════════════════════════════

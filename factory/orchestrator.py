@@ -65,6 +65,10 @@ async def _notify_stage_complete(state: PipelineState, stage_name: str) -> None:
     Spec: §5.4 — every stage transition notifies operator with
     stage name, % complete, cost, and key artifact links.
     """
+    # 2g — delivery-layer terminal guard: never send notifications for a
+    # cancelled pipeline (the task may still be unwinding when this is called).
+    if state.pipeline_aborted:
+        return
     if not state.operator_id:
         return
 
@@ -134,6 +138,31 @@ def pipeline_node(stage: Stage):
     def decorator(fn):
         @wraps(fn)
         async def wrapper(state: PipelineState) -> PipelineState:
+            # 2d-iii — fast exit if the pipeline was already aborted or halted
+            if state.pipeline_aborted or state.current_stage == Stage.HALTED:
+                return state
+
+            # 2d-v — stage-visit cap (infinite-loop guard)
+            stage_key = stage.value
+            visits = state.stage_visit_counts.get(stage_key, 0) + 1
+            state.stage_visit_counts[stage_key] = visits
+            if visits > 3:
+                set_halt(state, HaltReason(
+                    code=HaltCode.UNCAUGHT_EXCEPTION,
+                    title="Stage loop detected",
+                    detail=(
+                        f"Stage {stage_key} has been entered {visits} times "
+                        "without operator intervention."
+                    ),
+                    stage=stage_key,
+                    remediation_steps=[
+                        "Operator must /cancel or /force_continue",
+                        "/restore to a previous snapshot",
+                    ],
+                ))
+                _transition_to(state, Stage.HALTED)
+                return state
+
             await legal_check_hook(state, stage, "pre")
             if state.legal_halt:
                 _transition_to(state, Stage.HALTED)
@@ -207,6 +236,40 @@ def _transition_to(state: PipelineState, stage: Stage) -> None:
         "to": stage.value,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
+
+
+def _check_deadline(state: PipelineState) -> bool:
+    """Return True if the project wall-clock deadline has been exceeded."""
+    if not state.pipeline_deadline:
+        return False
+    return datetime.now(timezone.utc).isoformat() > state.pipeline_deadline
+
+
+def _abort_check(state: PipelineState) -> bool:
+    """Check abort flag and deadline; set halt if deadline exceeded.
+
+    Returns True if the pipeline should stop (either flag set or deadline hit).
+    Call at every stage boundary after awaiting a stage function.
+    """
+    if state.pipeline_aborted:
+        return True
+    if _check_deadline(state):
+        set_halt(state, HaltReason(
+            code=HaltCode.PIPELINE_CANCELLED,
+            title="Project deadline exceeded",
+            detail=(
+                f"Project exceeded the 4-hour wall-clock limit "
+                f"(deadline: {state.pipeline_deadline})."
+            ),
+            stage=state.current_stage.value,
+            remediation_steps=[
+                "/continue to restart from current stage",
+                "/cancel",
+            ],
+        ))
+        state.pipeline_aborted = True
+        return True
+    return False
 
 
 async def _persist_snapshot(state: PipelineState) -> None:
@@ -328,68 +391,136 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     logger.info(f"[{state.project_id}] Pipeline START (mode={state.autonomy_mode.value})")
     budget_governor.set_spend_source(cost_tracker.monthly_total_cents)
 
-    for stage_name, stage_fn in STAGE_SEQUENCE[:7]:  # S0→S6 linear; S7+ handled by routing
-        state = await stage_fn(state)
+    # 2d-iv — set wall-clock deadline (4 hours from first run)
+    if not state.pipeline_deadline:
+        from datetime import timedelta
+        deadline_dt = datetime.now(timezone.utc) + timedelta(hours=4)
+        state.pipeline_deadline = deadline_dt.isoformat()
+
+    try:
+        for stage_name, stage_fn in STAGE_SEQUENCE[:7]:  # S0→S6 linear; S7+ handled by routing
+            state = await stage_fn(state)
+            if state.current_stage == Stage.HALTED:
+                return await halt_handler_node(state)
+            if _abort_check(state):
+                return state
+            # stage_name format: "s0_intake" → "S0_INTAKE"
+            await _notify_stage_complete(state, stage_name.upper())
+            if _abort_check(state):
+                return state
+
+        while True:
+            route = route_after_test(state)
+            if route == "halt":
+                return await halt_handler_node(state)
+            if route == "s4_codegen":
+                state = await s4_codegen_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                if _abort_check(state):
+                    return state
+                await _notify_stage_complete(state, "S4_CODEGEN")
+                if _abort_check(state):
+                    return state
+                state = await s5_build_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                if _abort_check(state):
+                    return state
+                await _notify_stage_complete(state, "S5_BUILD")
+                if _abort_check(state):
+                    return state
+                state = await s6_test_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                if _abort_check(state):
+                    return state
+                await _notify_stage_complete(state, "S6_TEST")
+                if _abort_check(state):
+                    return state
+                continue
+            if route == "s7_deploy":
+                break
+
+        state = await s7_deploy_node(state)
         if state.current_stage == Stage.HALTED:
             return await halt_handler_node(state)
-        # stage_name format: "s0_intake" → "S0_INTAKE"
-        await _notify_stage_complete(state, stage_name.upper())
+        if _abort_check(state):
+            return state
+        await _notify_stage_complete(state, "S7_DEPLOY")
+        if _abort_check(state):
+            return state
 
-    while True:
-        route = route_after_test(state)
-        if route == "halt":
+        state = await s8_verify_node(state)
+        if state.current_stage == Stage.HALTED:
             return await halt_handler_node(state)
-        if route == "s4_codegen":
-            state = await s4_codegen_node(state)
-            if state.current_stage == Stage.HALTED:
-                return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S4_CODEGEN")
-            state = await s5_build_node(state)
-            if state.current_stage == Stage.HALTED:
-                return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S5_BUILD")
-            state = await s6_test_node(state)
-            if state.current_stage == Stage.HALTED:
-                return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S6_TEST")
-            continue
-        if route == "s7_deploy":
-            break
+        if _abort_check(state):
+            return state
+        await _notify_stage_complete(state, "S8_VERIFY")
+        if _abort_check(state):
+            return state
 
-    state = await s7_deploy_node(state)
-    if state.current_stage == Stage.HALTED:
-        return await halt_handler_node(state)
-    await _notify_stage_complete(state, "S7_DEPLOY")
+        while True:
+            route = route_after_verify(state)
+            if route == "halt":
+                return await halt_handler_node(state)
+            if route == "s7_deploy":
+                state = await s7_deploy_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                if _abort_check(state):
+                    return state
+                await _notify_stage_complete(state, "S7_DEPLOY")
+                if _abort_check(state):
+                    return state
+                state = await s8_verify_node(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                if _abort_check(state):
+                    return state
+                await _notify_stage_complete(state, "S8_VERIFY")
+                if _abort_check(state):
+                    return state
+                continue
+            if route == "s9_handoff":
+                break
 
-    state = await s8_verify_node(state)
-    if state.current_stage == Stage.HALTED:
-        return await halt_handler_node(state)
-    await _notify_stage_complete(state, "S8_VERIFY")
-
-    while True:
-        route = route_after_verify(state)
-        if route == "halt":
+        state = await s9_handoff_node(state)
+        if state.current_stage == Stage.HALTED:
             return await halt_handler_node(state)
-        if route == "s7_deploy":
-            state = await s7_deploy_node(state)
-            if state.current_stage == Stage.HALTED:
-                return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S7_DEPLOY")
-            state = await s8_verify_node(state)
-            if state.current_stage == Stage.HALTED:
-                return await halt_handler_node(state)
-            await _notify_stage_complete(state, "S8_VERIFY")
-            continue
-        if route == "s9_handoff":
-            break
+        if _abort_check(state):
+            return state
+        await _notify_stage_complete(state, "S9_HANDOFF")
 
-    state = await s9_handoff_node(state)
-    if state.current_stage == Stage.HALTED:
-        return await halt_handler_node(state)
-    await _notify_stage_complete(state, "S9_HANDOFF")
+        logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
+        return state
 
-    logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
-    return state
+    except asyncio.CancelledError:
+        logger.info(f"[{state.project_id}] Pipeline cancelled by operator")
+        state.pipeline_aborted = True
+        _transition_to(state, Stage.HALTED)
+        set_halt(state, HaltReason(
+            code=HaltCode.PIPELINE_CANCELLED,
+            title="Pipeline cancelled by operator",
+            detail="The operator used /cancel while the pipeline was running.",
+            stage=state.current_stage.value,
+            remediation_steps=["/new to start a fresh project"],
+        ))
+        # best-effort notification — don't re-raise, let the task exit cleanly
+        try:
+            await send_telegram_message(
+                state.operator_id,
+                HaltReason(
+                    code=HaltCode.PIPELINE_CANCELLED,
+                    title="Pipeline cancelled",
+                    detail="Stopped by /cancel.",
+                    stage=state.current_stage.value,
+                    remediation_steps=["/new to start a fresh project"],
+                ).format_for_telegram(),
+            )
+        except Exception:
+            pass
+        return state
 
 
 async def resume_pipeline(state: PipelineState) -> PipelineState:
@@ -407,82 +538,146 @@ async def resume_pipeline(state: PipelineState) -> PipelineState:
     )
     budget_governor.set_spend_source(cost_tracker.monthly_total_cents)
 
+    # Clear abort flag on resume (operator explicitly requested continuation)
+    state.pipeline_aborted = False
+
     current = state.current_stage.value  # e.g. "s4_codegen"
     _linear = STAGE_SEQUENCE[:7]         # (name, fn) pairs for S0→S6
     _linear_names = [n for n, _ in _linear]
 
-    # ── Linear portion S0–S6 ────────────────────────────────────────
-    if current in _linear_names:
-        start_idx = _linear_names.index(current)
-        for stage_name, stage_fn in _linear[start_idx:]:
-            state = await stage_fn(state)
+    try:
+        # ── Linear portion S0–S6 ────────────────────────────────────────
+        if current in _linear_names:
+            start_idx = _linear_names.index(current)
+            for stage_name, stage_fn in _linear[start_idx:]:
+                state = await stage_fn(state)
+                if state.current_stage == Stage.HALTED:
+                    return await halt_handler_node(state)
+                if _abort_check(state):
+                    return state
+                await _notify_stage_complete(state, stage_name.upper())
+                if _abort_check(state):
+                    return state
+
+            # After S6 — test routing loop (same as run_pipeline)
+            while True:
+                route = route_after_test(state)
+                if route == "halt":
+                    return await halt_handler_node(state)
+                if route == "s4_codegen":
+                    state = await s4_codegen_node(state)
+                    if state.current_stage == Stage.HALTED:
+                        return await halt_handler_node(state)
+                    if _abort_check(state):
+                        return state
+                    await _notify_stage_complete(state, "S4_CODEGEN")
+                    if _abort_check(state):
+                        return state
+                    state = await s5_build_node(state)
+                    if state.current_stage == Stage.HALTED:
+                        return await halt_handler_node(state)
+                    if _abort_check(state):
+                        return state
+                    await _notify_stage_complete(state, "S5_BUILD")
+                    if _abort_check(state):
+                        return state
+                    state = await s6_test_node(state)
+                    if state.current_stage == Stage.HALTED:
+                        return await halt_handler_node(state)
+                    if _abort_check(state):
+                        return state
+                    await _notify_stage_complete(state, "S6_TEST")
+                    if _abort_check(state):
+                        return state
+                    continue
+                break  # route == "s7_deploy"
+            current = "s7_deploy"
+
+        # ── S7 Deploy ───────────────────────────────────────────────────
+        if current == "s7_deploy":
+            state = await s7_deploy_node(state)
             if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            await _notify_stage_complete(state, stage_name.upper())
+            if _abort_check(state):
+                return state
+            await _notify_stage_complete(state, "S7_DEPLOY")
+            if _abort_check(state):
+                return state
+            current = "s8_verify"
 
-        # After S6 — test routing loop (same as run_pipeline)
-        while True:
-            route = route_after_test(state)
-            if route == "halt":
+        # ── S8 Verify ───────────────────────────────────────────────────
+        if current == "s8_verify":
+            state = await s8_verify_node(state)
+            if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            if route == "s4_codegen":
-                state = await s4_codegen_node(state)
-                if state.current_stage == Stage.HALTED:
-                    return await halt_handler_node(state)
-                await _notify_stage_complete(state, "S4_CODEGEN")
-                state = await s5_build_node(state)
-                if state.current_stage == Stage.HALTED:
-                    return await halt_handler_node(state)
-                await _notify_stage_complete(state, "S5_BUILD")
-                state = await s6_test_node(state)
-                if state.current_stage == Stage.HALTED:
-                    return await halt_handler_node(state)
-                await _notify_stage_complete(state, "S6_TEST")
-                continue
-            break  # route == "s7_deploy"
-        current = "s7_deploy"
+            if _abort_check(state):
+                return state
+            await _notify_stage_complete(state, "S8_VERIFY")
+            if _abort_check(state):
+                return state
 
-    # ── S7 Deploy ───────────────────────────────────────────────────
-    if current == "s7_deploy":
-        state = await s7_deploy_node(state)
-        if state.current_stage == Stage.HALTED:
-            return await halt_handler_node(state)
-        await _notify_stage_complete(state, "S7_DEPLOY")
-        current = "s8_verify"
+            while True:
+                route = route_after_verify(state)
+                if route == "halt":
+                    return await halt_handler_node(state)
+                if route == "s7_deploy":
+                    state = await s7_deploy_node(state)
+                    if state.current_stage == Stage.HALTED:
+                        return await halt_handler_node(state)
+                    if _abort_check(state):
+                        return state
+                    await _notify_stage_complete(state, "S7_DEPLOY")
+                    if _abort_check(state):
+                        return state
+                    state = await s8_verify_node(state)
+                    if state.current_stage == Stage.HALTED:
+                        return await halt_handler_node(state)
+                    if _abort_check(state):
+                        return state
+                    await _notify_stage_complete(state, "S8_VERIFY")
+                    if _abort_check(state):
+                        return state
+                    continue
+                break  # route == "s9_handoff"
+            current = "s9_handoff"
 
-    # ── S8 Verify ───────────────────────────────────────────────────
-    if current == "s8_verify":
-        state = await s8_verify_node(state)
-        if state.current_stage == Stage.HALTED:
-            return await halt_handler_node(state)
-        await _notify_stage_complete(state, "S8_VERIFY")
-
-        while True:
-            route = route_after_verify(state)
-            if route == "halt":
+        # ── S9 Handoff ──────────────────────────────────────────────────
+        if current == "s9_handoff":
+            state = await s9_handoff_node(state)
+            if state.current_stage == Stage.HALTED:
                 return await halt_handler_node(state)
-            if route == "s7_deploy":
-                state = await s7_deploy_node(state)
-                if state.current_stage == Stage.HALTED:
-                    return await halt_handler_node(state)
-                await _notify_stage_complete(state, "S7_DEPLOY")
-                state = await s8_verify_node(state)
-                if state.current_stage == Stage.HALTED:
-                    return await halt_handler_node(state)
-                await _notify_stage_complete(state, "S8_VERIFY")
-                continue
-            break  # route == "s9_handoff"
-        current = "s9_handoff"
+            if _abort_check(state):
+                return state
+            await _notify_stage_complete(state, "S9_HANDOFF")
 
-    # ── S9 Handoff ──────────────────────────────────────────────────
-    if current == "s9_handoff":
-        state = await s9_handoff_node(state)
-        if state.current_stage == Stage.HALTED:
-            return await halt_handler_node(state)
-        await _notify_stage_complete(state, "S9_HANDOFF")
+        logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
+        return state
 
-    logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
-    return state
+    except asyncio.CancelledError:
+        logger.info(f"[{state.project_id}] Pipeline cancelled by operator")
+        state.pipeline_aborted = True
+        _transition_to(state, Stage.HALTED)
+        set_halt(state, HaltReason(
+            code=HaltCode.PIPELINE_CANCELLED,
+            title="Pipeline cancelled by operator",
+            detail="The operator used /cancel while the pipeline was running.",
+            stage=state.current_stage.value,
+            remediation_steps=["/new to start a fresh project"],
+        ))
+        try:
+            await send_telegram_message(
+                state.operator_id,
+                HaltReason(
+                    code=HaltCode.PIPELINE_CANCELLED,
+                    title="Pipeline cancelled",
+                    detail="Stopped by /cancel.",
+                    stage=state.current_stage.value,
+                    remediation_steps=["/new to start a fresh project"],
+                ).format_for_telegram(),
+            )
+        except Exception:
+            pass
+        return state
 
 
 async def run_pipeline_from_description(

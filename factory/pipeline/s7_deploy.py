@@ -112,6 +112,9 @@ async def s7_deploy_node(state: PipelineState) -> PipelineState:
 
     Cost target: <$0.30
     """
+    # ── Issue 5 re-verify: inject chain context ──
+    from factory.pipeline.stage_chain import inject_chain_context as _inject_cc  # noqa: F401
+
     blueprint_data = state.s2_output or {}
     artifacts = (state.s5_output or {}).get("artifacts", {})
     stack_value = blueprint_data.get("selected_stack", "flutterflow")

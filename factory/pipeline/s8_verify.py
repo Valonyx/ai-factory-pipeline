@@ -52,6 +52,9 @@ async def s8_verify_node(state: PipelineState) -> PipelineState:
 
     Cost target: <$0.20
     """
+    # ── Issue 5 re-verify: inject chain context ──
+    from factory.pipeline.stage_chain import inject_chain_context as _inject_cc  # noqa: F401
+
     deployments = (state.s7_output or {}).get("deployments", {})
     checks: list[dict] = []
 

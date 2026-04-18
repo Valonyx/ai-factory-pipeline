@@ -555,6 +555,7 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
             return state
         await _notify_stage_complete(state, "S9_HANDOFF")
 
+        _transition_to(state, Stage.COMPLETED)
         logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
         return state
 
@@ -713,6 +714,7 @@ async def resume_pipeline(state: PipelineState) -> PipelineState:
                 return state
             await _notify_stage_complete(state, "S9_HANDOFF")
 
+        _transition_to(state, Stage.COMPLETED)
         logger.info(f"[{state.project_id}] Pipeline COMPLETE — cost=${state.total_cost_usd:.2f}")
         return state
 

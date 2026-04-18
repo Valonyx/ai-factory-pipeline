@@ -338,6 +338,10 @@ async def check_deploy_time(state: PipelineState) -> dict:
     Spec: §2.7.3 — S6 pre
     Default: 06:00–23:00 AST (UTC+3)
     """
+    import os as _os
+    if _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+        return {"passed": True, "details": "Dry-run: time-of-day check skipped", "blocking": False}
+
     from datetime import timedelta
     now_utc = datetime.now(timezone.utc)
     now_ast = now_utc + timedelta(hours=3)

@@ -254,10 +254,10 @@ async def build_design_package(
     try:
         from factory.design.mocks import generate_visual_mocks
         if screens:
+            bp_with_screens = {**blueprint_data, "screens": screens[:10]}
             mock_paths, selected = await generate_visual_mocks(
                 state=state,
-                app_name=app_name,
-                screens=screens[:10],  # up to 10 screens
+                blueprint_data=bp_with_screens,
                 design=blueprint_data,
             )
             package["screen_mockup_paths"] = mock_paths
@@ -1117,7 +1117,6 @@ async def _generate_icon_set(
 ) -> list[str]:
     """Generate app icon at multiple sizes via image_gen."""
     from factory.integrations.image_gen import generate_image, build_logo_prompt
-    from factory.design.logo_gen import _to_disk
 
     app_name = blueprint_data.get("app_name", state.project_id)
     palette = blueprint_data.get("color_palette", {})

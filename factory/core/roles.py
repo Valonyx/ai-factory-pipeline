@@ -479,6 +479,12 @@ async def _call_single_ai_provider(
     if provider == "github_models":
         from factory.integrations.github_models_provider import call_github_models
         return await call_github_models(prompt, contract)
+    if provider == "nvidia_nim":
+        from factory.integrations.nvidia_nim_provider import call_nvidia_nim
+        return await call_nvidia_nim(prompt, contract)
+    if provider == "sambanova":
+        from factory.integrations.sambanova_provider import call_sambanova
+        return await call_sambanova(prompt, contract)
     if provider == "mock":
         return (f"[MOCK:{contract.role.value}] {prompt[:80]}", 0.0001)
     raise ValueError(f"Unknown AI provider: {provider}")

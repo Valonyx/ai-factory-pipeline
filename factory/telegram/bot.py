@@ -291,42 +291,66 @@ async def cmd_cost(update: Any, context: Any):
 
 @require_auth
 async def cmd_mode(update: Any, context: Any):
-    """§5.2: /mode — Show or set Master Execution Mode (v5.8)."""
+    """§5.2: /mode — Show or set Master Execution Mode (v5.8).
+
+    Works with or without an active project.
+    Without a project: updates the operator's default preference.
+    With a project: updates the live project state.
+    """
     user_id = str(update.effective_user.id)
     active = await get_active_project(user_id)
-    if not active:
-        await update.message.reply_text("No active project.")
-        return
 
-    state = PipelineState.model_validate(active["state_json"])
     arg = (context.args[0].lower() if context.args else "").strip()
 
     _MASTER_MODES = {"basic", "balanced", "custom", "turbo"}
     _EXEC_MODES = {"cloud", "local", "hybrid"}
 
     if arg in _MASTER_MODES:
-        state.master_mode = MasterMode(arg)
-        await update_project_state(state)
-        mm = state.master_mode
+        if active:
+            state = PipelineState.model_validate(active["state_json"])
+            state.master_mode = MasterMode(arg)
+            await update_project_state(state)
+        await set_operator_preference(user_id, "master_mode", arg)
+        mm = MasterMode(arg)
+        scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
-            f"{mm.emoji} Master mode set to *{mm.label}*."
+            f"{mm.emoji} Master mode → *{mm.label}* ({scope}).\n"
+            f"Use /turbo, /basic, /balanced, /custom as shortcuts."
         )
     elif arg in _EXEC_MODES:
-        # Backwards-compat: still allow /mode cloud|local|hybrid
-        state.execution_mode = ExecutionMode(arg)
-        await update_project_state(state)
+        if active:
+            state = PipelineState.model_validate(active["state_json"])
+            state.execution_mode = ExecutionMode(arg)
+            await update_project_state(state)
+        await set_operator_preference(user_id, "execution_mode", arg)
         emoji_map = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
+        scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
-            f"{emoji_map[arg]} Execution mode: {arg.upper()}."
+            f"{emoji_map[arg]} Execution mode → *{arg.upper()}* ({scope})."
         )
     else:
-        mm = state.master_mode
-        em = state.execution_mode
+        # Show current settings
+        if active:
+            state = PipelineState.model_validate(active["state_json"])
+            mm = state.master_mode
+            em = state.execution_mode
+            ctx = "active project"
+        else:
+            prefs = get_operator_preferences(user_id)
+            mm = MasterMode(prefs.get("master_mode", "balanced"))
+            em = ExecutionMode(prefs.get("execution_mode", "cloud"))
+            ctx = "default (no active project)"
         await update.message.reply_text(
-            f"{mm.emoji} *Master mode*: {mm.label}\n"
+            f"⚙️ *Mode Status* ({ctx})\n\n"
+            f"{mm.emoji} *Master*: {mm.label}\n"
             f"☁️ *Execution*: {em.value}\n\n"
-            f"Set master mode: /mode basic | balanced | custom | turbo\n"
-            f"Set exec mode:   /mode cloud | local | hybrid"
+            f"*Master mode shortcuts:*\n"
+            f"  /basic — 🆓 Free-only, zero cost\n"
+            f"  /balanced — ⚖️ Smart mix (default)\n"
+            f"  /turbo — 🚀 Max performance\n"
+            f"  /custom — 🎛 Manual provider pick\n\n"
+            f"*Or:* /mode basic | balanced | turbo | custom\n"
+            f"*Execution:* /mode cloud | local | hybrid"
         )
 
 
@@ -334,6 +358,72 @@ async def cmd_mode(update: Any, context: Any):
 async def cmd_switch_mode(update: Any, context: Any):
     """v5.8: /switch_mode — Alias for /mode (set Master Execution Mode)."""
     await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_turbo(update: Any, context: Any):
+    """Shortcut: /turbo — set master mode to TURBO (max performance)."""
+    context.args = ["turbo"]
+    await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_basic(update: Any, context: Any):
+    """Shortcut: /basic — set master mode to BASIC (free-only, $0)."""
+    context.args = ["basic"]
+    await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_balanced(update: Any, context: Any):
+    """Shortcut: /balanced — set master mode to BALANCED (default)."""
+    context.args = ["balanced"]
+    await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_custom(update: Any, context: Any):
+    """Shortcut: /custom — set master mode to CUSTOM (manual pick)."""
+    context.args = ["custom"]
+    await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_switch_stack(update: Any, context: Any):
+    """v5.8: /switch_stack — guidance on changing tech stack mid-pipeline."""
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    if not active:
+        await update.message.reply_text(
+            "No active project. Start one with /new — stack is selected at S2."
+        )
+        return
+
+    state = PipelineState.model_validate(active["state_json"])
+    current = (state.s2_output or {}).get("selected_stack") or (
+        state.selected_stack.value if state.selected_stack else "not yet selected"
+    )
+    stage = state.current_stage.value
+
+    # Stack can only safely be changed before S2 completes
+    pre_s2 = state.current_stage in (
+        Stage.S0_INTAKE, Stage.S1_LEGAL, Stage.S2_BLUEPRINT,
+    )
+    if pre_s2:
+        await update.message.reply_text(
+            f"🔧 Stack not yet locked (stage: {stage}).\n"
+            f"The Strategist will select the best stack at S2.\n"
+            f"To force a specific stack, cancel with /cancel and include\n"
+            f"'stack: react_native' (or your choice) in the app description."
+        )
+    else:
+        await update.message.reply_text(
+            f"🔧 Current stack: *{current}* (locked at S2, now at {stage})\n\n"
+            f"Stack changes mid-pipeline require a full restart:\n"
+            f"  1. /cancel — archive current project\n"
+            f"  2. /new — start fresh, include 'stack: <name>' in description\n\n"
+            f"Available stacks: flutterflow, react_native, swift, kotlin, unity, python_backend"
+        )
 
 
 @require_auth
@@ -2104,6 +2194,11 @@ async def setup_bot() -> Any:
         # ── Execution control ──
         app.add_handler(CommandHandler("mode", cmd_mode))
         app.add_handler(CommandHandler("switch_mode", cmd_switch_mode))   # v5.8 alias
+        app.add_handler(CommandHandler("turbo", cmd_turbo))               # mode shortcuts
+        app.add_handler(CommandHandler("basic", cmd_basic))
+        app.add_handler(CommandHandler("balanced", cmd_balanced))
+        app.add_handler(CommandHandler("custom", cmd_custom))
+        app.add_handler(CommandHandler("switch_stack", cmd_switch_stack)) # stack guidance
         app.add_handler(CommandHandler("quota", cmd_quota))               # v5.8 quota
         app.add_handler(CommandHandler("autonomy", cmd_autonomy))
 

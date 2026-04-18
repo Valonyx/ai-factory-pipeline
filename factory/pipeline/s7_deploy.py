@@ -149,12 +149,10 @@ async def s7_deploy_node(state: PipelineState) -> PipelineState:
 
     # ══════════════════════════════════════════
     # Issue 4: Deploy-less pre-check — skip store uploads when creds absent
+    # Issue 22A: Use target_platforms (authoritative from s2_output) rather than
+    # stale state.intake/metadata["platforms"] to compute store_targets.
     # ══════════════════════════════════════════
-    platforms = (
-        (state.intake or {}).get("platforms")
-        or state.project_metadata.get("platforms")
-        or []
-    )
+    platforms = target_platforms  # already resolved from blueprint_data above
     deploy_targets: list = []
     store_targets: list = []
     if platforms:

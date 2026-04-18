@@ -51,6 +51,33 @@ STACK_DESCRIPTIONS: dict[str, str] = {
     "python_backend": "Python Backend — APIs, automation, no mobile UI",
 }
 
+_STACK_RATIONALE: dict[str, str] = {
+    "flutterflow": "Best for rapid delivery with minimal custom code",
+    "react_native": "Best for teams with JS experience needing both platforms",
+    "swift": "Best for Apple-ecosystem-first apps with native performance",
+    "kotlin": "Best for Android-first apps requiring deep platform integration",
+    "unity": "Best for games and interactive 3D/AR experiences",
+    "python_backend": "Best for API services, automation, and backend-only workloads",
+}
+
+
+def format_stack_summary(stack: "TechStack", requirements: dict) -> str:
+    """Return a one-line operator notification for the auto-selected stack.
+
+    Spec: §4.3 — Issue 22C
+    Used in AUTOPILOT mode after stack selection to inform the operator.
+    """
+    name = STACK_DESCRIPTIONS.get(stack.value, stack.value)
+    rationale = _STACK_RATIONALE.get(stack.value, "Selected as best fit")
+    platforms = requirements.get("target_platforms", [])
+    platform_str = "/".join(str(p) for p in platforms) if platforms else "cross-platform"
+    return (
+        f"🔧 Stack selected: {name}\n"
+        f"   Platforms: {platform_str}\n"
+        f"   Reason: {rationale}\n"
+        f"   (Override with /switch_stack if needed)"
+    )
+
 
 async def select_stack(
     state: PipelineState,
@@ -244,6 +271,17 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
         selected_stack = await select_stack(
             state, requirements, legal_output,
         )
+        # Issue 22B: AUTOPILOT — notify operator of auto-selected stack
+        try:
+            from factory.telegram.notifications import notify_operator
+            from factory.core.state import NotificationType
+            await notify_operator(
+                state,
+                NotificationType.INFO,
+                format_stack_summary(selected_stack, requirements),
+            )
+        except Exception:
+            pass
 
     state.selected_stack = selected_stack
     state.project_metadata.update(

@@ -94,14 +94,15 @@ async def legal_check_hook(
                 f"'{check_name}' failed at {stage.value}/{phase}: "
                 f"{result.get('details', 'No details')}"
             )
-            await send_telegram_message(
-                state.operator_id,
-                f"🚨 Legal compliance issue:\n\n"
-                f"Check: {check_name}\n"
-                f"Stage: {stage.value}\n"
-                f"Details: {result.get('details', 'N/A')}\n\n"
-                f"Pipeline paused. Reply /continue after resolving.",
-            )
+            if not result.get("suppress_notification"):
+                await send_telegram_message(
+                    state.operator_id,
+                    f"🚨 Legal compliance issue:\n\n"
+                    f"Check: {check_name}\n"
+                    f"Stage: {stage.value}\n"
+                    f"Details: {result.get('details', 'N/A')}\n\n"
+                    f"Pipeline paused. Reply /continue after resolving.",
+                )
             return
 
 
@@ -348,6 +349,7 @@ async def check_deploy_time(state: PipelineState) -> dict:
     hour_ast = now_ast.hour
 
     if not is_within_deploy_window(hour_ast):
+        _suppress = _os.getenv("SUPPRESS_DEPLOY_COUNTDOWN", "").lower() in ("true", "1", "yes")
         return {
             "passed": False,
             "details": (
@@ -355,6 +357,7 @@ async def check_deploy_time(state: PipelineState) -> dict:
                 f"allowed window. Resuming at 06:00 AST."
             ),
             "blocking": True,
+            "suppress_notification": _suppress,
         }
 
     return {

@@ -2272,7 +2272,66 @@ async def setup_bot() -> Any:
         ))
 
         set_bot_instance(app.bot)
-        logger.info("Telegram bot configured with 30 command handlers + error handler")
+
+        # ── Register command list with Telegram so they appear in the menu ──
+        # Without this, /turbo, /basic, /quota, /autonomy, etc. are invisible
+        # to users in the command picker. Called once at startup.
+        try:
+            from telegram import BotCommand
+            _all_commands = [
+                # Project lifecycle
+                BotCommand("start",          "Start the bot / show welcome"),
+                BotCommand("new",            "Start a new app project"),
+                BotCommand("status",         "Show current pipeline status"),
+                BotCommand("cost",           "Show AI spend for active project"),
+                BotCommand("modify",         "Modify an existing app (MODIFY mode)"),
+                BotCommand("cancel",         "Cancel and archive active project"),
+                BotCommand("rename",         "Rename the active project"),
+                BotCommand("update_logo",    "Upload a new logo for the project"),
+                # Mode control
+                BotCommand("mode",           "Show or set master mode (basic/balanced/turbo/custom)"),
+                BotCommand("switch_mode",    "Alias for /mode"),
+                BotCommand("basic",          "🆓 Switch to BASIC mode (free providers only)"),
+                BotCommand("balanced",       "⚖️ Switch to BALANCED mode (default)"),
+                BotCommand("turbo",          "🚀 Switch to TURBO mode (max performance)"),
+                BotCommand("custom",         "🎛 Switch to CUSTOM mode (manual picks)"),
+                BotCommand("switch_stack",   "Info on changing tech stack mid-pipeline"),
+                BotCommand("autonomy",       "Set autonomy mode (autopilot/copilot)"),
+                BotCommand("online",         "Switch to webhook/online mode"),
+                BotCommand("local",          "Switch back to local polling mode"),
+                # Time travel & snapshots
+                BotCommand("restore",        "Restore pipeline to a previous snapshot"),
+                BotCommand("snapshots",      "List available state snapshots"),
+                BotCommand("diff",           "Diff two snapshots side-by-side"),
+                BotCommand("rerun",          "Re-run a stage from a snapshot"),
+                BotCommand("rerun_confirm",  "Confirm a staged rerun"),
+                # Pipeline flow
+                BotCommand("continue",       "Resume a paused pipeline"),
+                BotCommand("deploy_confirm", "Confirm pending deployment"),
+                BotCommand("deploy_cancel",  "Cancel pending deployment"),
+                # Diagnostics & admin
+                BotCommand("quota",          "Show per-provider quota usage"),
+                BotCommand("providers",      "Show AI + memory provider chain status"),
+                BotCommand("warroom",        "Show War Room activation log"),
+                BotCommand("legal",          "Show legal compliance check results"),
+                BotCommand("admin",          "Admin commands (operator only)"),
+                BotCommand("force_continue", "Override a legal or quality halt"),
+                BotCommand("budget",         "Set or show monthly AI budget"),
+                BotCommand("setup",          "Check credentials and pipeline readiness"),
+                BotCommand("help",           "Show all available commands"),
+                # Business
+                BotCommand("evaluate",       "Evaluate an app idea (score + recommendations)"),
+                BotCommand("invoice",        "Create or list client invoices"),
+                BotCommand("revenue",        "Show revenue summary"),
+                BotCommand("clients",        "Manage client records"),
+                BotCommand("analytics",      "Show pipeline analytics dashboard"),
+            ]
+            await app.bot.set_my_commands(_all_commands)
+            logger.info(f"[bot] Registered {len(_all_commands)} commands with Telegram BotFather")
+        except Exception as _cmd_err:
+            logger.warning(f"[bot] set_my_commands failed (non-fatal): {_cmd_err}")
+
+        logger.info("Telegram bot configured with 40+ command handlers + error handler")
         return app
 
     except ImportError as e:

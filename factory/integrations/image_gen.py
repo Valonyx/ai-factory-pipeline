@@ -99,6 +99,9 @@ async def _call_provider(
     seed: int,
 ) -> Optional[bytes]:
     """Dispatch to a specific image provider."""
+    if provider == "nvidia_nim_flux":
+        from factory.integrations.nvidia_nim_image_gen import generate_image_flux
+        return await generate_image_flux(prompt, quality="schnell", width=width, height=height, seed=seed)
     if provider == "pollinations":
         return await _call_pollinations(prompt, width, height, seed)
     if provider == "huggingface":

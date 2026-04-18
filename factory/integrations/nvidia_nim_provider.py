@@ -1,17 +1,21 @@
 """
-AI Factory Pipeline v5.8.12 — NVIDIA NIM Provider
+AI Factory Pipeline v5.8.12 — NVIDIA NIM Chat Provider
 
-NVIDIA NIM (NVIDIA Inference Microservices) provides OpenAI-compatible LLM
-inference. Free tier available via build.nvidia.com (1000 credits/month).
+NVIDIA NIM provides OpenAI-compatible LLM inference across many models.
+All models use https://integrate.api.nvidia.com/v1/chat/completions
 
-Required env var:
-  NVIDIA_NIM_API_KEY — API key from https://build.nvidia.com
+Primary chat model: meta/llama-3.3-70b-instruct (NVIDIA_NIM_API_KEY)
+Additional models routed via dedicated per-model keys.
 
-Model used: meta/llama-3.3-70b-instruct
-Endpoint:   https://integrate.api.nvidia.com/v1/chat/completions
+Model tiers (routed from _call_nvidia_nim via provider arg):
+  ULTRA-PREMIUM  kimi_k2      moonshotai/kimi-k2.5 (reasoning)
+  ULTRA-PREMIUM  nvidia_nim_405b meta/llama-3.1-405b-instruct
+  FREE/MID       nvidia_nim_mixtral mistralai/mixtral-8x22b-instruct-v0.1
+  FREE/MID       nvidia_nim_gemma27b google/gemma-3-27b-it
+  FREE           nvidia_nim   meta/llama-3.3-70b-instruct  [default]
+  FREE           nvidia_nim_fast meta/llama-3.1-8b-instruct
 
-Uses httpx.AsyncClient with OpenAI-compatible request format.
-Docs: https://docs.api.nvidia.com/nim/reference/llm-apis
+All models use NVIDIA_NIM_MULTI_API_KEY as fallback when dedicated key absent.
 """
 from __future__ import annotations
 
@@ -25,54 +29,129 @@ if TYPE_CHECKING:
 logger = logging.getLogger("factory.integrations.nvidia_nim_provider")
 
 NVIDIA_NIM_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-NVIDIA_NIM_MODEL = "meta/llama-3.3-70b-instruct"
-NVIDIA_NIM_COST_PER_CALL: float = 0.0001  # ~$0.0001 per call on free tier
+
+# ── Model registry ──────────────────────────────────────────────────
+_MODEL_REGISTRY: dict[str, dict] = {
+    # provider_name → {model_id, env_key, cost_per_call}
+    "nvidia_nim": {
+        "model": "meta/llama-3.3-70b-instruct",
+        "key_env": "NVIDIA_NIM_API_KEY",
+        "cost": 0.0001,
+    },
+    "kimi_k2": {
+        "model": "moonshotai/kimi-k2.5",
+        "key_env": "NVIDIA_NIM_KIMI_API_KEY",
+        "cost": 0.002,
+    },
+    "nvidia_nim_405b": {
+        "model": "meta/llama-3.1-405b-instruct",
+        "key_env": "NVIDIA_NIM_LLAMA405B_API_KEY",
+        "cost": 0.005,
+    },
+    "nvidia_nim_mixtral": {
+        "model": "mistralai/mixtral-8x22b-instruct-v0.1",
+        "key_env": "NVIDIA_NIM_MIXTRAL_API_KEY",
+        "cost": 0.0,
+    },
+    "nvidia_nim_gemma27b": {
+        "model": "google/gemma-3-27b-it",
+        "key_env": "NVIDIA_NIM_GEMMA27B_API_KEY",
+        "cost": 0.0,
+    },
+    "nvidia_nim_fast": {
+        "model": "meta/llama-3.1-8b-instruct",
+        "key_env": "NVIDIA_NIM_LLAMA8B_API_KEY",
+        "cost": 0.0,
+    },
+}
+
+# Fallback key used when a model-specific key is absent
+_FALLBACK_KEY_ENV = "NVIDIA_NIM_MULTI_API_KEY"
+
+
+def _resolve_key(key_env: str) -> str:
+    """Return the API key for a model, falling back to multi key."""
+    return os.getenv(key_env, "") or os.getenv(_FALLBACK_KEY_ENV, "") or os.getenv("NVIDIA_NIM_API_KEY", "")
 
 
 async def call_nvidia_nim(
     prompt: str,
     contract: "RoleContract",
+    provider: str = "nvidia_nim",
 ) -> tuple[str, float]:
-    """Call NVIDIA NIM as a free-tier provider.
+    """Call a NVIDIA NIM LLM model.
 
-    Returns (response_text, cost_usd).
-    Raises ValueError if NVIDIA_NIM_API_KEY is not configured.
-    Raises on API errors so the caller can cascade to the next provider.
+    Args:
+        prompt: User prompt text.
+        contract: Role contract with token limits.
+        provider: Provider name from _MODEL_REGISTRY (default: nvidia_nim).
+
+    Returns:
+        (response_text, cost_usd) tuple.
+
+    Raises:
+        ValueError if the API key is not configured.
+        Exception on API errors (quota, auth, network) so the caller can cascade.
     """
     if os.getenv("AI_PROVIDER", "").lower() == "mock":
-        mock_text = f"[MOCK:nvidia_nim:{contract.role.value}] {prompt[:80]}"
-        logger.debug("[nvidia_nim] mock mode — returning stub response")
+        cfg = _MODEL_REGISTRY.get(provider, _MODEL_REGISTRY["nvidia_nim"])
+        mock_text = f"[MOCK:nvidia_nim:{cfg['model']}:{contract.role.value}] {prompt[:80]}"
+        logger.debug(f"[nvidia_nim] mock mode — {provider}")
         return mock_text, 0.0
 
-    api_key = os.getenv("NVIDIA_NIM_API_KEY", "")
+    cfg = _MODEL_REGISTRY.get(provider, _MODEL_REGISTRY["nvidia_nim"])
+    model_id = cfg["model"]
+    cost_per_call = cfg["cost"]
+
+    api_key = _resolve_key(cfg["key_env"])
     if not api_key:
-        raise ValueError("NVIDIA_NIM_API_KEY not configured")
+        raise ValueError(f"{cfg['key_env']} not configured (provider: {provider})")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": NVIDIA_NIM_MODEL,
+        "model": model_id,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": min(contract.max_output_tokens, 4096),
         "temperature": 0.7,
         "stream": False,
     }
 
-    logger.debug(f"[nvidia_nim] calling {NVIDIA_NIM_MODEL} for role={contract.role.value}")
+    logger.debug(f"[nvidia_nim] calling {model_id} for role={contract.role.value}")
 
     import httpx
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(NVIDIA_NIM_ENDPOINT, headers=headers, json=payload)
 
     if response.status_code == 429:
-        raise Exception("429 Rate Limited — NVIDIA NIM monthly credits exhausted")
+        raise Exception(f"429 Rate Limited — NVIDIA NIM {model_id}")
     if response.status_code in (401, 403):
-        raise Exception(f"{response.status_code} Unauthorized — check NVIDIA_NIM_API_KEY")
+        raise Exception(f"{response.status_code} Unauthorized — check {cfg['key_env']}")
     response.raise_for_status()
 
     data = response.json()
     text = data["choices"][0]["message"]["content"] or ""
-    logger.debug(f"[nvidia_nim] {NVIDIA_NIM_MODEL}: {len(text)} chars")
-    return text, NVIDIA_NIM_COST_PER_CALL
+    logger.debug(f"[nvidia_nim] {model_id}: {len(text)} chars")
+    return text, cost_per_call
+
+
+# Convenience aliases used by _call_single_ai_provider dispatch
+async def call_nvidia_nim_default(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim")
+
+async def call_kimi_k2(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="kimi_k2")
+
+async def call_nvidia_nim_405b(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_405b")
+
+async def call_nvidia_nim_mixtral(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_mixtral")
+
+async def call_nvidia_nim_gemma27b(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_gemma27b")
+
+async def call_nvidia_nim_fast(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_fast")

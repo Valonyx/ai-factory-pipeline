@@ -480,8 +480,23 @@ async def _call_single_ai_provider(
         from factory.integrations.github_models_provider import call_github_models
         return await call_github_models(prompt, contract)
     if provider == "nvidia_nim":
-        from factory.integrations.nvidia_nim_provider import call_nvidia_nim
-        return await call_nvidia_nim(prompt, contract)
+        from factory.integrations.nvidia_nim_provider import call_nvidia_nim_default
+        return await call_nvidia_nim_default(prompt, contract)
+    if provider == "kimi_k2":
+        from factory.integrations.nvidia_nim_provider import call_kimi_k2
+        return await call_kimi_k2(prompt, contract)
+    if provider == "nvidia_nim_405b":
+        from factory.integrations.nvidia_nim_provider import call_nvidia_nim_405b
+        return await call_nvidia_nim_405b(prompt, contract)
+    if provider == "nvidia_nim_mixtral":
+        from factory.integrations.nvidia_nim_provider import call_nvidia_nim_mixtral
+        return await call_nvidia_nim_mixtral(prompt, contract)
+    if provider == "nvidia_nim_gemma27b":
+        from factory.integrations.nvidia_nim_provider import call_nvidia_nim_gemma27b
+        return await call_nvidia_nim_gemma27b(prompt, contract)
+    if provider == "nvidia_nim_fast":
+        from factory.integrations.nvidia_nim_provider import call_nvidia_nim_fast
+        return await call_nvidia_nim_fast(prompt, contract)
     if provider == "sambanova":
         from factory.integrations.sambanova_provider import call_sambanova
         return await call_sambanova(prompt, contract)

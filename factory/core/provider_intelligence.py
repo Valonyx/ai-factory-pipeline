@@ -38,29 +38,43 @@ class Capability(str, Enum):
 
 # ── Capability matrix — what each provider supports ───────────────
 PROVIDER_CAPABILITIES: dict[str, set[Capability]] = {
-    "anthropic":         {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.MODERATION},
-    "gemini":            {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.EMBEDDINGS, Capability.SEARCH_GROUNDING, Capability.IMAGE_GEN},
-    "groq":              {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.STT, Capability.TTS, Capability.MODERATION},
-    "openrouter":        {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION},
-    "cerebras":          {Capability.CHAT, Capability.REASONING, Capability.CODING},
-    "together":          {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.IMAGE_GEN},
-    "mistral":           {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.OCR},
-    "cloudflare":        {Capability.CHAT, Capability.CODING, Capability.EMBEDDINGS, Capability.IMAGE_GEN, Capability.VISION, Capability.CLASSIFICATION},
-    "github_models":     {Capability.CHAT, Capability.REASONING, Capability.CODING},
-    "nvidia_nim":        {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.MODERATION},
-    "sambanova":         {Capability.CHAT, Capability.REASONING, Capability.CODING},
-    "huggingface":       {Capability.CHAT, Capability.CODING, Capability.EMBEDDINGS, Capability.IMAGE_GEN},
-    "jina":              {Capability.WEB_TO_TEXT, Capability.EMBEDDINGS, Capability.RERANKING},
-    "voyage":            {Capability.EMBEDDINGS, Capability.RERANKING},
-    "cohere":            {Capability.CHAT, Capability.EMBEDDINGS, Capability.RERANKING, Capability.CLASSIFICATION},
-    "perplexity":        {Capability.CHAT, Capability.SEARCH_GROUNDING},
-    "tavily":            {Capability.SEARCH_GROUNDING},
-    "ocr_space":         {Capability.OCR},
-    "elevenlabs":        {Capability.TTS, Capability.STT},
-    "azure_ai":          {Capability.STT, Capability.TTS, Capability.VISION, Capability.OCR, Capability.CHAT},
-    "assemblyai":        {Capability.STT},
-    "deepgram":          {Capability.STT, Capability.TTS},
-    "mock":              {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.EMBEDDINGS},
+    # Core LLM providers
+    "anthropic":             {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.MODERATION},
+    "gemini":                {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.EMBEDDINGS, Capability.SEARCH_GROUNDING, Capability.IMAGE_GEN},
+    "groq":                  {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.STT, Capability.TTS, Capability.MODERATION},
+    "openrouter":            {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION},
+    "cerebras":              {Capability.CHAT, Capability.REASONING, Capability.CODING},
+    "together":              {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.IMAGE_GEN},
+    "mistral":               {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.OCR},
+    "cloudflare":            {Capability.CHAT, Capability.CODING, Capability.EMBEDDINGS, Capability.IMAGE_GEN, Capability.VISION, Capability.CLASSIFICATION},
+    "github_models":         {Capability.CHAT, Capability.REASONING, Capability.CODING},
+    "sambanova":             {Capability.CHAT, Capability.REASONING, Capability.CODING},
+    "huggingface":           {Capability.CHAT, Capability.CODING, Capability.EMBEDDINGS, Capability.IMAGE_GEN},
+    # NVIDIA NIM LLM providers
+    "nvidia_nim":            {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.MODERATION},
+    "kimi_k2":               {Capability.CHAT, Capability.REASONING, Capability.CODING},  # moonshotai/kimi-k2.5 — best for reasoning
+    "nvidia_nim_405b":       {Capability.CHAT, Capability.REASONING, Capability.CODING},  # llama-405b — ultra scale
+    "nvidia_nim_mixtral":    {Capability.CHAT, Capability.REASONING, Capability.CODING},  # mixtral-8x22b
+    "nvidia_nim_gemma27b":   {Capability.CHAT, Capability.CODING},                        # gemma-3-27b
+    "nvidia_nim_fast":       {Capability.CHAT, Capability.CODING},                        # llama-3.1-8b — fast/bulk
+    # NVIDIA NIM specialized providers
+    "nvidia_nim_vision":     {Capability.VISION, Capability.CHAT},                        # nemotron-vl, llama-90b-vision, phi-4-multimodal
+    "nvidia_nim_embeddings": {Capability.EMBEDDINGS},                                     # bge-m3, nv-embedqa-e5, nv-embed-v1, etc.
+    "nvidia_nim_ocr":        {Capability.OCR},                                            # nemotron-ocr-v1, nemoretriever-ocr-v1
+    "nvidia_nim_reranking":  {Capability.RERANKING},                                      # nv-rerank-qa-mistral-4b, llama-nemotron-rerank-1b
+    "nvidia_nim_image_gen":  {Capability.IMAGE_GEN},                                      # FLUX models
+    # Retrieval / embedding providers
+    "jina":                  {Capability.WEB_TO_TEXT, Capability.EMBEDDINGS, Capability.RERANKING},
+    "voyage":                {Capability.EMBEDDINGS, Capability.RERANKING},
+    "cohere":                {Capability.CHAT, Capability.EMBEDDINGS, Capability.RERANKING, Capability.CLASSIFICATION},
+    "perplexity":            {Capability.CHAT, Capability.SEARCH_GROUNDING},
+    "tavily":                {Capability.SEARCH_GROUNDING},
+    "ocr_space":             {Capability.OCR},
+    "elevenlabs":            {Capability.TTS, Capability.STT},
+    "azure_ai":              {Capability.STT, Capability.TTS, Capability.VISION, Capability.OCR, Capability.CHAT},
+    "assemblyai":            {Capability.STT},
+    "deepgram":              {Capability.STT, Capability.TTS},
+    "mock":                  {Capability.CHAT, Capability.REASONING, Capability.CODING, Capability.VISION, Capability.EMBEDDINGS},
 }
 
 # ── Role → required capability ─────────────────────────────────────
@@ -73,24 +87,38 @@ ROLE_REQUIRED_CAPABILITY: dict[str, Capability] = {
 
 # ── Role → preferred provider chains per mode ──────────────────────
 # Keys match MasterMode.value strings.
+# New NIM providers (kimi_k2, nvidia_nim_405b, nvidia_nim_mixtral, nvidia_nim_gemma27b)
+# are positioned by quality tier within each mode's cascade.
 ROLE_PROVIDERS: dict[str, dict[str, list[str]]] = {
     "STRATEGIST": {
-        "BASIC":    ["gemini", "groq", "openrouter", "cerebras", "cloudflare", "github_models", "sambanova", "nvidia_nim", "mock"],
-        "BALANCED": ["anthropic", "gemini", "groq", "openrouter", "cerebras", "cloudflare", "github_models", "mock"],
-        "CUSTOM":   ["anthropic", "gemini", "groq", "openrouter", "cerebras", "mock"],
-        "TURBO":    ["anthropic", "gemini", "groq", "mock"],
+        # BASIC: free-only, best free quality first
+        "BASIC":    ["gemini", "groq", "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
+                     "openrouter", "cerebras", "cloudflare", "github_models", "sambanova",
+                     "nvidia_nim_fast", "mock"],
+        # BALANCED: anthropic for critical, cascade through quality tiers
+        "BALANCED": ["anthropic", "kimi_k2", "gemini", "groq", "nvidia_nim_mixtral",
+                     "nvidia_nim_gemma27b", "nvidia_nim", "openrouter", "cerebras", "mock"],
+        # CUSTOM: operator selects, reasonable default ordering
+        "CUSTOM":   ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq",
+                     "nvidia_nim_mixtral", "openrouter", "cerebras", "mock"],
+        # TURBO: max quality first
+        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq", "mock"],
     },
     "ENGINEER": {
-        "BASIC":    ["gemini", "groq", "openrouter", "cerebras", "cloudflare", "github_models", "mock"],
-        "BALANCED": ["anthropic", "gemini", "groq", "openrouter", "cerebras", "mock"],
-        "CUSTOM":   ["anthropic", "gemini", "groq", "openrouter", "mock"],
-        "TURBO":    ["anthropic", "gemini", "groq", "mock"],
+        "BASIC":    ["gemini", "groq", "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
+                     "openrouter", "cerebras", "cloudflare", "github_models", "nvidia_nim_fast", "mock"],
+        "BALANCED": ["anthropic", "gemini", "groq", "nvidia_nim_mixtral", "nvidia_nim",
+                     "openrouter", "cerebras", "mock"],
+        "CUSTOM":   ["anthropic", "kimi_k2", "gemini", "groq", "nvidia_nim_mixtral",
+                     "openrouter", "mock"],
+        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq", "mock"],
     },
     "QUICK_FIX": {
-        "BASIC":    ["gemini", "groq", "openrouter", "cerebras", "cloudflare", "github_models", "mock"],
-        "BALANCED": ["anthropic", "gemini", "groq", "openrouter", "mock"],
-        "CUSTOM":   ["anthropic", "gemini", "groq", "mock"],
-        "TURBO":    ["anthropic", "gemini", "mock"],
+        "BASIC":    ["gemini", "groq", "nvidia_nim_gemma27b", "nvidia_nim", "openrouter",
+                     "cerebras", "cloudflare", "github_models", "nvidia_nim_fast", "mock"],
+        "BALANCED": ["anthropic", "gemini", "groq", "nvidia_nim", "openrouter", "mock"],
+        "CUSTOM":   ["anthropic", "gemini", "groq", "nvidia_nim", "mock"],
+        "TURBO":    ["anthropic", "gemini", "groq", "mock"],
     },
     "SCOUT": {
         "BASIC":    ["gemini", "tavily", "jina", "perplexity", "mock"],

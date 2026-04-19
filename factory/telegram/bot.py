@@ -2229,6 +2229,30 @@ async def setup_bot() -> Any:
                 logger.warning(f"[bot] Memory chain init failed (will retry on demand): {e}")
         _bg(_init_memory_chain())
 
+        # ── Issue 30: rehydrate active projects from Supabase on startup ──
+        # Ensures /status, /cancel, /continue work immediately after a restart
+        # even before Supabase responds to the first live query.
+        async def _rehydrate_active_projects():
+            try:
+                from factory.integrations.supabase import get_supabase_client
+                client = get_supabase_client()
+                resp = client.table("active_projects").select("*").execute()
+                if resp.data:
+                    for row in resp.data:
+                        op_id = row.get("operator_id", "")
+                        if op_id and op_id not in _active_projects_fallback:
+                            _active_projects_fallback[op_id] = {
+                                "project_id": row.get("project_id", ""),
+                                "current_stage": row.get("current_stage", ""),
+                                "state_json": row.get("state_json", {}),
+                            }
+                    logger.info(
+                        f"[bot] Rehydrated {len(resp.data)} active project(s) from Supabase"
+                    )
+            except Exception as e:
+                logger.warning(f"[bot] Project rehydration skipped (Supabase unavailable): {e}")
+        _bg(_rehydrate_active_projects())
+
         # Start orphan-task sweeper (Issue 16 — cleans stale pipeline tasks)
         _bg(_orphan_task_sweeper())
 
@@ -2362,6 +2386,7 @@ async def setup_bot() -> Any:
                 BotCommand("update_logo",    "Upload a new logo for the project"),
                 # Mode control
                 BotCommand("mode",           "Show or set master mode (basic/balanced/turbo/custom)"),
+                BotCommand("execution_mode", "Set execution axis: cloud/local/hybrid"),
                 BotCommand("switch_mode",    "Alias for /mode"),
                 BotCommand("basic",          "🆓 Switch to BASIC mode (free providers only)"),
                 BotCommand("balanced",       "⚖️ Switch to BALANCED mode (default)"),

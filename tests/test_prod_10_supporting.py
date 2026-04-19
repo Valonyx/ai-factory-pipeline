@@ -146,17 +146,23 @@ class TestExecutionLayer:
 
     @pytest.mark.asyncio
     async def test_exec_mgr_local_failover(self, state):
-        """ExecutionModeManager fails over Local→Cloud."""
+        """ExecutionModeManager halts (not silently falls back) when LOCAL+unreachable.
+
+        Issue 26: LOCAL mode must NOT fall back to CLOUD silently.
+        The operator explicitly chose LOCAL; an unreachable machine raises RuntimeError
+        so the pipeline halts with a clear Telegram message.
+        """
         state.execution_mode = ExecutionMode.LOCAL
         state.local_heartbeat_alive = False
         mgr = ExecutionModeManager(state)
-        result = await mgr.execute_task({
-            "name": "test_failover",
-            "command": "echo failover",
-            "type": "general",
-        })
-        assert result["exit_code"] == 0
-        assert state.execution_mode == ExecutionMode.CLOUD
+        with pytest.raises(RuntimeError, match="LOCAL mode: machine unreachable"):
+            await mgr.execute_task({
+                "name": "test_failover",
+                "command": "echo failover",
+                "type": "general",
+            })
+        # execution_mode must NOT have been changed to CLOUD
+        assert state.execution_mode == ExecutionMode.LOCAL
 
     @pytest.mark.asyncio
     async def test_exec_mgr_hybrid_routing(self, state):

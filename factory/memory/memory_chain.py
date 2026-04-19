@@ -349,13 +349,18 @@ class MemoryChain:
     # ═══════════════════════════════════════════════════════════════════
 
     async def _quota_reset_loop(self) -> None:
-        """Periodically check if any exhausted backend has had its quota reset."""
+        """Periodically check quota resets and connectivity restoration for offline backends.
+
+        Issue 32: also re-probes backends that went offline due to connectivity errors
+        (not just quota exhaustion). When a backend comes back, sync_backend() drains
+        the pending writes it missed.
+        """
         while True:
             await asyncio.sleep(_QUOTA_CHECK_INTERVAL)
             for b in self._backends:
                 status = self._statuses[b.name]
+                # ── Path A: quota reset ────────────────────────────────
                 if status.check_quota_reset():
-                    # Backend restored — verify it's actually reachable
                     try:
                         ok = await asyncio.wait_for(b.ping(), timeout=10)
                         if ok:
@@ -368,6 +373,55 @@ class MemoryChain:
                     except Exception as e:
                         status.available = False
                         logger.debug(f"[memory-chain] {b.name} post-reset ping failed: {e}")
+                # ── Path B: Issue 32 — connectivity restore probe ──────
+                # Re-probe backends that are offline due to errors (not quota).
+                # This allows neo4j or any other backend to recover automatically
+                # when connectivity is restored between quota-check cycles.
+                elif not status.available and not status.quota_exhausted:
+                    try:
+                        ok = await asyncio.wait_for(b.ping(), timeout=10)
+                        if ok:
+                            await asyncio.wait_for(b.setup(), timeout=15)
+                            status.mark_success()
+                            logger.info(
+                                f"[memory-chain] {b.name} connectivity restored — syncing"
+                            )
+                            asyncio.create_task(self.sync_backend(b))
+                    except Exception:
+                        pass  # still offline — will retry next cycle
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Issue 32: Primary Election
+    # ═══════════════════════════════════════════════════════════════════
+
+    def promote_primary(self) -> str:
+        """Issue 32: elect the first available backend as effective read-primary.
+
+        When the configured primary (neo4j, index 0) is persistently offline,
+        this method identifies the next available backend so callers can know
+        which backend is serving reads. Queues a sync for that backend to drain
+        any pending writes it may have accumulated.
+
+        Returns the name of the elected primary, or "none" if all backends offline.
+        """
+        for b in self._backends:
+            st = self._statuses[b.name]
+            if st.available:
+                if b is not self._backends[0]:
+                    logger.info(
+                        f"[memory-chain] promote_primary: {b.name} is effective read-primary "
+                        f"({self._backends[0].name} is offline)"
+                    )
+                    # Drain pending writes to the elected primary
+                    if self._pending_writes.get(b.name):
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(self.sync_backend(b))
+                        except RuntimeError:
+                            pass  # no running loop — sync will happen on next quota cycle
+                return b.name
+        logger.warning("[memory-chain] promote_primary: all backends offline")
+        return "none"
 
     # ═══════════════════════════════════════════════════════════════════
     # Status / Diagnostics

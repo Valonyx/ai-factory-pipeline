@@ -186,8 +186,9 @@ class ExecutionModeManager:
             return await self._execute_cloud(task, requires_macincloud)
         elif mode == ExecutionMode.LOCAL:
             if not self.state.local_heartbeat_alive:
-                await self._notify_failover("Local machine unreachable")
-                return await self._execute_cloud(task, requires_macincloud)
+                # Issue 26: LOCAL mode does NOT fall back to CLOUD silently.
+                # The operator chose LOCAL explicitly — halt and explain how to fix.
+                await self._halt_local_unreachable()
             return await self._execute_local(task)
         elif mode == ExecutionMode.HYBRID:
             return await self._execute_hybrid(
@@ -276,11 +277,36 @@ class ExecutionModeManager:
         else:
             return await self._execute_cloud(task, requires_mac)
 
-    async def _notify_failover(self, reason: str) -> None:
-        """Notify operator of failover to Cloud Mode.
+    async def _halt_local_unreachable(self) -> None:
+        """Issue 26: LOCAL mode — halt with operator guidance instead of silent CLOUD fallback.
 
-        Spec: §2.4.1
+        The operator explicitly set execution_mode=LOCAL; silently switching to CLOUD
+        would consume cloud resources the operator may not have (no Render/GCP billing).
+        Instead: halt, explain the issue, tell them how to fix it.
         """
+        tunnel_url = os.getenv("LOCAL_TUNNEL_URL", "http://localhost:8765")
+        msg = (
+            f"🏠 LOCAL mode: machine unreachable ({tunnel_url})\n\n"
+            f"Pipeline halted — not falling back to cloud.\n\n"
+            f"To fix:\n"
+            f"  1. Start your Cloudflare tunnel:\n"
+            f"     cloudflared tunnel run factory-tunnel\n"
+            f"  2. Resume with /continue\n\n"
+            f"Or switch to cloud: /execution_mode cloud"
+        )
+        logger.error(f"[execution] LOCAL mode halt: machine unreachable at {tunnel_url}")
+        try:
+            from factory.telegram.notifications import send_telegram_message
+            await send_telegram_message(
+                chat_id=self.state.operator_id,
+                message=msg,
+            )
+        except Exception:
+            pass
+        raise RuntimeError(f"LOCAL mode: machine unreachable at {tunnel_url}")
+
+    async def _notify_failover(self, reason: str) -> None:
+        """Legacy: notify operator of failover to Cloud Mode (HYBRID path only)."""
         original = self.state.execution_mode.value
         self.state.execution_mode = ExecutionMode.CLOUD
         logger.warning(f"Failover: {original} → Cloud ({reason})")
@@ -323,12 +349,13 @@ class HeartbeatMonitor:
         self.consecutive_failures += 1
         if self.consecutive_failures >= self.max_failures:
             self.state.local_heartbeat_alive = False
-            if self.state.execution_mode != ExecutionMode.CLOUD:
-                self.state.execution_mode = ExecutionMode.CLOUD
-                logger.warning(
-                    f"Local machine unreachable ({self.consecutive_failures} "
-                    f"missed heartbeats). Auto-switched to Cloud Mode."
-                )
+            # Issue 26: do NOT auto-switch to CLOUD.
+            # execute_task() will halt with operator guidance on next task call.
+            logger.warning(
+                f"[heartbeat] Local machine unreachable "
+                f"({self.consecutive_failures} missed heartbeats). "
+                f"Pipeline will halt on next task — use /continue after tunnel is up."
+            )
         return False
 
 

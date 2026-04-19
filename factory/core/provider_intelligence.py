@@ -1,9 +1,12 @@
 """
-AI Factory Pipeline v5.8.12 — Provider Intelligence
+AI Factory Pipeline v5.8.13 — Provider Intelligence
 Issue 20: Role-specific chains, capability matrix, performance learning,
           rate-limit awareness, and poll-for-upgrades.
+Issue 23: resolve_provider_for_role() — key-present + mode-aware chain resolution.
+Issue 24: Corrected SCOUT chains (free-only for BASIC; gemini/jina removed).
+Issue 33: has_key() + start_health_probes() — real key-presence health checks.
 
-Spec Authority: v5.8.12 §20
+Spec Authority: v5.8.13 §23, §24, §33
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("factory.core.provider_intelligence")
 
@@ -69,6 +72,18 @@ PROVIDER_CAPABILITIES: dict[str, set[Capability]] = {
     "cohere":                {Capability.CHAT, Capability.EMBEDDINGS, Capability.RERANKING, Capability.CLASSIFICATION},
     "perplexity":            {Capability.CHAT, Capability.SEARCH_GROUNDING},
     "tavily":                {Capability.SEARCH_GROUNDING},
+    # Scout / search providers (no AI key — just web access)
+    "exa":                   {Capability.SEARCH_GROUNDING, Capability.WEB_TO_TEXT},
+    "brave":                 {Capability.SEARCH_GROUNDING},
+    "searxng":               {Capability.SEARCH_GROUNDING},
+    "duckduckgo":            {Capability.SEARCH_GROUNDING},
+    "wikipedia":             {Capability.SEARCH_GROUNDING},
+    "hackernews":            {Capability.SEARCH_GROUNDING},
+    "reddit":                {Capability.SEARCH_GROUNDING},
+    "stackoverflow":         {Capability.SEARCH_GROUNDING},
+    "github_search":         {Capability.SEARCH_GROUNDING},
+    "ai_scout":              {Capability.SEARCH_GROUNDING, Capability.CHAT},
+    # Specialised
     "ocr_space":             {Capability.OCR},
     "elevenlabs":            {Capability.TTS, Capability.STT},
     "azure_ai":              {Capability.STT, Capability.TTS, Capability.VISION, Capability.OCR, Capability.CHAT},
@@ -121,12 +136,77 @@ ROLE_PROVIDERS: dict[str, dict[str, list[str]]] = {
         "TURBO":    ["anthropic", "gemini", "groq", "mock"],
     },
     "SCOUT": {
-        "BASIC":    ["gemini", "tavily", "jina", "perplexity", "mock"],
-        "BALANCED": ["perplexity", "gemini", "tavily", "jina", "mock"],
-        "CUSTOM":   ["perplexity", "gemini", "tavily", "mock"],
-        "TURBO":    ["perplexity", "gemini", "mock"],
+        # BASIC: free providers only — no perplexity (paid), no brave (paid)
+        "BASIC":    ["tavily", "exa", "searxng", "duckduckgo", "wikipedia",
+                     "hackernews", "reddit", "stackoverflow", "github_search", "ai_scout"],
+        # BALANCED: perplexity first, then free waterfall
+        "BALANCED": ["perplexity", "tavily", "exa", "brave", "searxng",
+                     "duckduckgo", "wikipedia", "hackernews", "reddit", "ai_scout"],
+        "CUSTOM":   ["perplexity", "exa", "tavily", "brave", "searxng", "ai_scout"],
+        "TURBO":    ["perplexity", "brave", "exa", "tavily", "ai_scout"],
     },
 }
+
+
+# ── Issue 33: Required API key env var per provider ───────────────
+# None = no key required (always available if the integration is importable).
+_KEY_ENV_VARS: dict[str, Optional[str]] = {
+    "anthropic":             "ANTHROPIC_API_KEY",
+    "gemini":                "GEMINI_API_KEY",
+    "groq":                  "GROQ_API_KEY",
+    "openrouter":            "OPENROUTER_API_KEY",
+    "cerebras":              "CEREBRAS_API_KEY",
+    "together":              "TOGETHER_API_KEY",
+    "mistral":               "MISTRAL_API_KEY",
+    "cloudflare":            "CLOUDFLARE_API_TOKEN",
+    "github_models":         "GITHUB_TOKEN",
+    "sambanova":             "SAMBANOVA_API_KEY",
+    "huggingface":           "HF_TOKEN",
+    "nvidia_nim":            "NVIDIA_API_KEY",
+    "kimi_k2":               "NVIDIA_API_KEY",
+    "nvidia_nim_405b":       "NVIDIA_API_KEY",
+    "nvidia_nim_mixtral":    "NVIDIA_API_KEY",
+    "nvidia_nim_gemma27b":   "NVIDIA_API_KEY",
+    "nvidia_nim_fast":       "NVIDIA_API_KEY",
+    "nvidia_nim_vision":     "NVIDIA_API_KEY",
+    "nvidia_nim_embeddings": "NVIDIA_API_KEY",
+    "nvidia_nim_ocr":        "NVIDIA_API_KEY",
+    "nvidia_nim_reranking":  "NVIDIA_API_KEY",
+    "nvidia_nim_image_gen":  "NVIDIA_API_KEY",
+    "perplexity":            "PERPLEXITY_API_KEY",
+    "tavily":                "TAVILY_API_KEY",
+    "brave":                 "BRAVE_API_KEY",
+    "exa":                   "EXA_API_KEY",
+    "jina":                  "JINA_API_KEY",
+    "voyage":                "VOYAGE_API_KEY",
+    "cohere":                "COHERE_API_KEY",
+    "ocr_space":             "OCR_SPACE_API_KEY",
+    "elevenlabs":            "ELEVENLABS_API_KEY",
+    "azure_ai":              "AZURE_AI_KEY",
+    "assemblyai":            "ASSEMBLYAI_API_KEY",
+    "deepgram":              "DEEPGRAM_API_KEY",
+    # Free / keyless providers
+    "duckduckgo":            None,
+    "wikipedia":             None,
+    "hackernews":            None,
+    "reddit":                None,
+    "stackoverflow":         None,
+    "github_search":         None,
+    "searxng":               None,
+    "ai_scout":              None,
+    "mock":                  None,
+}
+
+
+def has_key(provider: str) -> bool:
+    """Return True if the provider's required API key is present in the environment.
+
+    Providers with no required key (duckduckgo, wikipedia, etc.) always return True.
+    """
+    env_var = _KEY_ENV_VARS.get(provider)
+    if env_var is None:
+        return True  # keyless provider
+    return bool(os.getenv(env_var, "").strip())
 
 
 @dataclass
@@ -194,6 +274,24 @@ class ProviderIntelligence:
             for name in PROVIDER_CAPABILITIES
         }
         self._upgrade_poller_task: Optional[asyncio.Task] = None
+        self._health_probe_task: Optional[asyncio.Task] = None
+
+    def resolve_provider_for_role(self, role_name: str, state: Any) -> list[str]:
+        """Return ordered, available, key-present providers for role + pipeline state.
+
+        Issue 23: extends get_chain_for_role() with:
+          - Key-presence filter (skips providers whose env var is unset)
+          - Exhausted-provider filter (skips providers in backoff window)
+          - Safety: returns full unfiltered chain if all providers are filtered out
+        """
+        mode_attr = getattr(state, "master_mode", None)
+        mode_name = mode_attr.value.upper() if mode_attr is not None else "BALANCED"
+        chain = self.get_chain_for_role(role_name, mode_name)
+        result = [
+            p for p in chain
+            if has_key(p) and self._metrics.get(p, ProviderMetrics(name=p)).is_available()
+        ]
+        return result if result else chain
 
     def get_chain_for_role(self, role_name: str, mode: str) -> list[str]:
         """Return the ordered provider list for a role+mode, filtered by capability."""
@@ -235,6 +333,48 @@ class ProviderIntelligence:
         m = self._metrics.setdefault(provider, ProviderMetrics(name=provider))
         m.mark_exhausted(reset_in_seconds)
 
+    def probe_providers(self) -> None:
+        """Issue 33: Key-presence health probe — marks keyless paid providers exhausted.
+
+        Called once on startup and periodically by start_health_probes().
+        Does NOT make live API calls — checks only whether the env var is set.
+        Providers with a key are left in their current state (real latency data wins).
+        Providers requiring a key that is absent are marked exhausted (1-year TTL)
+        so they never appear as available in resolve_provider_for_role() output.
+        """
+        for name in list(self._metrics.keys()):
+            if not has_key(name):
+                m = self._metrics[name]
+                if m.exhausted_until is None:
+                    m.mark_exhausted(reset_in_seconds=86400 * 365)
+                    env_var = _KEY_ENV_VARS.get(name, "?")
+                    logger.info(
+                        f"[provider-intelligence] {name}: {env_var} absent → marked unavailable"
+                    )
+
+    def start_health_probes(self, interval_seconds: int = 300) -> None:
+        """Issue 33: Start background task that runs probe_providers() periodically.
+
+        Runs immediately on start, then every interval_seconds (default 5 min).
+        This ensures /providers always reflects real key-present status, not
+        in-memory defaults (9999ms / 100% success rate) from a fresh restart.
+        """
+        if self._health_probe_task and not self._health_probe_task.done():
+            return
+
+        async def _probe_loop() -> None:
+            self.probe_providers()
+            while True:
+                await asyncio.sleep(interval_seconds)
+                self.probe_providers()
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                self._health_probe_task = loop.create_task(_probe_loop())
+        except RuntimeError:
+            pass  # no running loop at import time — caller must start manually
+
     def start_upgrade_poller(self, interval_seconds: int = 60) -> None:
         """Start background task that checks for exhausted-provider recovery."""
         if self._upgrade_poller_task and not self._upgrade_poller_task.done():
@@ -255,19 +395,31 @@ class ProviderIntelligence:
             pass  # no running loop at import time — caller must start manually
 
     def status_message(self) -> str:
-        """Render /providers status for Telegram."""
+        """Render /providers status for Telegram.
+
+        Issue 33: shows real key-presence status instead of stale in-memory defaults.
+        """
         lines = ["📡 *Provider Status*\n"]
         for role, modes in ROLE_PROVIDERS.items():
             primary = self.select_provider(role, "BALANCED") or "none"
             lines.append(f"*{role}* → {primary}")
         lines.append("\n*All providers:*")
-        for name, caps in PROVIDER_CAPABILITIES.items():
+        for name in PROVIDER_CAPABILITIES:
             m = self._metrics.get(name, ProviderMetrics(name=name))
-            status = "✅" if m.is_available() else f"⏸ (reset {int(m.exhausted_until or 0) - int(time.time())}s)"
-            lines.append(
-                f"  {status} {name} — "
-                f"sr={m.success_rate:.0%} lat={m.avg_latency_ms:.0f}ms"
-            )
+            key_ok = has_key(name)
+            if not key_ok:
+                env_var = _KEY_ENV_VARS.get(name, "?")
+                lines.append(f"  🔑 {name} — no {env_var}")
+            elif not m.is_available():
+                reset_in = max(0, int((m.exhausted_until or 0) - time.time()))
+                lines.append(f"  ⏸ {name} — exhausted (reset in {reset_in}s)")
+            elif m.success_count > 0:
+                lines.append(
+                    f"  ✅ {name} — "
+                    f"sr={m.success_rate:.0%} lat={m.avg_latency_ms:.0f}ms"
+                )
+            else:
+                lines.append(f"  ✅ {name} — key present, no calls yet")
         return "\n".join(lines)
 
 

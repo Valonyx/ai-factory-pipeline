@@ -312,15 +312,13 @@ async def _call_anthropic(
             if getattr(state, "current_stage", None) else ""
         )
 
-    # ── Issue 7: ProviderIntelligence role-specific chain ─────────
-    # get_chain_for_role() filters AI_PROVIDERS to only those that:
-    #   (a) appear in the role×mode preferred list (ROLE_PROVIDERS)
-    #   (b) have the required capability for this role
-    # Result: STRATEGIST gets reasoning-capable providers first;
-    #         QUICK_FIX gets chat providers; etc.
+    # ── Issue 23: resolve_provider_for_role() — key-present, mode-aware chain ──
+    # Extends get_chain_for_role() with:
+    #   (a) API key presence check (skips providers whose env var is unset)
+    #   (b) Exhausted-provider filter (skips providers in backoff window)
+    #   (c) BASIC-mode free-only enforcement (via ModeRouter._filter_available)
     role_name  = contract.role.value.upper()
-    mode_name  = master_mode.value.upper()
-    role_chain = provider_intelligence.get_chain_for_role(role_name, mode_name)
+    role_chain = provider_intelligence.resolve_provider_for_role(role_name, state)
 
     _ai_by_name = {p.name: p for p in AI_PROVIDERS}
     role_filtered = [_ai_by_name[n] for n in role_chain if n in _ai_by_name]

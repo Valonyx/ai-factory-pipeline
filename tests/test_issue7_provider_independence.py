@@ -206,13 +206,11 @@ async def test_call_anthropic_consults_provider_intelligence(monkeypatch):
     state = PipelineState(project_id="test-pi2", operator_id="op2")
     contract = ROLE_CONTRACTS[AIRole.STRATEGIST]
 
-    calls_to_get_chain = []
-
-    original_pi = roles_module.provider_intelligence if hasattr(roles_module, "provider_intelligence") else None
+    calls_to_resolve = []
 
     mock_pi = MagicMock()
-    mock_pi.get_chain_for_role.side_effect = lambda role, mode: (
-        calls_to_get_chain.append((role, mode)) or ["mock"]
+    mock_pi.resolve_provider_for_role.side_effect = lambda role, state: (
+        calls_to_resolve.append(role) or ["mock"]
     )
     mock_pi.record_call = MagicMock()
     mock_pi.on_provider_exhausted = MagicMock()
@@ -224,7 +222,7 @@ async def test_call_anthropic_consults_provider_intelligence(monkeypatch):
                           new=AsyncMock(return_value=("[MOCK:STRATEGIST] test", 0.0))):
             await roles_module._call_anthropic("design the architecture", contract, state, "plan_architecture")
 
-    assert len(calls_to_get_chain) >= 1, (
-        "_call_anthropic must call provider_intelligence.get_chain_for_role"
+    assert len(calls_to_resolve) >= 1, (
+        "_call_anthropic must call provider_intelligence.resolve_provider_for_role"
     )
-    assert calls_to_get_chain[0][0] == "STRATEGIST"
+    assert calls_to_resolve[0] == "STRATEGIST"

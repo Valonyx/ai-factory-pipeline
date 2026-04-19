@@ -58,6 +58,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("factory.integrations.scout_orchestrator")
 
+# ── Issue 24: Scout providers that require paid API keys ──────────
+# These are skipped when master_mode == BASIC (free-only enforcement).
+_PAID_SCOUT_PROVIDERS: frozenset[str] = frozenset({"perplexity", "brave"})
+
+# ── Issue 23: Per-provider call timeout (seconds) ─────────────────
+# Prevents any single provider from hanging the pipeline for minutes.
+_CALL_TIMEOUT_S: float = 30.0
+
+# ── Issue 23: Overall research timeout (seconds) ──────────────────
+# Hard ceiling for the entire research() call regardless of provider count.
+_RESEARCH_TIMEOUT_S: float = 120.0
+
 # ═══════════════════════════════════════════════════════════════════
 # Query Classification
 # ═══════════════════════════════════════════════════════════════════
@@ -284,14 +296,16 @@ class ScoutOrchestrator:
     def _available_providers(
         self,
         profile: QueryProfile,
+        master_mode: str = "BALANCED",
     ) -> list[str]:
-        """Return profile.provider_order filtered to chain-available providers.
+        """Return profile.provider_order filtered to usable providers.
 
-        Providers at ≥80% monthly quota are moved to the end of the list
-        (still available but deprioritised) to spread quota load across
-        providers before any single one exhausts.
+        Issue 23: filters providers without an API key (has_key check).
+        Issue 24: filters paid providers when master_mode == "BASIC".
+        Providers at ≥80% monthly quota are moved to the end of the list.
         """
         from factory.integrations.provider_chain import scout_chain, quota_tracker
+        from factory.core.provider_intelligence import has_key
 
         # Check and apply any time-based quota resets
         for name in scout_chain.chain:
@@ -306,11 +320,19 @@ class ScoutOrchestrator:
             "searxng", "duckduckgo", "reddit", "github_search",
         }
 
+        basic_mode = master_mode.upper() == "BASIC"
+
         # Split into normal vs. deprioritised (≥80% quota used)
         normal: list[str] = []
         deprioritized: list[str] = []
 
         for p in profile.provider_order:
+            # Issue 24: skip paid providers in BASIC mode
+            if basic_mode and p in _PAID_SCOUT_PROVIDERS:
+                continue
+            # Issue 23: skip providers whose API key is absent
+            if not has_key(p):
+                continue
             if p not in available and p not in no_quota:
                 continue  # hard-exhausted or unavailable — skip
             if quota_tracker.should_deprioritize(p):
@@ -406,7 +428,11 @@ class ScoutOrchestrator:
     ) -> Optional[ScoutResult]:
         for provider in providers:
             try:
-                text, cost = await self._try_provider(provider, query, contract, state, domain=domain)
+                # Issue 23: per-provider timeout prevents 14-min hangs
+                text, cost = await asyncio.wait_for(
+                    self._try_provider(provider, query, contract, state, domain=domain),
+                    timeout=_CALL_TIMEOUT_S,
+                )
                 confidence = self._score_confidence(
                     provider, text, grounded=False, fused=False,
                 )
@@ -422,6 +448,11 @@ class ScoutOrchestrator:
                     query_hash=self._query_hash(query),
                     urls=_extract_urls(text),
                 )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[scout-orch] {provider} timed out after {_CALL_TIMEOUT_S}s — trying next"
+                )
+                continue
             except Exception:
                 continue
         return None
@@ -442,8 +473,19 @@ class ScoutOrchestrator:
 
         p1, p2 = providers[0], providers[1]
 
-        r1_task = asyncio.create_task(self._try_provider(p1, query, contract, state, domain=domain))
-        r2_task = asyncio.create_task(self._try_provider(p2, query, contract, state, domain=domain))
+        # Issue 23: individual per-provider timeouts on parallel tasks
+        r1_task = asyncio.create_task(
+            asyncio.wait_for(
+                self._try_provider(p1, query, contract, state, domain=domain),
+                timeout=_CALL_TIMEOUT_S,
+            )
+        )
+        r2_task = asyncio.create_task(
+            asyncio.wait_for(
+                self._try_provider(p2, query, contract, state, domain=domain),
+                timeout=_CALL_TIMEOUT_S,
+            )
+        )
         results = await asyncio.gather(r1_task, r2_task, return_exceptions=True)
 
         r1 = results[0] if not isinstance(results[0], Exception) else None
@@ -592,22 +634,33 @@ class ScoutOrchestrator:
         )
 
         # ── 3. Route to available providers ───────────────────────────
-        providers = self._available_providers(profile)
+        # Issue 23/24: pass master_mode so paid providers are skipped in BASIC
+        mode_attr = getattr(state, "master_mode", None)
+        master_mode_str = mode_attr.value.upper() if mode_attr is not None else "BALANCED"
+        providers = self._available_providers(profile, master_mode=master_mode_str)
         if not providers:
-            providers = ["ai_scout"]  # guaranteed fallback
+            providers = ["ai_scout"]  # guaranteed keyless fallback
 
-        # ── 4. Execute research ───────────────────────────────────────
+        # ── 4. Execute research (with overall timeout guard) ──────────
         result: Optional[ScoutResult] = None
-
-        if profile.stakes == "high" and len(providers) >= 2:
-            # Parallel fusion for maximum accuracy
-            result = await self._parallel_fuse(
-                providers, query, contract, state, profile.domain,
+        try:
+            if profile.stakes == "high" and len(providers) >= 2:
+                # Parallel fusion for maximum accuracy
+                result = await asyncio.wait_for(
+                    self._parallel_fuse(providers, query, contract, state, profile.domain),
+                    timeout=_RESEARCH_TIMEOUT_S,
+                )
+            else:
+                result = await asyncio.wait_for(
+                    self._sequential(providers, query, contract, state, profile.domain),
+                    timeout=_RESEARCH_TIMEOUT_S,
+                )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"[scout-orch] research timed out after {_RESEARCH_TIMEOUT_S}s "
+                f"for project={state.project_id}"
             )
-        else:
-            result = await self._sequential(
-                providers, query, contract, state, profile.domain,
-            )
+            result = None
 
         if result is None:
             logger.error(f"[scout-orch] all providers failed for {state.project_id}")

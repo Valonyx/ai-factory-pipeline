@@ -227,11 +227,19 @@ Respond with ONLY a JSON object: {{"intent": "<one of the above>", "confidence":
 Message: {message}"""
 
 
-async def classify_intent(message: str) -> tuple[str, float]:
-    """Classify message intent via the AI chain. Returns (intent, confidence)."""
+async def classify_intent(
+    message: str,
+    master_mode: str = "BALANCED",
+) -> tuple[str, float]:
+    """Classify message intent via the AI chain. Returns (intent, confidence).
+
+    Issue 29: passes master_mode so BASIC-mode operators use free providers only.
+    """
     prompt = _INTENT_PROMPT.format(message=message[:500])
     try:
-        text = await _call_ai_for_bot(prompt, max_tokens=64, temperature=0.1)
+        text = await _call_ai_for_bot(
+            prompt, max_tokens=64, temperature=0.1, master_mode=master_mode,
+        )
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text).strip()
         data = json.loads(text)
@@ -261,23 +269,62 @@ def _heuristic_intent(message: str) -> tuple[str, float]:
 # Main AI Responder
 # ═══════════════════════════════════════════════════════════════════
 
+# Issue 29: providers that are always free-tier (no API key fee per token).
+# Used to filter the bot AI chain in BASIC mode so the operator pays nothing.
+_FREE_BOT_PROVIDERS: frozenset[str] = frozenset({
+    "gemini", "groq", "nvidia_nim", "cerebras", "mock",
+})
+
+
 async def _call_ai_for_bot(
     prompt: str,
     max_tokens: int = 400,
     temperature: float = 0.7,
+    master_mode: str = "BALANCED",
 ) -> str:
     """Route a plain-text prompt through the AI provider chain.
 
     Tries each provider in priority order (anthropic → gemini → groq →
     openrouter → mock), skipping any that are quota-exhausted or unavailable.
     Marks quota/auth errors so the chain updates its state for future calls.
+
+    Issue 29: in BASIC mode, skips paid providers (e.g. anthropic) so the
+    operator incurs zero API cost for bot-side AI calls.
     """
     from factory.integrations.provider_chain import (
         ai_chain, is_quota_error, is_auth_error, parse_retry_delay,
     )
 
+    basic_mode = master_mode.upper() == "BASIC"
+    attempted: set[str] = set()
+
     for _ in range(len(ai_chain.chain)):
-        provider = ai_chain.get_active()
+        # Pick next available provider, honouring BASIC mode filter.
+        provider = None
+        for p in ai_chain.chain:
+            if p in attempted:
+                continue
+            status = ai_chain.statuses.get(p)
+            if status and not status.available:
+                continue
+            if basic_mode and p not in _FREE_BOT_PROVIDERS:
+                continue
+            provider = p
+            break
+
+        if provider is None:
+            # BASIC filter left nothing — fall back to full chain
+            for p in ai_chain.chain:
+                if p not in attempted:
+                    status = ai_chain.statuses.get(p)
+                    if status and status.available:
+                        provider = p
+                        break
+
+        if provider is None:
+            break  # all exhausted
+
+        attempted.add(provider)
         try:
             result = await _call_bot_provider(provider, prompt, max_tokens, temperature)
             ai_chain.mark_success(provider)
@@ -293,9 +340,9 @@ async def _call_ai_for_bot(
                 logger.warning(f"[bot-ai] {provider} auth error — cascading")
             else:
                 ai_chain.mark_error(provider, err)
-                logger.warning(f"[bot-ai] {provider} error ({err[:80]}) — cascading to next provider")
-                # Continue cascade — bot should never hard-fail if another
-                # provider is available.
+                logger.warning(
+                    f"[bot-ai] {provider} error ({err[:80]}) — cascading to next provider"
+                )
 
     raise RuntimeError("All AI providers exhausted for bot response")
 
@@ -378,6 +425,7 @@ async def ai_respond(
     message: str,
     active_project: dict | None = None,
     intent: str = "",
+    master_mode: str = "BALANCED",
 ) -> str:
     """Generate a context-aware AI response via the provider chain.
 
@@ -438,7 +486,9 @@ async def ai_respond(
     )
 
     try:
-        reply = await _call_ai_for_bot(full_prompt, max_tokens=400, temperature=0.7)
+        reply = await _call_ai_for_bot(
+            full_prompt, max_tokens=400, temperature=0.7, master_mode=master_mode,
+        )
         reply = reply or "Sorry, I couldn't generate a response."
     except Exception as e:
         logger.warning(f"All AI providers failed for bot response: {e} — using fallback")

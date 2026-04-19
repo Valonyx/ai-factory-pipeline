@@ -1847,7 +1847,12 @@ async def handle_message(update: Any, context: Any):
             )
             return
 
-    intent, confidence = await classify_intent(text)
+    # Issue 29: load master mode once; pass to router + AI calls so BASIC
+    # operators never hit paid providers in bot-side AI calls.
+    _msg_prefs = await load_operator_preferences(user_id)
+    _master_mode = (_msg_prefs.get("master_mode") or "balanced").upper()
+
+    intent, confidence = await classify_intent(text, master_mode=_master_mode)
 
     logger.info(f"[{user_id}] intent={intent} confidence={confidence:.2f} msg={text[:60]}")
 
@@ -1859,14 +1864,14 @@ async def handle_message(update: Any, context: Any):
             from factory.core.state import PipelineState
             try:
                 state = PipelineState.model_validate(active.get("state_json", {}))
-                reply = await ai_respond(user_id, text, active, intent=intent)
+                reply = await ai_respond(user_id, text, active, intent=intent, master_mode=_master_mode)
                 status_summary = format_status_message(state)
                 await update.message.reply_text(f"{reply}\n\n{status_summary}")
             except Exception:
-                reply = await ai_respond(user_id, text, active, intent=intent)
+                reply = await ai_respond(user_id, text, active, intent=intent, master_mode=_master_mode)
                 await update.message.reply_text(reply)
         else:
-            reply = await ai_respond(user_id, text, None, intent=intent)
+            reply = await ai_respond(user_id, text, None, intent=intent, master_mode=_master_mode)
             await update.message.reply_text(reply)
 
     elif intent == "cancel_project":
@@ -1882,12 +1887,12 @@ async def handle_message(update: Any, context: Any):
             await update.message.reply_text("No active project to cancel.")
 
     elif intent in ("ask_question", "casual_chat", "unclear"):
-        reply = await ai_respond(user_id, text, active, intent=intent)
+        reply = await ai_respond(user_id, text, active, intent=intent, master_mode=_master_mode)
         await update.message.reply_text(reply)
 
     else:
         # Fallback: AI decides
-        reply = await ai_respond(user_id, text, active, intent=intent)
+        reply = await ai_respond(user_id, text, active, intent=intent, master_mode=_master_mode)
         await update.message.reply_text(reply)
 
 
@@ -1899,8 +1904,16 @@ async def _handle_start_project_intent(
     """Safety gate before launching pipeline: show cost estimate and confirm."""
     from factory.telegram.ai_handler import request_confirmation, _add_to_history
 
-    # Estimate cost based on typical S0-S8 run
-    estimated_cost = "$0.05–$0.15 (Gemini free tier, no charge)"
+    # Issue 35: cost estimate reflects the operator's current master mode.
+    _prefs = await load_operator_preferences(user_id)
+    _mode = (_prefs.get("master_mode") or "balanced").upper()
+    _COST_BY_MODE: dict[str, str] = {
+        "BASIC":    "$0.00 (free tier only — Gemini / Groq)",
+        "BALANCED": "$0.05–$2.00 (smart paid/free mix)",
+        "TURBO":    "$2.00–$10.00 (max performance)",
+        "CUSTOM":   "Variable (custom provider config)",
+    }
+    estimated_cost = _COST_BY_MODE.get(_mode, _COST_BY_MODE["BALANCED"])
 
     request_confirmation(user_id, f"start_project:{description}")
     _add_to_history(user_id, "user", description)

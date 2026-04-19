@@ -70,10 +70,21 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     requirements = await _extract_requirements(raw_input, attachments, state)
 
     # ── Step 2: Platform multi-select ──
-    requirements["target_platforms"] = await _select_platforms(state, requirements)
+    # Issue 28: use pre-selected data from bot onboarding flow when available.
+    pre_platforms = state.project_metadata.get("pre_selected_platforms")
+    if pre_platforms:
+        requirements["target_platforms"] = pre_platforms
+        logger.info(f"[{state.project_id}] S0: pre-selected platforms: {pre_platforms}")
+    else:
+        requirements["target_platforms"] = await _select_platforms(state, requirements)
 
     # ── Step 3: Markets selection ──
-    requirements["target_market"] = await _select_market(state)
+    pre_market = state.project_metadata.get("pre_selected_market")
+    if pre_market:
+        requirements["target_market"] = pre_market
+        logger.info(f"[{state.project_id}] S0: pre-selected market: {pre_market}")
+    else:
+        requirements["target_market"] = await _select_market(state)
 
     # ── Step 4: Scout market scan (optional) ──
     requirements = await _scout_scan(state, requirements, raw_input)
@@ -82,7 +93,15 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     requirements = await _scope_confirmation(state, requirements, raw_input)
 
     # ── Step 6: Logo flow ──
-    logo_asset = await _logo_flow(state, requirements)
+    pre_logo = state.project_metadata.get("pre_selected_logo")
+    if pre_logo == "skip":
+        logo_asset = None
+        logger.info(f"[{state.project_id}] S0: logo skipped by operator onboarding choice")
+    elif pre_logo == "auto":
+        logo_asset = await _logo_flow_auto(state, requirements)
+        logger.info(f"[{state.project_id}] S0: auto-generating logo per onboarding choice")
+    else:
+        logo_asset = await _logo_flow(state, requirements)
     if logo_asset:
         state.brand_assets.append(logo_asset)
         requirements["logo_ready"] = True

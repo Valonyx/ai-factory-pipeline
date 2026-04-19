@@ -1404,20 +1404,24 @@ async def handle_callback(update: Any, context: Any):
         await query.edit_message_text(f"✅ Decision recorded.")
 
     elif data.startswith("select_name:"):
-        # Format: select_name:{app_name}||{description}
+        # Format: select_name:{app_name}||{desc_short}
+        # Full description is in operator state (set by _suggest_app_names).
         payload = data[len("select_name:"):]
         parts = payload.split("||", 1)
         chosen_name = parts[0].strip()
-        description = parts[1] if len(parts) > 1 else ""
+        op_state_sn = await get_operator_state(user_id)
+        sn_ctx = op_state_sn.get("context", {}) if isinstance(op_state_sn, dict) else {}
+        full_description = sn_ctx.get("description", parts[1] if len(parts) > 1 else "")
+        attachments_sn = sn_ctx.get("attachments", [])
+        await clear_operator_state(user_id)
         await query.edit_message_text(
-            f"✅ App name set: *{chosen_name}*\n\nStarting the pipeline...",
+            f"✅ App name: *{chosen_name}*",
             parse_mode="Markdown",
         )
-        # We need an update-like object — use query.message as a proxy
         class _FakeUpdate:
             message = query.message
             effective_user = query.from_user
-        await _start_project(_FakeUpdate(), user_id, description, app_name=chosen_name)
+        await _onboarding_ask_platforms(_FakeUpdate(), user_id, full_description, attachments_sn, chosen_name)
 
     elif data in ("project_continue", "project_archive_new", "cancel_abort", "restore_cancel"):
         await query.edit_message_text("OK.")
@@ -1467,6 +1471,77 @@ async def handle_callback(update: Any, context: Any):
         elif action == "cancel":
             await clear_operator_state(user_id)
             await query.edit_message_text("Logo update cancelled.")
+
+    # ── Onboarding callbacks (Issue 28) ─────────────────────────────────
+    elif data.startswith("onboard_platform:"):
+        value = data[len("onboard_platform:"):]
+        op_state_ob = await get_operator_state(user_id)
+        ctx_ob = op_state_ob.get("context", {}) if isinstance(op_state_ob, dict) else {}
+        await clear_operator_state(user_id)
+        if value == "custom":
+            await query.edit_message_text(
+                "Type your platforms, e.g. `ios,android,web`\n\n"
+                "Options: `ios` `android` `web` `macos` `windows` `tvos` …",
+                parse_mode="Markdown",
+            )
+            await set_operator_state(user_id, "awaiting_platforms_custom", ctx_ob)
+        else:
+            platforms = [p.strip() for p in value.split(",") if p.strip()]
+            ctx_ob["platforms"] = platforms
+            await query.edit_message_text(
+                f"📱 Platforms: {', '.join(platforms)}",
+            )
+            class _FakeUpdatePlatform:
+                message = query.message
+            await _onboarding_ask_market(_FakeUpdatePlatform(), user_id, ctx_ob)
+
+    elif data.startswith("onboard_market:"):
+        value = data[len("onboard_market:"):]
+        op_state_ob = await get_operator_state(user_id)
+        ctx_ob = op_state_ob.get("context", {}) if isinstance(op_state_ob, dict) else {}
+        await clear_operator_state(user_id)
+        ctx_ob["market"] = value
+        await query.edit_message_text(f"🌍 Market: {value.upper()}")
+        class _FakeUpdateMarket:
+            message = query.message
+        await _onboarding_ask_logo(_FakeUpdateMarket(), user_id, ctx_ob)
+
+    elif data.startswith("onboard_logo:"):
+        value = data[len("onboard_logo:"):]
+        op_state_ob = await get_operator_state(user_id)
+        ctx_ob = op_state_ob.get("context", {}) if isinstance(op_state_ob, dict) else {}
+        await clear_operator_state(user_id)
+        ctx_ob["logo"] = value
+        if value == "describe":
+            await query.edit_message_text(
+                "✏️ Describe your logo (e.g. 'minimalist blue circle with Arabic calligraphy'):\n\n"
+                "Or type `skip` to proceed without a logo.",
+            )
+            await set_operator_state(user_id, "awaiting_logo_description_onboarding", ctx_ob)
+        else:
+            await query.edit_message_text(f"🎨 Logo: {value}")
+            class _FakeUpdateLogo:
+                message = query.message
+            await _onboarding_show_summary(_FakeUpdateLogo(), user_id, ctx_ob)
+
+    elif data == "onboard_go":
+        op_state_ob = await get_operator_state(user_id)
+        ctx_ob = op_state_ob.get("context", {}) if isinstance(op_state_ob, dict) else {}
+        await clear_operator_state(user_id)
+        app_name_ob = ctx_ob.get("app_name", "")
+        await query.edit_message_text(f"🚀 Building {app_name_ob}…")
+        class _FakeUpdateGo:
+            message = query.message
+            effective_user = query.from_user
+        await _start_project(
+            _FakeUpdateGo(), user_id,
+            ctx_ob.get("description", ""),
+            ctx_ob.get("attachments", []),
+            app_name=app_name_ob,
+            pre_selected_platforms=ctx_ob.get("platforms"),
+            pre_selected_market=ctx_ob.get("market"),
+            pre_selected_logo=ctx_ob.get("logo"),
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1545,7 +1620,76 @@ async def handle_message(update: Any, context: Any):
         if name_input.lower() in ("skip", "/skip", "s", ""):
             await _suggest_app_names(update, user_id, description, attachments)
         else:
-            await _start_project(update, user_id, description, attachments, app_name=name_input)
+            await _onboarding_ask_platforms(update, user_id, description, attachments, name_input)
+        return
+
+    # ── Onboarding: awaiting custom platform text ──────────────────────────
+    if isinstance(op_state, dict) and op_state.get("state") == "awaiting_platforms_custom":
+        ctx = op_state.get("context", {})
+        await clear_operator_state(user_id)
+        from factory.telegram.decisions import _parse_platform_reply
+        platforms = _parse_platform_reply(text, ["ios", "android"])
+        ctx["platforms"] = platforms
+        await _onboarding_ask_market(update, user_id, ctx)
+        return
+
+    # ── Onboarding: awaiting logo description ───────────────────────────────
+    if isinstance(op_state, dict) and op_state.get("state") == "awaiting_logo_description_onboarding":
+        ctx = op_state.get("context", {})
+        await clear_operator_state(user_id)
+        if text.strip().lower() in ("skip", "/skip", ""):
+            ctx["logo"] = "skip"
+        else:
+            ctx["logo"] = "describe"
+            ctx["logo_description"] = text.strip()
+        await _onboarding_show_summary(update, user_id, ctx)
+        return
+
+    # ── Onboarding: awaiting /go to launch pipeline ─────────────────────────
+    if isinstance(op_state, dict) and op_state.get("state") == "awaiting_intake_go":
+        ctx = op_state.get("context", {})
+        low = text.strip().lower()
+        if low in ("go", "/go", "start", "yes", "y", "ok", "launch"):
+            await clear_operator_state(user_id)
+            await _start_project(
+                update, user_id,
+                ctx.get("description", ""),
+                ctx.get("attachments", []),
+                app_name=ctx.get("app_name"),
+                pre_selected_platforms=ctx.get("platforms"),
+                pre_selected_market=ctx.get("market"),
+                pre_selected_logo=ctx.get("logo"),
+            )
+        elif low.startswith("/edit ") or low.startswith("edit "):
+            field = low.replace("/edit ", "").replace("edit ", "").strip()
+            if field == "name":
+                await clear_operator_state(user_id)
+                await set_operator_state(user_id, "awaiting_app_name",
+                    {"description": ctx.get("description", ""), "attachments": ctx.get("attachments", [])})
+                await update.message.reply_text("What should your app be called? Type a name or `skip`.", parse_mode="Markdown")
+            elif field == "platforms":
+                ctx_copy = dict(ctx)
+                await clear_operator_state(user_id)
+                await _onboarding_ask_platforms(update, user_id, ctx_copy.get("description", ""),
+                    ctx_copy.get("attachments", []), ctx_copy.get("app_name", ""))
+            elif field == "market":
+                ctx_copy = dict(ctx)
+                await clear_operator_state(user_id)
+                await _onboarding_ask_market(update, user_id, ctx_copy)
+            elif field == "logo":
+                ctx_copy = dict(ctx)
+                await clear_operator_state(user_id)
+                await _onboarding_ask_logo(update, user_id, ctx_copy)
+            else:
+                await update.message.reply_text(
+                    "Edit: `/edit name` · `/edit platforms` · `/edit market` · `/edit logo`",
+                    parse_mode="Markdown",
+                )
+        else:
+            await update.message.reply_text(
+                "Tap *Start Building* or type `go` to launch — or `/edit <field>` to change something.",
+                parse_mode="Markdown",
+            )
         return
 
     # ── Operator state: awaiting logo (from /update_logo) ──
@@ -1830,7 +1974,7 @@ async def _ask_app_name(
         if _m:
             extracted_name = _m.group(1).strip().strip('"').strip()
             if extracted_name:
-                await _start_project(update, user_id, description, attachments, app_name=extracted_name)
+                await _onboarding_ask_platforms(update, user_id, description, attachments, extracted_name)
                 return
 
     await set_operator_state(
@@ -1931,6 +2075,159 @@ async def _suggest_app_names(
         )
 
 
+# ═══════════════════════════════════════════════════════════════════
+# §4.1 S0 Onboarding Flow (Issue 28)
+# Collects platforms / market / logo BEFORE the pipeline starts so
+# s0_intake_node can run non-interactively.
+# ═══════════════════════════════════════════════════════════════════
+
+_ONBOARD_PLATFORM_PRESETS: list[dict] = [
+    {"label": "📱 Mobile (iOS + Android)", "value": "ios,android"},
+    {"label": "🌐 Web (Browser / PWA)",    "value": "web"},
+    {"label": "📱🌐 Mobile + Web",          "value": "ios,android,web"},
+    {"label": "🔧 Custom…",                "value": "custom"},
+]
+
+_ONBOARD_MARKET_OPTIONS: list[dict] = [
+    {"label": "🇸🇦 KSA (Saudi Arabia)",  "value": "ksa"},
+    {"label": "🌍 GCC (Saudi+UAE+Gulf)",  "value": "gcc"},
+    {"label": "🌐 Global (worldwide)",    "value": "global"},
+    {"label": "🎯 Custom",                "value": "custom"},
+]
+
+_ONBOARD_LOGO_OPTIONS: list[dict] = [
+    {"label": "🤖 Auto-generate",  "value": "auto"},
+    {"label": "📤 I'll upload one","value": "upload"},
+    {"label": "✏️ Describe it",    "value": "describe"},
+    {"label": "⏭️ Skip for now",   "value": "skip"},
+]
+
+
+async def _onboarding_ask_platforms(
+    update: Any,
+    user_id: str,
+    description: str,
+    attachments: Optional[list],
+    app_name: str,
+) -> None:
+    """Onboarding step 3 — platform selection inline keyboard."""
+    ctx = {"description": description, "attachments": attachments or [], "app_name": app_name}
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        buttons = [
+            [InlineKeyboardButton(opt["label"], callback_data=f"onboard_platform:{opt['value']}")]
+            for opt in _ONBOARD_PLATFORM_PRESETS
+        ]
+        markup = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            f"📱 *{app_name}* — where should it run?\n\nTap a platform option:",
+            reply_markup=markup,
+            parse_mode="Markdown",
+        )
+        await set_operator_state(user_id, "awaiting_platforms", ctx)
+    except ImportError:
+        ctx["platforms"] = ["ios", "android"]
+        await _onboarding_ask_market(update, user_id, ctx)
+
+
+async def _onboarding_ask_market(
+    update: Any,
+    user_id: str,
+    ctx: dict,
+) -> None:
+    """Onboarding step 4 — market selection inline keyboard."""
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        buttons = [
+            [InlineKeyboardButton(opt["label"], callback_data=f"onboard_market:{opt['value']}")]
+            for opt in _ONBOARD_MARKET_OPTIONS
+        ]
+        markup = InlineKeyboardMarkup(buttons)
+        app_name = ctx.get("app_name", "Your App")
+        await update.message.reply_text(
+            f"🌍 *{app_name}* — primary market?",
+            reply_markup=markup,
+            parse_mode="Markdown",
+        )
+        await set_operator_state(user_id, "awaiting_market", ctx)
+    except ImportError:
+        ctx["market"] = "ksa"
+        await _onboarding_ask_logo(update, user_id, ctx)
+
+
+async def _onboarding_ask_logo(
+    update: Any,
+    user_id: str,
+    ctx: dict,
+) -> None:
+    """Onboarding step 5 — logo option inline keyboard (4 options)."""
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        buttons = [
+            [
+                InlineKeyboardButton(_ONBOARD_LOGO_OPTIONS[0]["label"], callback_data="onboard_logo:auto"),
+                InlineKeyboardButton(_ONBOARD_LOGO_OPTIONS[1]["label"], callback_data="onboard_logo:upload"),
+            ],
+            [
+                InlineKeyboardButton(_ONBOARD_LOGO_OPTIONS[2]["label"], callback_data="onboard_logo:describe"),
+                InlineKeyboardButton(_ONBOARD_LOGO_OPTIONS[3]["label"], callback_data="onboard_logo:skip"),
+            ],
+        ]
+        markup = InlineKeyboardMarkup(buttons)
+        app_name = ctx.get("app_name", "Your App")
+        await update.message.reply_text(
+            f"🎨 *{app_name}* — logo?",
+            reply_markup=markup,
+            parse_mode="Markdown",
+        )
+        await set_operator_state(user_id, "awaiting_logo_onboarding", ctx)
+    except ImportError:
+        ctx["logo"] = "skip"
+        await _onboarding_show_summary(update, user_id, ctx)
+
+
+async def _onboarding_show_summary(
+    update: Any,
+    user_id: str,
+    ctx: dict,
+) -> None:
+    """Onboarding step 6 — summary card + Start / edit controls."""
+    app_name    = ctx.get("app_name", "Your App")
+    platforms   = ctx.get("platforms", ["ios", "android"])
+    market      = ctx.get("market", "ksa")
+    logo        = ctx.get("logo", "skip")
+    description = ctx.get("description", "")
+
+    _plat_names  = {"ios": "iOS", "android": "Android", "web": "Web",
+                    "macos": "macOS", "windows": "Windows"}
+    _mkt_names   = {"ksa": "🇸🇦 KSA", "gcc": "🌍 GCC",
+                    "global": "🌐 Global", "custom": "🎯 Custom"}
+    _logo_names  = {"auto": "🤖 Auto-generate", "upload": "📤 Upload",
+                    "describe": "✏️ Described", "skip": "⏭️ Skip"}
+
+    plat_str = " + ".join(_plat_names.get(p, p) for p in platforms)
+    desc_preview = description[:120] + ("…" if len(description) > 120 else "")
+    summary = (
+        f"✅ *Ready to build {app_name}*\n\n"
+        f"📋 _{desc_preview}_\n"
+        f"📱 Platforms: {plat_str}\n"
+        f"🌍 Market: {_mkt_names.get(market, market)}\n"
+        f"🎨 Logo: {_logo_names.get(logo, logo)}\n\n"
+        f"Tap *Start Building* or edit a field:\n"
+        f"`/edit name` · `/edit platforms` · `/edit market` · `/edit logo`"
+    )
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🚀 Start Building", callback_data="onboard_go")]]
+        )
+        await update.message.reply_text(summary, reply_markup=markup, parse_mode="Markdown")
+    except ImportError:
+        await update.message.reply_text(summary + "\n\nType `go` to start.", parse_mode="Markdown")
+
+    await set_operator_state(user_id, "awaiting_intake_go", ctx)
+
+
 @require_auth
 async def cmd_rename(update: Any, context: Any):
     """/rename <new name> — rename the active project's app name."""
@@ -2029,10 +2326,15 @@ async def _start_project(
     description: str,
     attachments: Optional[list] = None,
     app_name: Optional[str] = None,
+    pre_selected_platforms: Optional[list] = None,
+    pre_selected_market: Optional[str] = None,
+    pre_selected_logo: Optional[str] = None,
 ) -> None:
     """Create and launch a new pipeline project.
 
     Spec: §5.2 (/new → _start_project)
+    Issue 28: pre_selected_* fields store onboarding choices so s0_intake_node
+    can skip interactive platform/market/logo prompts.
     """
     import asyncio
     import uuid
@@ -2067,6 +2369,9 @@ async def _start_project(
             "raw_input": description,
             "attachments": attachments or [],
             **({"app_name": app_name} if app_name else {}),
+            **({"pre_selected_platforms": pre_selected_platforms} if pre_selected_platforms else {}),
+            **({"pre_selected_market": pre_selected_market} if pre_selected_market else {}),
+            **({"pre_selected_logo": pre_selected_logo} if pre_selected_logo else {}),
         },
     )
 

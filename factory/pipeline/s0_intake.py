@@ -189,6 +189,11 @@ def _validate_app_name(candidate: Optional[str]) -> Optional[str]:
     name = candidate.strip().strip(_QUOTE_OPEN).strip()
     if not name:
         return None
+    # Issue 34: strip leading list-marker artifacts (e.g. "I. ", "1. ", "- ", "* ")
+    # that survive when the AI formats its output as a numbered/bulleted list.
+    name = re.sub(r'^(?:[IVXivx]+|[0-9]+)[\.\)]\s+', '', name)
+    name = re.sub(r'^[-*\u2022\u00b7\u2013\u2014]\s+', '', name)
+    name = name.strip()
     if len(name) > 60:
         return None
     # Count alphanumeric characters (unicode-aware via str.isalnum()).

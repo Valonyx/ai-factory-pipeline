@@ -2092,7 +2092,11 @@ async def _start_project(
             from factory.telegram.messages import format_halt_message
             from factory.core.state import NotificationType
             final = await run_pipeline(state)
-            if final.current_stage == Stage.HALTED:
+            if final.current_stage == Stage.HALTED and not final.pipeline_aborted:
+                # Issue 31: skip ghost halt message when operator used /cancel —
+                # the orchestrator's CancelledError handler already sent the
+                # cancellation notification; sending again would confuse an operator
+                # who has since started a new project.
                 await send_telegram_message(
                     user_id,
                     format_halt_message(
@@ -2135,8 +2139,12 @@ async def _start_project(
             except Exception:
                 pass
         finally:
-            # Always release the active-pipeline guard so the operator can start a new one
-            _active_pipelines.pop(user_id, None)
+            # Issue 31: only release the guard if it still maps to THIS project.
+            # If the operator cancelled and immediately started a new project,
+            # _active_pipelines[user_id] now points to the new project_id —
+            # popping it unconditionally would orphan the new pipeline's guard.
+            if _active_pipelines.get(user_id) == project_id:
+                _active_pipelines.pop(user_id, None)
 
     task = _bg(_run_and_notify())
     register_project_task(project_id, task)

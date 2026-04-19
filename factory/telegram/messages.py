@@ -332,8 +332,9 @@ def format_welcome_message(first_name: str) -> str:
         f"📱 Stacks: FlutterFlow, React Native, Swift, "
         f"Kotlin, Unity, Python\n"
         f"🚀 Deploys: iOS, Android, Web\n\n"
-        f"Just describe your app idea, or /new to start.\n"
-        f"Current: Cloud | Autopilot\n\n"
+        f"Just describe your app idea, or /new to start.\n\n"
+        f"Defaults: 🆓 Basic (free) | ☁️ Cloud | 🏠 Polling\n"
+        f"  Change: /mode | /execution_mode | /online\n\n"
         f"/help for all commands."
     )
 
@@ -341,6 +342,8 @@ def format_welcome_message(first_name: str) -> str:
 def format_help_message() -> str:
     """Format the /help command reference.
 
+    Issue 25/27: three-axis mode system clearly documented;
+    all commands match registered handlers.
     Spec: §5.2 (/help)
     """
     return (
@@ -352,23 +355,26 @@ def format_help_message() -> str:
         "  /continue                 — resume halted pipeline\n"
         "  /cancel                   — cancel & archive project\n"
         "  /modify <url> <desc>      — modify existing repo\n"
-        "  /rename <name>            — rename current project\n\n"
-        "⚙️ Execution Control\n"
-        "  /mode [option]            — show or set mode (see below)\n"
-        "  /switch_mode [option]     — alias for /mode\n\n"
-        "  Master mode (AI provider strategy):\n"
+        "  /rename <name>            — rename current project\n"
+        "  /update_logo              — upload/update app logo\n\n"
+        "⚙️ Three-Axis Mode System\n\n"
+        "  1️⃣  Master axis — AI provider strategy\n"
         "    /basic    🆓  free-only, $0 enforced\n"
         "    /balanced ⚖️  smart paid+free mix (default)\n"
         "    /turbo    🚀  max performance, ignore cost\n"
-        "    /custom   🎛  manual provider selection\n\n"
-        "  Execution mode:\n"
-        "    /mode cloud | local | hybrid\n\n"
+        "    /custom   🎛  manual provider selection\n"
+        "    /mode [basic|balanced|turbo|custom] — set or show\n\n"
+        "  2️⃣  Execution axis — where code runs\n"
+        "    /execution_mode cloud   ☁️  Render / Cloud Run\n"
+        "    /execution_mode local   💻  your machine (tunnel)\n"
+        "    /execution_mode hybrid  🔀  cloud build, local deploy\n\n"
+        "  3️⃣  Transport axis — how bot connects to Telegram\n"
+        "    /online   🌐  Render webhook (auto-reverts in 12h)\n"
+        "    /local    🏠  local polling (run_bot.py)\n\n"
         "  /autonomy                 — toggle autopilot / copilot\n"
         "  /switch_stack             — guidance on changing tech stack\n"
         "  /quota                    — view monthly quota usage\n"
-        "  /budget [USD]             — show or set budget cap\n"
-        "  /online                   — switch to Render webhook\n"
-        "  /local                    — switch to local polling\n\n"
+        "  /budget [USD]             — show or set budget cap\n\n"
         "⏪ Time Travel\n"
         "  /snapshots                — list all snapshots\n"
         "  /restore State_#N         — restore to snapshot N\n"
@@ -377,8 +383,7 @@ def format_help_message() -> str:
         "  /rerun_confirm            — confirm a pending rerun\n\n"
         "🚀 Deploy\n"
         "  /deploy_confirm           — confirm deployment\n"
-        "  /deploy_cancel            — cancel deployment\n"
-        "  /update_logo              — upload/update app logo\n\n"
+        "  /deploy_cancel            — cancel deployment\n\n"
         "🔧 Admin\n"
         "  /admin                    — admin overrides\n"
         "  /setup                    — first-time environment setup\n"

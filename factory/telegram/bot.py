@@ -296,11 +296,11 @@ async def cmd_cost(update: Any, context: Any):
 
 @require_auth
 async def cmd_mode(update: Any, context: Any):
-    """§5.2: /mode — Show or set Master Execution Mode (v5.8).
+    """§5.2: /mode — Show or set Master axis (AI provider strategy).
 
-    Works with or without an active project.
-    Without a project: updates the operator's default preference.
-    With a project: updates the live project state.
+    Issue 25: /mode now owns the Master axis only.
+    Use /execution_mode for the Execution axis (cloud/local/hybrid).
+    Use /online | /local for the Transport axis (webhook/polling).
     """
     user_id = str(update.effective_user.id)
     active = await get_active_project(user_id)
@@ -308,7 +308,7 @@ async def cmd_mode(update: Any, context: Any):
     arg = (context.args[0].lower() if context.args else "").strip()
 
     _MASTER_MODES = {"basic", "balanced", "custom", "turbo"}
-    _EXEC_MODES = {"cloud", "local", "hybrid"}
+    _EXEC_MODES   = {"cloud", "local", "hybrid"}
 
     if arg in _MASTER_MODES:
         if active:
@@ -320,21 +320,14 @@ async def cmd_mode(update: Any, context: Any):
         scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
             f"{mm.emoji} Master mode → *{mm.label}* ({scope}).\n"
-            f"Use /turbo, /basic, /balanced, /custom as shortcuts."
+            f"Shortcuts: /basic /balanced /turbo /custom"
         )
     elif arg in _EXEC_MODES:
-        if active:
-            state = PipelineState.model_validate(active["state_json"])
-            state.execution_mode = ExecutionMode(arg)
-            await update_project_state(state)
-        await set_operator_preference(user_id, "execution_mode", arg)
-        emoji_map = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
-        scope = "project + default" if active else "default (no active project)"
-        await update.message.reply_text(
-            f"{emoji_map[arg]} Execution mode → *{arg.upper()}* ({scope})."
-        )
+        # Issue 25: redirect execution-axis args to the dedicated command
+        context.args = [arg]
+        await cmd_execution_mode(update, context)
     else:
-        # Show current settings
+        # Show three-axis status
         if active:
             state = PipelineState.model_validate(active["state_json"])
             mm = state.master_mode
@@ -347,22 +340,72 @@ async def cmd_mode(update: Any, context: Any):
             ctx = "default (no active project)"
         await update.message.reply_text(
             f"⚙️ *Mode Status* ({ctx})\n\n"
-            f"{mm.emoji} *Master*: {mm.label}\n"
-            f"☁️ *Execution*: {em.value}\n\n"
-            f"*Master mode shortcuts:*\n"
-            f"  /basic — 🆓 Free-only, zero cost\n"
-            f"  /balanced — ⚖️ Smart mix (default)\n"
-            f"  /turbo — 🚀 Max performance\n"
-            f"  /custom — 🎛 Manual provider pick\n\n"
-            f"*Or:* /mode basic | balanced | turbo | custom\n"
-            f"*Execution:* /mode cloud | local | hybrid"
+            f"*Master axis* (AI provider strategy)\n"
+            f"  {mm.emoji} {mm.label}\n"
+            f"  Set: /basic /balanced /turbo /custom\n\n"
+            f"*Execution axis* (where code runs)\n"
+            f"  {'☁️' if em.value == 'cloud' else '💻' if em.value == 'local' else '🔀'} {em.value.upper()}\n"
+            f"  Set: /execution_mode cloud|local|hybrid\n\n"
+            f"*Transport axis* (bot connection)\n"
+            f"  Set: /online (webhook) | /local (polling)"
         )
 
 
 @require_auth
 async def cmd_switch_mode(update: Any, context: Any):
-    """v5.8: /switch_mode — Alias for /mode (set Master Execution Mode)."""
+    """v5.8: /switch_mode — Alias for /mode (Master axis)."""
     await cmd_mode(update, context)
+
+
+@require_auth
+async def cmd_execution_mode(update: Any, context: Any):
+    """/execution_mode [cloud|local|hybrid] — Show or set Execution axis.
+
+    Issue 25: dedicated command for the Execution axis.
+    This axis controls WHERE pipeline tasks run, independent of
+    which AI providers are used (Master axis) or how the bot connects
+    to Telegram (Transport axis).
+
+    cloud  — tasks run on Render / Cloud Run (default)
+    local  — tasks run on your machine via Cloudflare tunnel
+    hybrid — cloud for build steps, local for deploy/run
+    """
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+
+    arg = (context.args[0].lower() if context.args else "").strip()
+    _EXEC_MODES = {"cloud", "local", "hybrid"}
+    _EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
+
+    if arg in _EXEC_MODES:
+        if active:
+            state = PipelineState.model_validate(active["state_json"])
+            state.execution_mode = ExecutionMode(arg)
+            await update_project_state(state)
+        await set_operator_preference(user_id, "execution_mode", arg)
+        scope = "project + default" if active else "default (no active project)"
+        await update.message.reply_text(
+            f"{_EMOJI[arg]} Execution mode → *{arg.upper()}* ({scope})."
+        )
+    else:
+        # Show current execution mode
+        if active:
+            state = PipelineState.model_validate(active["state_json"])
+            em = state.execution_mode
+            ctx = "active project"
+        else:
+            prefs = await load_operator_preferences(user_id)
+            em = ExecutionMode(prefs.get("execution_mode", "cloud"))
+            ctx = "default (no active project)"
+        await update.message.reply_text(
+            f"⚙️ *Execution Axis* ({ctx})\n\n"
+            f"  ☁️  cloud  — Render / Cloud Run (default)\n"
+            f"  💻  local  — your machine (Cloudflare tunnel)\n"
+            f"  🔀  hybrid — cloud build, local deploy\n\n"
+            f"*Current:* {_EMOJI.get(em.value, '')} {em.value.upper()}\n\n"
+            f"Set: /execution_mode cloud | local | hybrid\n\n"
+            f"See also: /mode (Master axis) | /online /local (Transport axis)"
+        )
 
 
 @require_auth
@@ -2190,8 +2233,10 @@ async def setup_bot() -> Any:
         _bg(_orphan_task_sweeper())
 
         # Start provider upgrade poller (Issue 20 — restores exhausted providers)
+        # Start health probes (Issue 33 — key-presence check, populates /providers)
         from factory.core.provider_intelligence import provider_intelligence
         provider_intelligence.start_upgrade_poller(interval_seconds=60)
+        provider_intelligence.start_health_probes(interval_seconds=300)
 
         from telegram.ext import MessageHandler as MH
         from telegram.error import TelegramError
@@ -2219,8 +2264,9 @@ async def setup_bot() -> Any:
 
         # ── Execution control ──
         app.add_handler(CommandHandler("mode", cmd_mode))
-        app.add_handler(CommandHandler("switch_mode", cmd_switch_mode))   # v5.8 alias
-        app.add_handler(CommandHandler("turbo", cmd_turbo))               # mode shortcuts
+        app.add_handler(CommandHandler("switch_mode", cmd_switch_mode))      # v5.8 alias
+        app.add_handler(CommandHandler("execution_mode", cmd_execution_mode)) # Issue 25
+        app.add_handler(CommandHandler("turbo", cmd_turbo))                  # master shortcuts
         app.add_handler(CommandHandler("basic", cmd_basic))
         app.add_handler(CommandHandler("balanced", cmd_balanced))
         app.add_handler(CommandHandler("custom", cmd_custom))
@@ -2258,7 +2304,7 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("setup", cmd_setup))
         app.add_handler(CommandHandler("help", cmd_help))
 
-        # ── Mode switching ──
+        # ── Transport axis (webhook ↔ polling) ──
         app.add_handler(CommandHandler("online", cmd_online))
         app.add_handler(CommandHandler("local", cmd_local))
 

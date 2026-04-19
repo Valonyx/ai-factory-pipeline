@@ -154,21 +154,39 @@ _operator_states: dict[str, dict] = {}
 async def set_operator_state(
     operator_id: str, state: str, context: Optional[dict] = None,
 ) -> None:
-    """Set conversational state for operator.
-
-    Spec: §5.3 (awaiting_project_description, etc.)
-    """
+    """Set conversational state for operator — write-through to Supabase."""
     _operator_states[operator_id] = {"state": state, "context": context or {}}
+    try:
+        from factory.integrations.supabase import set_operator_state_db
+        await set_operator_state_db(operator_id, state, context)
+    except Exception as e:
+        logger.warning(f"[decisions] Failed to persist operator state to DB: {e}")
 
 
 async def get_operator_state(operator_id: str) -> Optional[dict]:
-    """Get current conversational state. Returns dict with 'state' and 'context'."""
-    return _operator_states.get(operator_id)
+    """Get current conversational state — memory first, Supabase fallback."""
+    if operator_id in _operator_states:
+        return _operator_states[operator_id]
+    try:
+        from factory.integrations.supabase import get_operator_state_db
+        row = await get_operator_state_db(operator_id)
+        if row and row.get("state") and row["state"] not in ("__prefs", "__cleared"):
+            val = {"state": row["state"], "context": row.get("context") or {}}
+            _operator_states[operator_id] = val
+            return val
+    except Exception as e:
+        logger.warning(f"[decisions] Failed to load operator state from DB: {e}")
+    return None
 
 
 async def clear_operator_state(operator_id: str) -> None:
-    """Clear conversational state after processing."""
+    """Clear conversational state — clears memory and Supabase."""
     _operator_states.pop(operator_id, None)
+    try:
+        from factory.integrations.supabase import set_operator_state_db
+        await set_operator_state_db(operator_id, "__cleared", {})
+    except Exception as e:
+        logger.warning(f"[decisions] Failed to clear operator state in DB: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -177,28 +195,52 @@ async def clear_operator_state(operator_id: str) -> None:
 
 _operator_prefs: dict[str, dict] = {}
 
+_PREFS_DEFAULTS: dict = {"autonomy_mode": "autopilot", "execution_mode": "cloud"}
+_PREFS_STATE_KEY = "__prefs"
+
 
 def get_operator_preferences(operator_id: str) -> dict:
-    """Get operator's stored preferences (sync).
+    """Get operator's stored preferences (sync — memory cache only).
 
-    Defaults: autopilot mode, cloud execution.
+    Use load_operator_preferences() to populate from Supabase first.
     """
-    return _operator_prefs.get(operator_id, {
-        "autonomy_mode": "autopilot",
-        "execution_mode": "cloud",
-    })
+    return _operator_prefs.get(operator_id, dict(_PREFS_DEFAULTS))
+
+
+async def load_operator_preferences(operator_id: str) -> dict:
+    """Load preferences from Supabase into memory cache, return them."""
+    if operator_id in _operator_prefs:
+        return _operator_prefs[operator_id]
+    try:
+        from factory.integrations.supabase import get_operator_state_db
+        row = await get_operator_state_db(operator_id + _PREFS_STATE_KEY)
+        if row and row.get("context"):
+            prefs = {**_PREFS_DEFAULTS, **row["context"]}
+            _operator_prefs[operator_id] = prefs
+            return prefs
+    except Exception as e:
+        logger.warning(f"[decisions] Failed to load preferences from DB: {e}")
+    prefs = dict(_PREFS_DEFAULTS)
+    _operator_prefs[operator_id] = prefs
+    return prefs
 
 
 async def set_operator_preference(
     operator_id: str, key: str, value: Any,
 ) -> None:
-    """Set a single operator preference."""
+    """Set a single operator preference — write-through to Supabase."""
     if operator_id not in _operator_prefs:
-        _operator_prefs[operator_id] = {
-            "autonomy_mode": "autopilot",
-            "execution_mode": "cloud",
-        }
+        _operator_prefs[operator_id] = dict(_PREFS_DEFAULTS)
     _operator_prefs[operator_id][key] = value
+    try:
+        from factory.integrations.supabase import set_operator_state_db
+        await set_operator_state_db(
+            operator_id + _PREFS_STATE_KEY,
+            _PREFS_STATE_KEY,
+            _operator_prefs[operator_id],
+        )
+    except Exception as e:
+        logger.warning(f"[decisions] Failed to persist preference to DB: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -40,6 +40,7 @@ from factory.telegram.decisions import (
     set_operator_state,
     clear_operator_state,
     get_operator_preferences,
+    load_operator_preferences,
     set_operator_preference,
     store_operator_decision,
     record_deploy_decision,
@@ -59,6 +60,10 @@ _background_tasks: set = set()
 # Per-project task registry — maps project_id → asyncio.Task
 # Allows /cancel to actually cancel a running pipeline coroutine.
 _project_tasks: dict = {}
+
+# Active pipeline guard — maps operator_id → project_id
+# Prevents duplicate pipeline launches when state is lost and intent re-fires.
+_active_pipelines: dict[str, str] = {}
 
 
 def _bg(coro) -> "asyncio.Task":
@@ -336,7 +341,7 @@ async def cmd_mode(update: Any, context: Any):
             em = state.execution_mode
             ctx = "active project"
         else:
-            prefs = get_operator_preferences(user_id)
+            prefs = await load_operator_preferences(user_id)
             mm = MasterMode(prefs.get("master_mode", "balanced"))
             em = ExecutionMode(prefs.get("execution_mode", "cloud"))
             ctx = "default (no active project)"
@@ -453,7 +458,7 @@ async def cmd_autonomy(update: Any, context: Any):
     active = await get_active_project(user_id)
 
     if not active:
-        prefs = get_operator_preferences(user_id)
+        prefs = await load_operator_preferences(user_id)
         current = prefs.get("autonomy_mode", "autopilot")
         new_mode = "copilot" if current == "autopilot" else "autopilot"
         await set_operator_preference(user_id, "autonomy_mode", new_mode)
@@ -752,7 +757,9 @@ async def cmd_cancel(update: Any, context: Any):
     project_id = active["project_id"]
     from factory.telegram.messages import project_display_name
     display = project_display_name(active)
+    cancel_project_task(project_id)
     await archive_project(project_id)
+    _active_pipelines.pop(user_id, None)
     await update.message.reply_text(
         f"🗑️ {display} archived. Snapshots preserved."
     )
@@ -1213,7 +1220,7 @@ async def cmd_modify(update: Any, context: Any):
 
     import uuid
     project_id = f"mod_{uuid.uuid4().hex[:8]}"
-    prefs = get_operator_preferences(user_id)
+    prefs = await load_operator_preferences(user_id)
 
     from factory.core.state import PipelineMode
     state = PipelineState(
@@ -1987,8 +1994,21 @@ async def _start_project(
     import asyncio
     import uuid
 
+    # Guard: prevent duplicate pipeline launches for same operator
+    if user_id in _active_pipelines:
+        existing_pid = _active_pipelines[user_id]
+        logger.warning(
+            f"[bot] Duplicate pipeline launch blocked for {user_id} "
+            f"(already running: {existing_pid})"
+        )
+        await update.message.reply_text(
+            f"⚠️ Pipeline {existing_pid} is already running.\n"
+            f"Use /status to check progress or /cancel to abort it first."
+        )
+        return
+
     project_id = f"proj_{uuid.uuid4().hex[:8]}"
-    prefs = get_operator_preferences(user_id)
+    prefs = await load_operator_preferences(user_id)
 
     state = PipelineState(
         project_id=project_id,
@@ -2017,6 +2037,9 @@ async def _start_project(
         f"[{project_id}] Project started by {user_id}: "
         f"{description[:100]}..."
     )
+
+    # Register active pipeline to prevent duplicate launches
+    _active_pipelines[user_id] = project_id
 
     # Run pipeline stages in background — sends Telegram updates as each stage completes
     async def _run_and_notify():
@@ -2068,6 +2091,9 @@ async def _start_project(
                 )
             except Exception:
                 pass
+        finally:
+            # Always release the active-pipeline guard so the operator can start a new one
+            _active_pipelines.pop(user_id, None)
 
     task = _bg(_run_and_notify())
     register_project_task(project_id, task)

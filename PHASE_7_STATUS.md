@@ -1,3 +1,55 @@
+# v5.8.13 Phase 7 — Re-verification of Issues 1–22
+
+**Date:** 2026-04-19  
+**Tag:** `v5.8.13-phase7-reverify`  
+**Baseline entering phase 7:** 845 passed / 3 skipped (post-phases 4-6)  
+**Result:** 845 passed / 3 skipped — **all 22 issues verified green**
+
+---
+
+## Targeted test run (issues 1–22)
+
+Ran all 18 test files that cover the 22 v5.8.12 issues. **240 passed, 4 skipped (live-credential guards), 0 failed.**
+
+| # | Issue | Primary Test File | Result |
+|---|-------|-------------------|--------|
+| 1 | /rerun + StageRegressionEngine | test_phase6_regression_timetravel.py | ✅ |
+| 2 | Time travel (/snapshots, /restore, /diff) | test_phase6_regression_timetravel.py | ✅ |
+| 3 | Per-stage artifact delivery | test_delivery.py | ✅ |
+| 4 | S7 deploy-less precheck | test_issue22_deploy_audit.py | ✅ |
+| 5 | Chain context injection S7/S8 | test_issue7_provider_independence.py | ✅ |
+| 6 | Real provider integrations (34+ providers) | test_issue6_real_integrations.py | ✅ |
+| 7 | ProviderIntelligence wired into _call_anthropic | test_issue7_provider_independence.py | ✅ |
+| 8 | Bot commands test coverage | test_issue8_bot_commands.py | ✅ |
+| 9 | Concurrency + duplicate pipeline prevention | test_concurrency.py | ✅ |
+| 10 | Phase E2E test | test_phase10_e2e_pipeline.py | ✅ |
+| 11 | store_stage_insight in all stages | test_core.py + test_phase7_issues_10_12_13.py | ✅ |
+| 12 | Stage-specific prompts | test_phase7_issues_10_12_13.py | ✅ |
+| 13 | Logo path persistence | test_phase7_issues_10_12_13.py | ✅ |
+| 14 | App-name integrity + halt on APP_NAME_MISSING | test_app_name_extraction.py | ✅ |
+| 15 | No proj_<hex> leaks | test_no_project_id_leak.py | ✅ |
+| 16 | Orphan task sweeper + CancelledError | test_orchestrator.py + test_concurrency.py | ✅ |
+| 17 | Quality gates | test_quality_gates.py | ✅ |
+| 18 | Credentials registry + pre-flight | test_credentials.py | ✅ |
+| 19 | Legal compliance gate | test_legal.py | ✅ |
+| 20 | ProviderIntelligence + /providers display | test_provider_intelligence.py | ✅ |
+| 21 | Mother Memory retrieval | test_mother_memory_retrieval.py | ✅ |
+| 22 | S7 audit + stack summary | test_issue22_deploy_audit.py | ✅ |
+
+## Phases 4-6 regression check
+
+| Phase | Issues Fixed | Tests Added | Regressions into issues 1-22 |
+|-------|-------------|-------------|------------------------------|
+| Phase 4 | 31 (ghost cancel), 34 (intake artifact) | prod suite | 0 |
+| Phase 5 | 28 (S0 onboarding) | test_issue28_s0_onboarding.py (9 tests) | 0 |
+| Phase 6 | 29+35 (AI router + cost honesty) | test_issue29_35_router_cost.py (11 tests) | 0 |
+
+🟢 **PHASE 7 COMPLETE. Awaiting "go" for Phase 8 (E2E integration test).**
+
+---
+
+## Historical record — original Phase 7 content (Issues 10, 12, 13)
+
 # v5.8.12 Phase 7 — Issues 10, 12, 13 Status
 
 **Tag:** `pre-v5.8.12-phase7-20260418-*`

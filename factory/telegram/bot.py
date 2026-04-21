@@ -293,7 +293,9 @@ async def cmd_new_project(update: Any, context: Any):
 
     description = " ".join(context.args) if context.args else None
     if description:
-        await _start_project(update, user_id, description)
+        # Issue 39: always engage the S0 FSM even when description is inlined.
+        # Route through _ask_app_name so the operator sees name/platform/market/logo prompts.
+        await _ask_app_name(update, user_id, description)
     else:
         await set_operator_state(user_id, "awaiting_project_description")
         await update.message.reply_text(

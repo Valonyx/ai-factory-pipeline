@@ -646,7 +646,11 @@ class TestTelegramNewProjectChain:
 
     @pytest.mark.asyncio
     async def test_cmd_new_project_calls_start_project_with_description(self):
-        """cmd_new_project() calls _start_project when description provided."""
+        """cmd_new_project() routes through _ask_app_name (FSM) when description provided.
+
+        Issue 39: /new <description> must engage the S0 onboarding FSM (name, platform, etc.)
+        instead of calling _start_project directly. Updated to verify new FSM-first behavior.
+        """
         from factory.telegram.bot import cmd_new_project
 
         mock_update = MagicMock()
@@ -657,13 +661,16 @@ class TestTelegramNewProjectChain:
 
         with patch("factory.telegram.bot.authenticate_operator", return_value=True), \
              patch("factory.telegram.bot.get_active_project", new_callable=AsyncMock, return_value=None), \
+             patch("factory.telegram.bot._ask_app_name", new_callable=AsyncMock) as mock_ask_name, \
              patch("factory.telegram.bot._start_project", new_callable=AsyncMock) as mock_start:
 
             await cmd_new_project(mock_update, mock_context)
 
-        mock_start.assert_called_once()
-        _args = mock_start.call_args
-        assert "Build a test app" in _args[0][2]  # description arg
+        # Issue 39: FSM (via _ask_app_name) must be called, not _start_project directly
+        mock_ask_name.assert_called_once()
+        mock_start.assert_not_called()
+        _args = mock_ask_name.call_args
+        assert "Build a test app" in _args[0][2]  # description passed to FSM
 
     @pytest.mark.asyncio
     async def test_start_project_creates_background_task(self):

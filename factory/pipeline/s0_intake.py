@@ -35,6 +35,8 @@ from factory.core.mode_router import (
 )
 from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
+from factory.integrations.image_gen import build_logo_prompt, generate_image  # Issue 40
+from factory.telegram.notifications import get_bot  # Issue 40
 
 logger = logging.getLogger("factory.pipeline.s0_intake")
 
@@ -705,48 +707,108 @@ async def _logo_flow_copilot(state: PipelineState, requirements: dict) -> Option
 
 
 async def _logo_flow_auto(state: PipelineState, requirements: dict) -> Optional[dict]:
-    """AUTOPILOT logo: silently generate 1 logo and notify operator."""
-    from factory.telegram.notifications import send_telegram_message
-    from factory.integrations.image_gen import build_logo_prompt, generate_image
+    """AUTOPILOT logo: generate 3 variants and send as a Telegram media album.
 
+    Issue 40: deliver 3 logo variants via InputMediaPhoto album instead of 1 photo.
+    Variants use different seeds and style nuances for visual diversity.
+    Falls back to single-photo send if telegram.InputMediaPhoto is unavailable.
+    """
+    # build_logo_prompt, generate_image, get_bot imported at module level (Issue 40)
     app_name = requirements.get("app_name") or state.idea_name or "App"
     description = requirements.get("app_description", "")
 
+    # Issue 40: 3 variant specs — seed, style suffix
+    _VARIANTS: list[tuple[int, str]] = [
+        (101, "flat app icon, minimal, clean"),
+        (202, "flat app icon, bold color, gradient"),
+        (303, "flat app icon, monochrome, geometric"),
+    ]
+
     try:
         logo_prompt = build_logo_prompt(app_name, description)
-        logo_bytes = await generate_image(
-            prompt=logo_prompt,
-            width=1024,
-            height=1024,
-            style="flat app icon",
-        )
 
-        if logo_bytes:
-            from factory.telegram.notifications import get_bot
-            import io as _io
-            bot = get_bot()
-            if bot:
-                try:
+        # Generate 3 variants concurrently
+        import asyncio as _asyncio
+        import io as _io
+
+        async def _gen_variant(seed: int, style: str) -> Optional[bytes]:
+            try:
+                return await generate_image(
+                    prompt=logo_prompt,
+                    width=1024,
+                    height=1024,
+                    style=style,
+                    seed=seed,
+                )
+            except Exception as _e:
+                logger.warning(f"[{state.project_id}] Logo variant seed={seed} failed: {_e}")
+                return None
+
+        variant_results = await _asyncio.gather(
+            *[_gen_variant(seed, style) for seed, style in _VARIANTS],
+        )
+        logo_variants = [b for b in variant_results if b]
+
+        if not logo_variants:
+            logger.warning(f"[{state.project_id}] All logo variants failed — no logo generated")
+            return None
+
+        # Send as album if ≥2 variants, else single photo (get_bot imported at module level)
+        bot = get_bot()
+        if bot:
+            try:
+                if len(logo_variants) >= 2:
+                    try:
+                        from telegram import InputMediaPhoto
+                        media_group = []
+                        for i, img_bytes in enumerate(logo_variants):
+                            caption = (
+                                f"🎨 Logo option {i+1}/{len(logo_variants)} for *{app_name}*."
+                                if i < len(logo_variants) - 1
+                                else f"🎨 Logo option {i+1}/{len(logo_variants)} for *{app_name}*.\n\nUse /update_logo to change."
+                            )
+                            media_group.append(
+                                InputMediaPhoto(
+                                    media=_io.BytesIO(img_bytes),
+                                    caption=caption,
+                                    parse_mode="Markdown",
+                                )
+                            )
+                        await bot.send_media_group(
+                            chat_id=int(state.operator_id),
+                            media=media_group,
+                        )
+                    except ImportError:
+                        # python-telegram-bot not installed with full extras — fallback
+                        for i, img_bytes in enumerate(logo_variants):
+                            await bot.send_photo(
+                                chat_id=int(state.operator_id),
+                                photo=_io.BytesIO(img_bytes),
+                                caption=f"🎨 Logo option {i+1} for *{app_name}*. Use /update_logo to change.",
+                                parse_mode="Markdown",
+                            )
+                else:
                     await bot.send_photo(
                         chat_id=int(state.operator_id),
-                        photo=_io.BytesIO(logo_bytes),
+                        photo=_io.BytesIO(logo_variants[0]),
                         caption=f"🎨 Auto-generated logo for *{app_name}*. Use /update_logo to change.",
                         parse_mode="Markdown",
                     )
-                except Exception as e:
-                    logger.warning(f"[{state.project_id}] AUTOPILOT logo send failed: {e}")
+            except Exception as e:
+                logger.warning(f"[{state.project_id}] AUTOPILOT logo send failed: {e}")
 
-            # Issue 13: save bytes to disk so downstream stages have a real path
-            logo_path = _save_logo_to_disk(
-                logo_bytes, state.project_id, app_name,
-            )
-            return {
-                "asset_type": "logo",
-                "logo_bytes_len": len(logo_bytes),
-                "logo_prompt": logo_prompt,
-                "logo_path": logo_path,
-                "source": "auto",
-            }
+        # Save first (primary) variant to disk for downstream stages
+        primary = logo_variants[0]
+        logo_path = _save_logo_to_disk(primary, state.project_id, app_name)
+        return {
+            "asset_type": "logo",
+            "logo_bytes_len": len(primary),
+            "logo_prompt": logo_prompt,
+            "logo_path": logo_path,
+            "logo_variant_count": len(logo_variants),
+            "source": "auto",
+        }
+
     except Exception as e:
         logger.warning(f"[{state.project_id}] AUTOPILOT logo generation failed: {e}")
 

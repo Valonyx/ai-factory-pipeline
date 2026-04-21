@@ -372,16 +372,24 @@ async def cmd_mode(update: Any, context: Any):
             mm = MasterMode(prefs.get("master_mode", "balanced"))
             em = ExecutionMode(prefs.get("execution_mode", "cloud"))
             ctx = "default (no active project)"
+        # Issue 44: show current transport mode, not just the setter commands
+        transport = prefs.get("transport_mode", "polling") if not active else \
+            (await load_operator_preferences(user_id)).get("transport_mode", "polling")
+        transport_emoji = "🌐" if transport == "webhook" else "🏠"
+        exec_emoji = "☁️" if em.value == "cloud" else "💻" if em.value == "local" else "🔀"
         await update.message.reply_text(
             f"⚙️ *Mode Status* ({ctx})\n\n"
-            f"*Master axis* (AI provider strategy)\n"
+            f"*Master axis* — AI provider strategy\n"
             f"  {mm.emoji} {mm.label}\n"
-            f"  Set: /basic /balanced /turbo /custom\n\n"
-            f"*Execution axis* (where code runs)\n"
-            f"  {'☁️' if em.value == 'cloud' else '💻' if em.value == 'local' else '🔀'} {em.value.upper()}\n"
-            f"  Set: /execution_mode cloud|local|hybrid\n\n"
-            f"*Transport axis* (bot connection)\n"
-            f"  Set: /online (webhook) | /local (polling)"
+            f"  Change: /basic /balanced /turbo /custom\n\n"
+            f"*Execution axis* — where pipeline code runs\n"
+            f"  {exec_emoji} {em.value.upper()}\n"
+            f"  Change: /execution\\_mode cloud | local | hybrid\n\n"
+            f"*Transport axis* — how the bot connects to Telegram\n"
+            f"  {transport_emoji} {transport.upper()}\n"
+            f"  Change: /online (webhook) | /local (polling)\n\n"
+            f"⚠️ `/local` = transport polling only.\n"
+            f"To run pipeline code locally: /execution\\_mode local"
         )
 
 
@@ -1040,14 +1048,18 @@ async def cmd_online(update: Any, context: Any):
     if runner is not None:
         go_online, _ = runner.get_mode_events()
         await update.message.reply_text(
-            "🌐 Switching to ONLINE mode (Render webhook).\n"
-            "Auto-reverts in 12 hours or send /local to revert now."
+            "🌐 Transport → ONLINE WEBHOOK (Render)\n"
+            "Bot will receive updates via Telegram push delivery.\n"
+            "Auto-reverts in 12 hours or send /local to revert.\n\n"
+            "ℹ️ This is the *transport* axis (bot connection).\n"
+            "To run pipeline code in the cloud: /execution_mode cloud"
         )
         go_online.set()
     else:
         # Called from Render (already online) or runner not attached
         await update.message.reply_text(
-            "ℹ️  Already running online (Render webhook mode).\n"
+            "🌐 Transport → ONLINE WEBHOOK (Render)\n"
+            "Already running on Render webhook.\n"
             "Send /local to switch back to local polling."
         )
 
@@ -1084,9 +1096,12 @@ async def cmd_local(update: Any, context: Any):
 
     if ok:
         await update.message.reply_text(
-            "🏠 Switched to LOCAL polling mode.\n"
-            "Run `python scripts/run_bot.py` on your machine if not already running.\n"
-            "Send /online to go back online."
+            "🏠 Transport → LOCAL POLLING\n"
+            "Bot will receive updates via polling from your local machine.\n"
+            "Run `python scripts/run_bot.py` if not already running.\n"
+            "Send /online to switch back to Render webhook.\n\n"
+            "ℹ️ This is the *transport* axis (bot connection).\n"
+            "To run pipeline code on your machine: /execution_mode local"
         )
     else:
         await update.message.reply_text("⚠️  Could not remove webhook — check logs.")
@@ -1883,7 +1898,6 @@ async def handle_message(update: Any, context: Any):
             # text (cmd_modify requires repo URL), fall back to inserting the
             # description into modification_description on the active state.
             try:
-                from factory.core.state import PipelineState
                 state = PipelineState.model_validate(active.get("state_json", {}))
                 state.modification_description = text.strip()
                 try:
@@ -1918,11 +1932,29 @@ async def handle_message(update: Any, context: Any):
     logger.info(f"[{user_id}] intent={intent} confidence={confidence:.2f} msg={text[:60]}")
 
     if intent == "start_project" and confidence >= 0.6:
+        # Issue 42: if pipeline is already running, don't try to start a new one.
+        # Give an AI conversational response aware of the current pipeline state.
+        if active:
+            try:
+                _running_state = PipelineState.model_validate(active.get("state_json", {}))
+                if _running_state.current_stage not in (Stage.HALTED, Stage.COMPLETED):
+                    stage_val = _running_state.current_stage.value
+                    reply = await ai_respond(
+                        user_id, text, active, intent="check_status", master_mode=_master_mode
+                    )
+                    await update.message.reply_text(
+                        f"You already have a pipeline running at *{stage_val}*.\n\n"
+                        f"{reply}\n\n"
+                        "Use /cancel first, then /new to start a new project.",
+                        parse_mode="Markdown",
+                    )
+                    return
+            except Exception as _e:
+                logger.debug(f"mid-pipeline guard check failed: {_e}")
         await _handle_start_project_intent(update, user_id, text)
 
     elif intent == "check_status":
         if active:
-            from factory.core.state import PipelineState
             try:
                 state = PipelineState.model_validate(active.get("state_json", {}))
                 reply = await ai_respond(user_id, text, active, intent=intent, master_mode=_master_mode)

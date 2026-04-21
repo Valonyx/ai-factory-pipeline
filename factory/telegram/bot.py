@@ -979,6 +979,11 @@ async def cmd_help(update: Any, context: Any):
 @require_auth
 async def cmd_online(update: Any, context: Any):
     """Switch bot to Render webhook mode for up to 12 hours."""
+    user_id = str(update.effective_user.id)
+    # Issue 36: persist transport axis to Supabase
+    from factory.telegram.decisions import set_operator_preference
+    await set_operator_preference(user_id, "transport_mode", "webhook")
+
     # Signal run_bot.py runner if it's active
     runner = _get_runner()
     if runner is not None:
@@ -999,6 +1004,11 @@ async def cmd_online(update: Any, context: Any):
 @require_auth
 async def cmd_local(update: Any, context: Any):
     """Switch bot back to local polling mode (removes webhook)."""
+    user_id = str(update.effective_user.id)
+    # Issue 36: persist transport axis to Supabase
+    from factory.telegram.decisions import set_operator_preference
+    await set_operator_preference(user_id, "transport_mode", "polling")
+
     import urllib.request as _ur, json as _json, os as _os
     token = _os.getenv("TELEGRAM_BOT_TOKEN", "")
     # Remove webhook directly — works whether called from Render or locally
@@ -2377,6 +2387,9 @@ async def _start_project(
         ),
         execution_mode=ExecutionMode(
             prefs.get("execution_mode", "cloud"),
+        ),
+        master_mode=MasterMode(               # Issue 36: was never read from prefs
+            prefs.get("master_mode", "balanced"),
         ),
         project_metadata={
             "raw_input": description,

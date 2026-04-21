@@ -195,7 +195,12 @@ async def clear_operator_state(operator_id: str) -> None:
 
 _operator_prefs: dict[str, dict] = {}
 
-_PREFS_DEFAULTS: dict = {"autonomy_mode": "autopilot", "execution_mode": "cloud"}
+_PREFS_DEFAULTS: dict = {
+    "autonomy_mode":  "autopilot",
+    "execution_mode": "cloud",
+    "master_mode":    "balanced",   # Issue 36: master axis default
+    "transport_mode": "polling",    # Issue 36: transport axis default
+}
 _PREFS_STATE_KEY = "__prefs"
 
 

@@ -318,6 +318,7 @@ async def _call_anthropic(
     #   (b) Exhausted-provider filter (skips providers in backoff window)
     #   (c) BASIC-mode free-only enforcement (via ModeRouter._filter_available)
     role_name  = contract.role.value.upper()
+    mode_name  = master_mode.value.upper()   # Issue 48: was never assigned → NameError on any provider fallback
     role_chain = provider_intelligence.resolve_provider_for_role(role_name, state)
 
     _ai_by_name = {p.name: p for p in AI_PROVIDERS}

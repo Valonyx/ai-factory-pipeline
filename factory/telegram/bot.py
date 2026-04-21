@@ -734,10 +734,23 @@ async def cmd_continue(update: Any, context: Any):
         and not state.legal_halt
         and not state.circuit_breaker_triggered
     ):
-        await update.message.reply_text(
-            "Pipeline running. /status to check."
+        # Issue 43: secondary check — if the pipeline task is gone (crashed without
+        # setting HALTED in DB, which Issue 37 fixes going forward), still allow
+        # /continue rather than falsely reporting "Pipeline running".
+        task = _project_tasks.get(state.project_id)
+        if task is not None and not task.done():
+            await update.message.reply_text(
+                "Pipeline running. /status to check."
+            )
+            return
+        # Task is dead/missing but state is non-HALTED in DB — stale state.
+        # Transition to HALTED now so the resume block below works correctly.
+        state.current_stage = Stage.HALTED
+        state.project_metadata.setdefault(
+            "halt_reason",
+            "unknown — pipeline task exited without recording HALTED state",
         )
-        return
+        await update_project_state(state)
 
     state.legal_halt = False
     state.legal_halt_reason = None
@@ -2454,6 +2467,23 @@ async def _start_project(
                 await send_telegram_message(user_id, "\n".join(summary_lines))
         except Exception as e:
             logger.error(f"[{project_id}] Pipeline error: {e}", exc_info=True)
+            # Issue 37: ensure HALTED is written to DB so /continue can detect and resume.
+            # graph.py:pipeline_node now catches stage-level exceptions directly;
+            # this safety net covers orchestrator-level failures (e.g. pre-stage setup).
+            if state.current_stage not in (Stage.HALTED, Stage.COMPLETED):
+                state.current_stage = Stage.HALTED
+                state.project_metadata.setdefault(
+                    "halt_reason", f"{type(e).__name__}: {str(e)[:200]}"
+                )
+                state.project_metadata.setdefault("halt_reason_struct", {
+                    "code": "PIPELINE_EXCEPTION",
+                    "error_type": type(e).__name__,
+                    "error_msg": str(e)[:200],
+                })
+                try:
+                    await update_project_state(state)
+                except Exception:
+                    pass
             try:
                 from factory.telegram.notifications import send_telegram_message
                 stage_val = state.current_stage.value if state.current_stage else "unknown"

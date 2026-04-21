@@ -239,8 +239,28 @@ def pipeline_node(stage: Stage):
                 f"[{state.project_id}] ➡️ {stage.value}"
             )
 
-            # Execute stage logic
-            state = await fn(state)
+            # Execute stage logic — Issues 37/45: hard HALT on unhandled stage exception
+            try:
+                state = await fn(state)
+            except Exception as stage_exc:
+                logger.error(
+                    f"[{state.project_id}] Uncaught exception in {stage.value}: "
+                    f"{type(stage_exc).__name__}: {stage_exc}",
+                    exc_info=True,
+                )
+                state.project_metadata["halt_reason"] = (
+                    f"{type(stage_exc).__name__}: {str(stage_exc)[:300]}"
+                )
+                state.project_metadata["halted_from_stage"] = stage.value
+                state.project_metadata["halt_reason_struct"] = {
+                    "code": "STAGE_EXCEPTION",
+                    "stage": stage.value,
+                    "error_type": type(stage_exc).__name__,
+                    "error_msg": str(stage_exc)[:300],
+                }
+                transition_to(state, Stage.HALTED)
+                await persist_state(state)
+                return state
 
             # Post-stage legal check
             await legal_check_hook(state, stage, "post")

@@ -65,6 +65,32 @@ _project_tasks: dict = {}
 # Prevents duplicate pipeline launches when state is lost and intent re-fires.
 _active_pipelines: dict[str, str] = {}
 
+# Issue 47: update_id dedup guard — prevents dual-process double-replies.
+# When both webhook (Render) and polling (local) processes are running,
+# both receive the same Telegram update_id. This set tracks which update_ids
+# this process has already handled so a second handler invocation is dropped.
+# TTL: the set is capped at 2000 entries (LRU-style eviction) to avoid unbounded growth.
+_handled_update_ids: set[int] = set()
+_HANDLED_DEDUP_LIMIT = 2000
+
+
+def _is_duplicate_update(update_id: int) -> bool:
+    """Return True if this update_id was already handled by this process.
+
+    Side-effect: registers the update_id as handled if it is not a duplicate.
+    Issue 47: prevents dual-process double-replies.
+    """
+    if update_id in _handled_update_ids:
+        return True
+    _handled_update_ids.add(update_id)
+    # Evict oldest entries when limit exceeded (keep set bounded)
+    if len(_handled_update_ids) > _HANDLED_DEDUP_LIMIT:
+        # Remove ~10% oldest — set has no order, so just pop 200 arbitrary entries
+        for _ in range(200):
+            if _handled_update_ids:
+                _handled_update_ids.pop()
+    return False
+
 
 def _bg(coro) -> "asyncio.Task":
     """Create a background task and keep a hard reference until it finishes."""
@@ -115,10 +141,18 @@ async def authenticate_operator(update: Any) -> bool:
     """Check if the Telegram user is the authorized operator.
 
     Spec: §5.1.2
+    Layer 0 (fast): update_id dedup — rejects already-handled updates to prevent
+      dual-process double-replies (Issue 47: webhook + polling both receive same update).
     Layer 1 (fast): hardcoded operator ID check — unknown users get complete
-    silence (no error reply, no acknowledgment, nothing discoverable).
+      silence (no error reply, no acknowledgment, nothing discoverable).
     Layer 2 (Supabase): whitelist check for future multi-operator support.
     """
+    # Layer 0: dedup guard (Issue 47)
+    uid = getattr(update, "update_id", None)
+    if uid is not None and _is_duplicate_update(uid):
+        logger.debug(f"Dropping duplicate update_id={uid} (already handled by this process)")
+        return False
+
     from factory.telegram.ai_handler import is_operator
     user_id = str(update.effective_user.id)
 
@@ -967,17 +1001,21 @@ async def cmd_providers(update: Any, context: Any):
         return "\n".join(lines)
 
     from factory.core.provider_intelligence import provider_intelligence
-    msg = (
+    from factory.telegram.messages import escape_md
+    # Issue 38: provider names contain underscores (e.g. nvidia_nim_image_gen = 3 _)
+    # which break Telegram Markdown V1 parsing. Escape the entire dynamic section.
+    raw_msg = (
         "🤖 AI Provider Chain:\n"
         + _format_ai_chain(ai_chain)
         + "\n\n🔍 Scout Chain:\n"
         + _format_ai_chain(scout_chain)
         + "\n\n🧠 Mother Memory Chain (fan-out writes):\n"
         + _format_memory_chain()
-        + "\n\n_All chains auto-recover when quotas reset.\n"
-        "Higher-priority backends always take priority once available._"
+        + "\n\nAll chains auto-recover when quotas reset. "
+        + "Higher-priority backends always take priority once available."
         + "\n\n" + provider_intelligence.status_message()
     )
+    msg = escape_md(raw_msg)
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 

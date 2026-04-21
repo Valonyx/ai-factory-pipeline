@@ -28,6 +28,25 @@ from factory.core.state import (
 logger = logging.getLogger("factory.telegram.messages")
 
 
+# ─── Issue 38: Markdown escape helper ─────────────────────────────────────────
+
+def escape_md(text: str) -> str:
+    """Escape all Telegram Markdown V1 special characters in *text*.
+
+    Telegram Markdown V1 treats _ * ` [ as special. Any dynamic string
+    (provider names, file paths, user input) passed with parse_mode='Markdown'
+    must be escaped first.
+
+    Usage:
+        await bot.send_message(chat_id, escape_md(provider_name), parse_mode='Markdown')
+    """
+    # V1 special chars: _ * ` [
+    for ch in ("\\", "_", "*", "`", "["):
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
+
 # ═══════════════════════════════════════════════════════════════════
 # §5.1 Telegram Configuration
 # ═══════════════════════════════════════════════════════════════════
@@ -403,17 +422,20 @@ def format_project_started(
 ) -> str:
     """Format the project creation confirmation.
 
+    Issue 46: show all three mode axes (master + execution + autonomy).
     Spec: §5.2 (/new)
     """
-    mode_str = MODE_EMOJI.get(state.execution_mode.value, "")
-    auto_str = AUTONOMY_EMOJI.get(state.autonomy_mode.value, "")
+    exec_str   = MODE_EMOJI.get(state.execution_mode.value, "")
+    auto_str   = AUTONOMY_EMOJI.get(state.autonomy_mode.value, "")
+    master_str = state.master_mode.emoji   # Issue 46: was never displayed
 
     # Issue 15: prefer the app name; fall back to a humanized id only if
     # state truly carries nothing else.
     display = project_display_name(state)
     return (
         f"🚀 {display} started!\n"
-        f"Mode: {mode_str} {state.execution_mode.value}\n"
+        f"Master: {master_str} {state.master_mode.label}\n"
+        f"Execution: {exec_str} {state.execution_mode.value.upper()}\n"
         f"Autonomy: {auto_str} {state.autonomy_mode.value}\n"
         f"Processing..."
     )

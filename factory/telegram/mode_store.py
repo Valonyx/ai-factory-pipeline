@@ -155,6 +155,49 @@ class ModeStore:
         self._prefs[key] = value
         await set_operator_preference(self.operator_id, key, value)
 
+    # ── scope-aware effective readers (Issue 51) ──────────────────────
+
+    @staticmethod
+    async def get_effective_execution_mode(
+        operator_id: str,
+        state: Optional[object] = None,
+    ) -> ExecutionMode:
+        """Return the execution mode that SHOULD be applied right now.
+
+        Scope precedence (highest first):
+          1. Active PipelineState.execution_mode (project-scoped)
+          2. Operator pref (operator-scoped, Supabase → SQLite → defaults)
+          3. CLOUD (ultimate default)
+        """
+        if state is not None:
+            em = getattr(state, "execution_mode", None)
+            if isinstance(em, ExecutionMode):
+                return em
+        prefs = await load_operator_preferences(operator_id)
+        try:
+            return ExecutionMode(prefs.get("execution_mode", "cloud"))
+        except ValueError:
+            return ExecutionMode.CLOUD
+
+    @staticmethod
+    async def get_effective_master_mode(
+        operator_id: str,
+        state: Optional[object] = None,
+    ) -> MasterMode:
+        """Return the master mode that SHOULD be applied right now.
+
+        Scope precedence: PipelineState.master_mode → operator pref → BALANCED.
+        """
+        if state is not None:
+            mm = getattr(state, "master_mode", None)
+            if isinstance(mm, MasterMode):
+                return mm
+        prefs = await load_operator_preferences(operator_id)
+        try:
+            return MasterMode(prefs.get("master_mode", "balanced"))
+        except ValueError:
+            return MasterMode.BALANCED
+
     def __repr__(self) -> str:
         if not self._loaded:
             return f"ModeStore(operator={self.operator_id!r}, not loaded)"

@@ -433,9 +433,21 @@ async def cmd_execution_mode(update: Any, context: Any):
             state.execution_mode = ExecutionMode(arg)
             await update_project_state(state)
         await set_operator_preference(user_id, "execution_mode", arg)
+        # v5.8.15 Issue 51 — verify via effective read so the user sees the
+        # value that mode-consuming code will actually observe.
+        from factory.telegram.mode_store import ModeStore
+        verify_state = (
+            PipelineState.model_validate(active["state_json"]) if active else None
+        )
+        if verify_state is not None and arg:
+            verify_state.execution_mode = ExecutionMode(arg)
+        effective = await ModeStore.get_effective_execution_mode(
+            user_id, verify_state,
+        )
         scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
-            f"{_EMOJI[arg]} Execution mode → *{arg.upper()}* ({scope})."
+            f"{_EMOJI[arg]} Execution mode → *{arg.upper()}* ({scope}).\n"
+            f"Effective: *{effective.value.upper()}*"
         )
     else:
         # Show current execution mode
@@ -444,8 +456,8 @@ async def cmd_execution_mode(update: Any, context: Any):
             em = state.execution_mode
             ctx = "active project"
         else:
-            prefs = await load_operator_preferences(user_id)
-            em = ExecutionMode(prefs.get("execution_mode", "cloud"))
+            from factory.telegram.mode_store import ModeStore
+            em = await ModeStore.get_effective_execution_mode(user_id, None)
             ctx = "default (no active project)"
         await update.message.reply_text(
             f"⚙️ *Execution Axis* ({ctx})\n\n"

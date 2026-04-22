@@ -204,6 +204,93 @@ _PREFS_DEFAULTS: dict = {
 _PREFS_STATE_KEY = "__prefs"
 
 
+# ═══════════════════════════════════════════════════════════════════
+# v5.8.15 Issue 51 — SQLite fallback for operator preferences
+#
+# Live evidence: `/execution_mode local` failed to persist because Supabase
+# writes were silently warning-only. We now fan-out writes to a local
+# SQLite file (~/factory-projects/.ops_prefs.sqlite3) so preferences survive
+# process restarts even when Supabase is unreachable.
+# ═══════════════════════════════════════════════════════════════════
+
+import os as _os
+import json as _json
+import sqlite3 as _sqlite3
+from pathlib import Path as _Path
+
+
+def _prefs_sqlite_path() -> _Path:
+    base = _Path(_os.path.expanduser("~")) / "factory-projects"
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return base / ".ops_prefs.sqlite3"
+
+
+def _prefs_sqlite_init() -> Optional[_sqlite3.Connection]:
+    try:
+        conn = _sqlite3.connect(str(_prefs_sqlite_path()))
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS operator_prefs ("
+            " operator_id TEXT PRIMARY KEY,"
+            " prefs_json TEXT NOT NULL,"
+            " updated_at TEXT NOT NULL"
+            ")"
+        )
+        conn.commit()
+        return conn
+    except Exception as e:
+        logger.warning(f"[decisions] SQLite prefs init failed: {e}")
+        return None
+
+
+def _prefs_sqlite_read(operator_id: str) -> Optional[dict]:
+    conn = _prefs_sqlite_init()
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT prefs_json FROM operator_prefs WHERE operator_id=?",
+            (operator_id,),
+        ).fetchone()
+        if row and row[0]:
+            return _json.loads(row[0])
+    except Exception as e:
+        logger.debug(f"[decisions] SQLite prefs read error: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return None
+
+
+def _prefs_sqlite_write(operator_id: str, prefs: dict) -> bool:
+    conn = _prefs_sqlite_init()
+    if conn is None:
+        return False
+    try:
+        conn.execute(
+            "INSERT INTO operator_prefs(operator_id, prefs_json, updated_at) "
+            "VALUES(?,?,datetime('now')) "
+            "ON CONFLICT(operator_id) DO UPDATE SET "
+            " prefs_json=excluded.prefs_json,"
+            " updated_at=excluded.updated_at",
+            (operator_id, _json.dumps(prefs)),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.warning(f"[decisions] SQLite prefs write error: {e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def get_operator_preferences(operator_id: str) -> dict:
     """Get operator's stored preferences (sync — memory cache only).
 
@@ -213,18 +300,34 @@ def get_operator_preferences(operator_id: str) -> dict:
 
 
 async def load_operator_preferences(operator_id: str) -> dict:
-    """Load preferences from Supabase into memory cache, return them."""
+    """Load preferences from Supabase → SQLite → defaults.
+
+    Populates and returns the in-memory cache so subsequent reads are fast.
+    """
     if operator_id in _operator_prefs:
         return _operator_prefs[operator_id]
+    # 1) Supabase
     try:
         from factory.integrations.supabase import get_operator_state_db
         row = await get_operator_state_db(operator_id + _PREFS_STATE_KEY)
         if row and row.get("context"):
             prefs = {**_PREFS_DEFAULTS, **row["context"]}
             _operator_prefs[operator_id] = prefs
+            # Mirror to SQLite so future reads have a local copy
+            _prefs_sqlite_write(operator_id, prefs)
             return prefs
     except Exception as e:
         logger.warning(f"[decisions] Failed to load preferences from DB: {e}")
+    # 2) SQLite fallback
+    local = _prefs_sqlite_read(operator_id)
+    if local:
+        prefs = {**_PREFS_DEFAULTS, **local}
+        _operator_prefs[operator_id] = prefs
+        logger.info(
+            f"[decisions] Loaded operator {operator_id} prefs from SQLite fallback"
+        )
+        return prefs
+    # 3) Defaults
     prefs = dict(_PREFS_DEFAULTS)
     _operator_prefs[operator_id] = prefs
     return prefs
@@ -233,10 +336,17 @@ async def load_operator_preferences(operator_id: str) -> dict:
 async def set_operator_preference(
     operator_id: str, key: str, value: Any,
 ) -> None:
-    """Set a single operator preference — write-through to Supabase."""
+    """Set a single operator preference — write-through to Supabase + SQLite.
+
+    v5.8.15 Issue 51 — fan-out so Supabase outages don't silently swallow
+    mode changes. Emits a structured log line on every write for live
+    reproduction forensics.
+    """
     if operator_id not in _operator_prefs:
         _operator_prefs[operator_id] = dict(_PREFS_DEFAULTS)
     _operator_prefs[operator_id][key] = value
+
+    supabase_ok = False
     try:
         from factory.integrations.supabase import set_operator_state_db
         await set_operator_state_db(
@@ -244,8 +354,16 @@ async def set_operator_preference(
             _PREFS_STATE_KEY,
             _operator_prefs[operator_id],
         )
+        supabase_ok = True
     except Exception as e:
         logger.warning(f"[decisions] Failed to persist preference to DB: {e}")
+
+    sqlite_ok = _prefs_sqlite_write(operator_id, _operator_prefs[operator_id])
+
+    logger.info(
+        f"[pref-write] operator={operator_id} key={key} value={value!r} "
+        f"supabase={supabase_ok} sqlite={sqlite_ok}"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════

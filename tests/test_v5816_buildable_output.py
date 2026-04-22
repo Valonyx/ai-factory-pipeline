@@ -120,6 +120,47 @@ def test_g2_fallback_component_library_survives_missing_palette():
     assert spec["tokens"]["color_primary"]  # non-empty default
 
 
+def test_g2_fallback_icon_is_well_formed_xml_for_hostile_names(tmp_path, monkeypatch):
+    """v5.8.16 self-audit: app names starting with &, <, >, ", ' or emoji
+    must NOT produce malformed SVG. The initial falls back to 'A'."""
+    import xml.etree.ElementTree as ET
+    from factory.pipeline.blueprint_pdf import _write_fallback_icon
+    from factory.core.state import PipelineState
+
+    monkeypatch.chdir(tmp_path)
+    hostile = ["&Company", "<script>", '"quoted"', "'apostrophe", "🔥Emoji"]
+    for i, name in enumerate(hostile):
+        state = PipelineState(project_id=f"proj_hostile_{i}", operator_id="1")
+        path = _write_fallback_icon(state, name, {"primary": "#112233"})
+        assert path is not None, f"Icon write returned None for {name!r}"
+        svg = Path(path).read_text()
+        # Must parse as well-formed XML.
+        ET.fromstring(svg)  # raises ParseError on malformed SVG
+        # Must have fallen back to the letter A.
+        assert ">A<" in svg, (
+            f"Expected fallback 'A' for hostile name {name!r}, got: {svg[:200]}"
+        )
+
+
+def test_g2_fallback_icon_rejects_hostile_palette(tmp_path, monkeypatch):
+    """A primary-color string carrying quote/angle chars must be scrubbed
+    before interpolation, not allow SVG-attribute injection."""
+    import xml.etree.ElementTree as ET
+    from factory.pipeline.blueprint_pdf import _write_fallback_icon
+    from factory.core.state import PipelineState
+
+    monkeypatch.chdir(tmp_path)
+    state = PipelineState(project_id="proj_palette_injection", operator_id="1")
+    path = _write_fallback_icon(
+        state, "Safe", {"primary": '#FF0000" onload="alert(1)"'},
+    )
+    assert path is not None
+    svg = Path(path).read_text()
+    ET.fromstring(svg)  # must still parse
+    assert "onload" not in svg
+    assert 'alert' not in svg
+
+
 def test_g2_fallback_icon_writes_real_svg(tmp_path, monkeypatch):
     from factory.pipeline.blueprint_pdf import _write_fallback_icon
     from factory.core.state import PipelineState

@@ -1182,8 +1182,17 @@ def _write_fallback_icon(
     is never empty when image-gen is unavailable.
     """
     try:
-        initial = (app_name or "A").strip()[:1].upper() or "A"
-        primary = (color_palette or {}).get("primary", "#1976D2")
+        raw_initial = (app_name or "A").strip()[:1].upper() or "A"
+        # v5.8.16 hardening: if the first char is not a plain ASCII letter
+        # or digit, fall back to "A" rather than risk emitting non-well-formed
+        # SVG (ampersand / angle-bracket / quote / non-BMP glyph).
+        initial = raw_initial if raw_initial.isalnum() and raw_initial.isascii() else "A"
+        # Defence-in-depth: palette primary must look like a hex color
+        # (#RGB / #RRGGBB / #RRGGBBAA). Anything else falls back to the
+        # safe default — no attribute-injection payload can survive.
+        import re as _re
+        primary_raw = str((color_palette or {}).get("primary", "#1976D2"))
+        primary = primary_raw if _re.fullmatch(r"#[0-9A-Fa-f]{3,8}", primary_raw) else "#1976D2"
         # Use white text on the primary color; assume reasonable contrast.
         svg = (
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'

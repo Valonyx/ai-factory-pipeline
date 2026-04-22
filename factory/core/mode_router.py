@@ -667,11 +667,84 @@ IMAGE_PROVIDERS: list[ProviderDescriptor] = [
                        cost_per_1k_tokens=0.004),
 ]
 
+# Vision Chain — multimodal image analysis (all free-tier)
+VISION_PROVIDERS: list[ProviderDescriptor] = [
+    ProviderDescriptor("nvidia_nim_vision",   ProviderTier.FREE,
+                       free_quality_rank=1, performance_rank=1,
+                       cost_per_1k_tokens=0.0001,
+                       model_id="meta/llama-3.2-90b-vision-instruct"),
+    ProviderDescriptor("gemini_vision",       ProviderTier.FREE,
+                       free_quality_rank=2, performance_rank=2,
+                       cost_per_1k_tokens=0.0001,
+                       model_id="gemini-2.0-flash"),
+    ProviderDescriptor("groq_vision",         ProviderTier.FREE,
+                       free_quality_rank=3, performance_rank=3,
+                       cost_per_1k_tokens=0.0001,
+                       model_id="meta-llama/llama-4-scout-17b-16e-instruct"),
+    ProviderDescriptor("cloudflare_vision",   ProviderTier.FREE,
+                       free_quality_rank=4, performance_rank=4,
+                       cost_per_1k_tokens=0.0,
+                       model_id="@cf/meta/llama-3.2-11b-vision-instruct"),
+]
+
+# UI Agent Chain — GUI understanding and action planning (UI-TARS-like, all free-tier)
+UI_AGENT_PROVIDERS: list[ProviderDescriptor] = [
+    ProviderDescriptor("qwen_vl",           ProviderTier.FREE,
+                       free_quality_rank=1, performance_rank=1,
+                       cost_per_1k_tokens=0.0,
+                       model_id="qwen/qwen2.5-vl-72b-instruct:free"),
+    ProviderDescriptor("ui_tars",           ProviderTier.FREE,
+                       free_quality_rank=2, performance_rank=2,
+                       cost_per_1k_tokens=0.0,
+                       model_id="bytedance/ui-tars"),
+    ProviderDescriptor("gemini_vision",     ProviderTier.FREE,
+                       free_quality_rank=3, performance_rank=3,
+                       cost_per_1k_tokens=0.0001,
+                       model_id="gemini-2.0-flash"),
+    ProviderDescriptor("nvidia_nim_vision", ProviderTier.FREE,
+                       free_quality_rank=4, performance_rank=4,
+                       cost_per_1k_tokens=0.0001,
+                       model_id="meta/llama-3.2-90b-vision-instruct"),
+]
+
+# Design Generation Chain — Figma-AI-like asset creation (all free-tier)
+DESIGN_PROVIDERS: list[ProviderDescriptor] = [
+    # Code generation providers
+    ProviderDescriptor("gemini",       ProviderTier.FREE,
+                       free_quality_rank=1, performance_rank=1,
+                       cost_per_1k_tokens=0.0001,
+                       model_id="gemini-2.0-flash"),
+    ProviderDescriptor("openrouter",   ProviderTier.FREE,
+                       free_quality_rank=2, performance_rank=2,
+                       cost_per_1k_tokens=0.0,
+                       model_id="qwen/qwen2.5-72b-instruct:free"),
+    ProviderDescriptor("groq",         ProviderTier.FREE,
+                       free_quality_rank=3, performance_rank=3,
+                       cost_per_1k_tokens=0.0,
+                       model_id="llama-3.3-70b-versatile"),
+    # Image generation providers
+    ProviderDescriptor("huggingface",  ProviderTier.FREE,
+                       free_quality_rank=4, performance_rank=4,
+                       cost_per_1k_tokens=0.0,
+                       model_id="black-forest-labs/FLUX.1-schnell"),
+    ProviderDescriptor("together",     ProviderTier.FREE,
+                       free_quality_rank=5, performance_rank=5,
+                       cost_per_1k_tokens=0.0,
+                       model_id="black-forest-labs/FLUX.1-schnell-Free"),
+    ProviderDescriptor("pollinations", ProviderTier.FREE,
+                       free_quality_rank=6, performance_rank=6,
+                       cost_per_1k_tokens=0.0,
+                       model_id="flux"),
+]
+
 # Catalog lookup
 PROVIDER_CATALOGS: dict[str, list[ProviderDescriptor]] = {
-    "ai":     AI_PROVIDERS,
-    "scout":  SCOUT_PROVIDERS,
-    "image":  IMAGE_PROVIDERS,
+    "ai":        AI_PROVIDERS,
+    "scout":     SCOUT_PROVIDERS,
+    "image":     IMAGE_PROVIDERS,
+    "vision":    VISION_PROVIDERS,
+    "ui_agent":  UI_AGENT_PROVIDERS,
+    "design":    DESIGN_PROVIDERS,
 }
 
 

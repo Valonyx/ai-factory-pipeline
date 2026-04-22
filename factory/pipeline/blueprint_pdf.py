@@ -213,6 +213,9 @@ async def build_design_package(
     Returns dict with paths and metadata.
     """
     package: dict = {}
+    # v5.8.16 (G2): track which sections fell back so consumers can tell an
+    # empty list from a deliberate zero.
+    degraded_sections: list[dict] = []
     app_name = blueprint_data.get("app_name", state.project_id)
     color_palette = blueprint_data.get("color_palette", {})
     screens = blueprint_data.get("screens", [])
@@ -244,11 +247,25 @@ async def build_design_package(
         logger.warning(f"[{state.project_id}] WCAG check failed (non-fatal): {e}")
 
     # ── 2. Generate component library spec ──
+    # v5.8.16 (G2): if the AI call fails OR returns empty, fall back to a
+    # deterministic spec derived from color_palette + typography so the
+    # package always carries real data downstream.
     try:
         comp_spec = await _generate_component_library(state, blueprint_data)
+        if not comp_spec or not comp_spec.get("components"):
+            comp_spec = _fallback_component_library(blueprint_data)
+            degraded_sections.append({
+                "section": "component_library",
+                "reason": "AI call returned empty; using deterministic fallback",
+            })
         package["component_library"] = comp_spec
     except Exception as e:
         logger.warning(f"[{state.project_id}] Component library gen failed: {e}")
+        package["component_library"] = _fallback_component_library(blueprint_data)
+        degraded_sections.append({
+            "section": "component_library",
+            "reason": f"exception: {type(e).__name__}",
+        })
 
     # ── 3. Generate screen mockups (10+ hi-fi HTML→PNG) ──
     try:
@@ -266,11 +283,22 @@ async def build_design_package(
         logger.warning(f"[{state.project_id}] Screen mockups failed (non-fatal): {e}")
 
     # ── 4. Generate app icon set (multiple sizes) ──
+    # v5.8.16 (G2): always emit at least one fallback SVG icon so
+    # app_icon_paths is never empty when the design package claims success.
+    icon_paths: list[str] = []
     try:
         icon_paths = await _generate_icon_set(state, blueprint_data)
-        package["app_icon_paths"] = icon_paths
     except Exception as e:
         logger.warning(f"[{state.project_id}] Icon set gen failed (non-fatal): {e}")
+    if not icon_paths:
+        fallback_svg = _write_fallback_icon(state, app_name, color_palette)
+        if fallback_svg:
+            icon_paths = [fallback_svg]
+            degraded_sections.append({
+                "section": "app_icon_paths",
+                "reason": "image-gen unavailable; deterministic SVG fallback written",
+            })
+    package["app_icon_paths"] = icon_paths
 
     # ── 5. Generate store screenshots (3 per platform) ──
     try:
@@ -278,6 +306,9 @@ async def build_design_package(
         package["store_screenshot_paths"] = screenshot_paths
     except Exception as e:
         logger.warning(f"[{state.project_id}] Store screenshots failed (non-fatal): {e}")
+
+    # v5.8.16 (G2): expose degradation list on the package.
+    package["degraded_sections"] = degraded_sections
 
     # Save package metadata
     design_dir = Path("artifacts") / state.project_id / "design"
@@ -1076,6 +1107,99 @@ def _architecture_summary(blueprint_data: dict, styles: dict) -> list:
 # ═══════════════════════════════════════════════════════════════════
 # Design Package Helpers
 # ═══════════════════════════════════════════════════════════════════
+
+
+def _fallback_component_library(blueprint_data: dict) -> dict:
+    """v5.8.16 (G2): deterministic component_library derived from blueprint
+    color_palette + typography. No AI call. Used when the AI spec is empty
+    or the call fails — guarantees the design package carries real tokens
+    and a minimum component inventory instead of an empty dict.
+    """
+    palette = blueprint_data.get("color_palette", {}) or {}
+    typography = blueprint_data.get("typography", {}) or {}
+    primary = palette.get("primary", "#1976D2")
+    secondary = palette.get("secondary", "#FF9800")
+    bg = palette.get("background", "#FFFFFF")
+    text_primary = palette.get("text_primary", "#212121")
+    font_family = typography.get("font_family", "Inter, system-ui, sans-serif")
+
+    return {
+        "components": [
+            {
+                "name": "PrimaryButton",
+                "props": {"label": "string", "onPress": "() => void", "disabled": "bool"},
+                "usage": "Primary CTA; filled background, white text.",
+                "style": {"background": primary, "text": "#FFFFFF", "radius": "8px"},
+            },
+            {
+                "name": "SecondaryButton",
+                "props": {"label": "string", "onPress": "() => void"},
+                "usage": "Secondary action; outlined.",
+                "style": {"background": "transparent", "border": primary, "text": primary},
+            },
+            {
+                "name": "TextField",
+                "props": {"value": "string", "onChange": "(v)=>void", "placeholder": "string"},
+                "usage": "Single-line text input.",
+            },
+            {
+                "name": "Card",
+                "props": {"children": "node"},
+                "usage": "Elevated content container.",
+                "style": {"background": bg, "radius": "12px", "elevation": 2},
+            },
+            {
+                "name": "ListItem",
+                "props": {"title": "string", "subtitle": "string?", "onPress": "()=>void?"},
+                "usage": "Row in a scrollable list.",
+            },
+        ],
+        "tokens": {
+            "color_primary": primary,
+            "color_secondary": secondary,
+            "color_background": bg,
+            "color_text_primary": text_primary,
+            "font_family": font_family,
+            "spacing_xs": "4px",
+            "spacing_sm": "8px",
+            "spacing_md": "16px",
+            "spacing_lg": "24px",
+            "radius_sm": "4px",
+            "radius_md": "8px",
+            "radius_lg": "12px",
+        },
+        "source": "fallback_deterministic",
+    }
+
+
+def _write_fallback_icon(
+    state: PipelineState,
+    app_name: str,
+    color_palette: dict,
+) -> Optional[str]:
+    """v5.8.16 (G2): write a deterministic SVG icon derived from the app's
+    first initial on the primary color. Always succeeds so app_icon_paths
+    is never empty when image-gen is unavailable.
+    """
+    try:
+        initial = (app_name or "A").strip()[:1].upper() or "A"
+        primary = (color_palette or {}).get("primary", "#1976D2")
+        # Use white text on the primary color; assume reasonable contrast.
+        svg = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
+            f'<rect width="1024" height="1024" rx="180" fill="{primary}"/>'
+            f'<text x="50%" y="58%" font-family="Inter,system-ui,sans-serif" '
+            f'font-size="520" font-weight="700" fill="#FFFFFF" '
+            f'text-anchor="middle">{initial}</text></svg>'
+        )
+        icon_dir = Path("artifacts") / state.project_id / "design" / "icons"
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        p = icon_dir / "icon_fallback.svg"
+        p.write_text(svg, encoding="utf-8")
+        return str(p)
+    except Exception as e:  # pragma: no cover — defensive
+        logger.debug(f"[{state.project_id}] Fallback icon write failed: {e}")
+        return None
 
 
 async def _generate_component_library(

@@ -1010,16 +1010,38 @@ async def cmd_setup(update: Any, context: Any):
 
 @require_auth
 async def cmd_providers(update: Any, context: Any):
-    """Show AI provider + memory backend chain status."""
+    """Show AI provider + memory backend chain status — mode-aware.
+
+    v5.8.15 Issue 54: reads the operator's current MasterMode and renders
+    the chain scoped to that mode. In BASIC mode, paid providers
+    (anthropic, perplexity, brave, cohere, voyage, azure_ai, elevenlabs)
+    are shown as EXCLUDED with a "paid — BASIC free-only" reason so the
+    operator cannot be misled into thinking anthropic is ACTIVE.
+    """
     from factory.integrations.provider_chain import ai_chain, scout_chain
     from factory.memory.mother_memory import get_memory_chain_status
+    from factory.core.provider_intelligence import is_paid
+    from factory.telegram.mode_store import ModeStore
     import time
 
-    def _format_ai_chain(chain) -> str:
+    user_id = str(update.effective_user.id)
+    active = await get_active_project(user_id)
+    _verify_state = (
+        PipelineState.model_validate(active["state_json"]) if active else None
+    )
+    master_mode = await ModeStore.get_effective_master_mode(user_id, _verify_state)
+    mode_upper = master_mode.value.upper()
+
+    def _format_ai_chain(chain, *, apply_mode_filter: bool = True) -> str:
         lines = []
-        active = chain.get_active()
+        active_name = chain.get_active()
         for name in chain.chain:
             s = chain.statuses[name]
+            # v5.8.15 Issue 54 — BASIC excludes paid providers regardless
+            # of status; render the exclusion explicitly.
+            if apply_mode_filter and mode_upper == "BASIC" and is_paid(name):
+                lines.append(f"  🚫 {name}: excluded (paid — BASIC free-only)")
+                continue
             if s.quota_exhausted and s.quota_reset_at:
                 eta = int(s.quota_reset_at - time.time())
                 h, m = divmod(max(eta, 0), 3600)
@@ -1028,7 +1050,7 @@ async def cmd_providers(update: Any, context: Any):
             elif not s.available:
                 err = s.last_error[:40] if s.last_error else "unavailable"
                 lines.append(f"  ❌ {name}: {err}")
-            elif name == active:
+            elif name == active_name:
                 lines.append(f"  ✅ {name}: ACTIVE ← currently in use")
             else:
                 lines.append(f"  ⬜ {name}: ready (standby)")
@@ -1062,6 +1084,7 @@ async def cmd_providers(update: Any, context: Any):
     # Issue 38: provider names contain underscores (e.g. nvidia_nim_image_gen = 3 _)
     # which break Telegram Markdown V1 parsing. Escape the entire dynamic section.
     raw_msg = (
+        f"🎛️ Master mode: *{mode_upper}*\n\n"
         "🤖 AI Provider Chain:\n"
         + _format_ai_chain(ai_chain)
         + "\n\n🔍 Scout Chain:\n"
@@ -1070,7 +1093,7 @@ async def cmd_providers(update: Any, context: Any):
         + _format_memory_chain()
         + "\n\nAll chains auto-recover when quotas reset. "
         + "Higher-priority backends always take priority once available."
-        + "\n\n" + provider_intelligence.status_message()
+        + "\n\n" + provider_intelligence.status_message(mode_upper)
     )
     msg = escape_md(raw_msg)
     await update.message.reply_text(msg, parse_mode="Markdown")

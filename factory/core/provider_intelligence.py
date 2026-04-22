@@ -209,6 +209,44 @@ def has_key(provider: str) -> bool:
     return bool(os.getenv(env_var, "").strip())
 
 
+# ═══════════════════════════════════════════════════════════════════
+# v5.8.15 Issue 54 — hard BASIC-mode paid-provider exclusion.
+#
+# Live evidence: BASIC mode /providers showed "anthropic: ACTIVE" despite
+# the operator having no paid credit. ROLE_PROVIDERS[*][BASIC] already
+# excludes paid providers, but the global ai_chain did not know about
+# the mode and kept anthropic as "active" from a prior BALANCED run.
+# PAID_PROVIDERS is the single source of truth used by both the chain
+# filter and the /providers renderer.
+# ═══════════════════════════════════════════════════════════════════
+
+PAID_PROVIDERS: frozenset[str] = frozenset({
+    "anthropic",
+    "perplexity",
+    "brave",
+    "cohere",
+    "voyage",
+    "azure_ai",
+    "elevenlabs",
+})
+
+
+def is_paid(provider: str) -> bool:
+    """Return True if the provider bills per-request (not free-tier)."""
+    return provider in PAID_PROVIDERS
+
+
+def filter_for_mode(providers: list[str], mode_name: str) -> list[str]:
+    """Apply mode-level exclusion rules to a provider list.
+
+    In BASIC mode, paid providers are hard-excluded even if their API
+    key is present. In all other modes, the list is returned unchanged.
+    """
+    if (mode_name or "").upper() == "BASIC":
+        return [p for p in providers if not is_paid(p)]
+    return list(providers)
+
+
 @dataclass
 class RateLimitInfo:
     """Rate-limit info parsed from response headers or API metadata."""
@@ -287,6 +325,10 @@ class ProviderIntelligence:
         mode_attr = getattr(state, "master_mode", None)
         mode_name = mode_attr.value.upper() if mode_attr is not None else "BALANCED"
         chain = self.get_chain_for_role(role_name, mode_name)
+        # v5.8.15 Issue 54 — defensive second pass: even if a paid provider
+        # is listed in ROLE_PROVIDERS[role][BASIC] (misconfiguration), the
+        # mode filter strips it here.
+        chain = filter_for_mode(chain, mode_name)
         result = [
             p for p in chain
             if has_key(p) and self._metrics.get(p, ProviderMetrics(name=p)).is_available()
@@ -394,20 +436,38 @@ class ProviderIntelligence:
         except RuntimeError:
             pass  # no running loop at import time — caller must start manually
 
-    def status_message(self) -> str:
-        """Render /providers status for Telegram.
+    def status_message(self, mode_name: str = "BALANCED") -> str:
+        """Render /providers status for Telegram, scoped to the current mode.
 
-        Issue 33: shows real key-presence status instead of stale in-memory defaults.
+        v5.8.15 Issue 54: mode-aware rendering. In BASIC, paid providers
+        are shown as EXCLUDED with a reason ("paid — BASIC free-only")
+        so the operator understands why anthropic is not in play.
         """
-        lines = ["📡 *Provider Status*\n"]
-        for role, modes in ROLE_PROVIDERS.items():
-            primary = self.select_provider(role, "BALANCED") or "none"
+        mode_upper = (mode_name or "BALANCED").upper()
+        lines = [f"📡 *Provider Status* — mode: *{mode_upper}*\n"]
+        for role in ROLE_PROVIDERS:
+            primary = self.select_provider(role, mode_upper) or "none"
+            # Apply mode filter so primary selection obeys BASIC exclusion
+            if primary != "none" and is_paid(primary) and mode_upper == "BASIC":
+                # recompute with mode filter
+                chain = filter_for_mode(
+                    self.get_chain_for_role(role, mode_upper),
+                    mode_upper,
+                )
+                primary = next(
+                    (p for p in chain
+                     if has_key(p)
+                     and self._metrics.get(p, ProviderMetrics(name=p)).is_available()),
+                    "none",
+                )
             lines.append(f"*{role}* → {primary}")
         lines.append("\n*All providers:*")
         for name in PROVIDER_CAPABILITIES:
             m = self._metrics.get(name, ProviderMetrics(name=name))
             key_ok = has_key(name)
-            if not key_ok:
+            if mode_upper == "BASIC" and is_paid(name):
+                lines.append(f"  🚫 {name} — excluded (paid, BASIC free-only)")
+            elif not key_ok:
                 env_var = _KEY_ENV_VARS.get(name, "?")
                 lines.append(f"  🔑 {name} — no {env_var}")
             elif not m.is_available():

@@ -37,6 +37,9 @@ class HaltCode(str, Enum):
     INTAKE_BLOCKED = "INTAKE_BLOCKED"
     UNCAUGHT_EXCEPTION = "UNCAUGHT_EXCEPTION"
 
+    # v5.8.15 Issue 50 — stage success contract violation
+    STAGE_TRIVIAL_COMPLETION = "STAGE_TRIVIAL_COMPLETION"
+
 
 @dataclass
 class HaltReason:

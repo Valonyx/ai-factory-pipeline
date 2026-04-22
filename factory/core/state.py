@@ -796,6 +796,63 @@ class Blueprint(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# §2.1.3-pre StageMetrics (v5.8.15 Issue 50)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class StageMetrics(BaseModel):
+    """Per-stage activity counters — enforces the stage success contract.
+
+    A stage handler that returns "completed" with all three in-stage counters
+    at zero is lying — no real work happened. pipeline_node halts with
+    STAGE_TRIVIAL_COMPLETION in that case (except in mock/DRY_RUN bypass).
+
+    Counters are reset at every stage entry and tallied at stage exit.
+    `*_total` fields are never reset; they accumulate across the full run so
+    /status can show pipeline-wide activity.
+    """
+
+    model_config = {"validate_assignment": True}
+
+    # Per-stage (reset at every stage entry)
+    provider_calls_in_stage: int = 0
+    artifacts_produced_in_stage: int = 0
+    mm_writes_in_stage: int = 0
+
+    # Totals (never reset; accumulate across the run)
+    provider_calls_total: int = 0
+    artifacts_produced_total: int = 0
+    mm_writes_total: int = 0
+
+    # Last-activity timestamps (ISO-8601 UTC; useful for /status freshness)
+    last_provider_call_at: Optional[str] = None
+    last_artifact_at: Optional[str] = None
+    last_mm_write_at: Optional[str] = None
+    last_stage_reset_at: Optional[str] = None
+
+    def reset_stage(self) -> None:
+        self.provider_calls_in_stage = 0
+        self.artifacts_produced_in_stage = 0
+        self.mm_writes_in_stage = 0
+        self.last_stage_reset_at = datetime.now(timezone.utc).isoformat()
+
+    def record_provider_call(self, n: int = 1) -> None:
+        self.provider_calls_in_stage += n
+        self.provider_calls_total += n
+        self.last_provider_call_at = datetime.now(timezone.utc).isoformat()
+
+    def record_artifact(self, n: int = 1) -> None:
+        self.artifacts_produced_in_stage += n
+        self.artifacts_produced_total += n
+        self.last_artifact_at = datetime.now(timezone.utc).isoformat()
+
+    def record_mm_write(self, n: int = 1) -> None:
+        self.mm_writes_in_stage += n
+        self.mm_writes_total += n
+        self.last_mm_write_at = datetime.now(timezone.utc).isoformat()
+
+
+# ═══════════════════════════════════════════════════════════════════
 # §2.1.3 PipelineState (Polymorphic)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -894,6 +951,9 @@ class PipelineState(BaseModel):
     pipeline_aborted: bool = False          # set True by /cancel; checked at every stage boundary
     pipeline_deadline: Optional[str] = None  # ISO-8601 UTC; set at project creation; wall-clock guard
     stage_visit_counts: dict[str, int] = Field(default_factory=dict)  # stage_name → visit count
+
+    # ── Activity Metrics (v5.8.15 Issue 50) ──
+    metrics: StageMetrics = Field(default_factory=StageMetrics)
 
     # ── Timestamps ──
     created_at: str = ""

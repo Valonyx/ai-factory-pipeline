@@ -241,6 +241,12 @@ async def archive_project(project_id: str) -> None:
         proj = _active_projects_fallback.get(op_id, {})
         if proj.get("project_id") == project_id:
             state = PipelineState.model_validate(proj["state_json"])
+            # v5.8.15 Issue 52 — ghost-cancel fix: clear abort flag on the
+            # archived state so stale reads don't trigger the fast-exit on
+            # the next project. Also transition to HALTED cleanly.
+            state.pipeline_aborted = False
+            if state.current_stage != Stage.HALTED:
+                state.current_stage = Stage.HALTED
             await _sb_archive(project_id, state)
             _active_projects_fallback.pop(op_id, None)
             # Signal any running pipeline to stop
@@ -799,6 +805,11 @@ async def cmd_continue(update: Any, context: Any):
     state.legal_halt = False
     state.legal_halt_reason = None
     state.circuit_breaker_triggered = False
+    # v5.8.15 Issue 52 — ghost-cancel fix: clear any sticky abort flag so the
+    # resumed pipeline actually executes. Also clear prior halt payload.
+    state.pipeline_aborted = False
+    state.project_metadata.pop("halt_reason", None)
+    state.project_metadata.pop("halt_reason_struct", None)
 
     if state.current_stage == Stage.HALTED and state.previous_stage:
         state.current_stage = state.previous_stage
@@ -815,7 +826,21 @@ async def cmd_continue(update: Any, context: Any):
             from factory.orchestrator import resume_pipeline
             from factory.telegram.notifications import send_telegram_message
             final = await resume_pipeline(state)
-            if final.current_stage.value == "halted":
+            # v5.8.15 Issue 50 — honest completion reporting. Report halt vs
+            # real completion vs still-running, and surface activity counters
+            # so operators can see whether real work happened.
+            try:
+                m = final.metrics
+                activity = (
+                    f"{m.provider_calls_total} provider calls, "
+                    f"{m.artifacts_produced_total} artifacts, "
+                    f"{m.mm_writes_total} memory writes"
+                )
+            except Exception:
+                activity = "no activity counters available"
+
+            final_stage = final.current_stage
+            if final_stage == Stage.HALTED or final.legal_halt:
                 reason = (
                     final.project_metadata.get("halt_reason")
                     or final.legal_halt_reason
@@ -823,13 +848,23 @@ async def cmd_continue(update: Any, context: Any):
                 )
                 await send_telegram_message(
                     user_id,
-                    f"⛔ Pipeline halted at `{resume_stage}`: {reason}",
+                    f"⛔ Pipeline halted at `{final_stage.value}`: {reason}\n"
+                    f"Activity: {activity}",
+                )
+            elif final_stage == Stage.COMPLETED:
+                await send_telegram_message(
+                    user_id,
+                    f"✅ Pipeline resumed and completed from `{resume_stage}`.\n"
+                    f"Activity: {activity}\n"
+                    f"Use /status to view results.",
                 )
             else:
                 await send_telegram_message(
                     user_id,
-                    f"✅ Pipeline resumed and completed from `{resume_stage}`!\n"
-                    f"Use /status to view results.",
+                    f"⏸️ Pipeline paused at `{final_stage.value}` "
+                    f"(resume started from `{resume_stage}`).\n"
+                    f"Activity: {activity}\n"
+                    f"Use /status or /continue.",
                 )
         except Exception as e:
             logger.error(f"[/continue] resume_pipeline error: {e}", exc_info=True)

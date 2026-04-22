@@ -39,6 +39,15 @@ from typing import Optional
 
 logger = logging.getLogger("factory.memory.mother_memory")
 
+
+def _record_mm_write() -> None:
+    """v5.8.15 Issue 50 — record one mother-memory write to active stage counters."""
+    try:
+        from factory.core.metrics_context import bump_mm_write
+        bump_mm_write(1)
+    except Exception:
+        pass
+
 # ═══════════════════════════════════════════════════════════════════
 # In-Memory Cache (fast local reads; survives within one process)
 # ═══════════════════════════════════════════════════════════════════
@@ -109,6 +118,7 @@ async def store_message(
 
     # Mirror to local cache for ultra-fast reads within this process
     _mirror_message(record)
+    _record_mm_write()
 
     # Persist to all backends via the chain (fan-out)
     try:
@@ -147,6 +157,7 @@ async def store_pipeline_decision(
 
     # Mirror to local cache
     _mirror_insight({**record, "type": "decision"})
+    _record_mm_write()
 
     try:
         chain = await _get_chain()
@@ -182,6 +193,7 @@ async def store_insight(
     }
 
     _mirror_insight({**record, "type": "insight"})
+    _record_mm_write()
 
     try:
         chain = await _get_chain()

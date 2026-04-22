@@ -233,6 +233,22 @@ def format_status_message(state: PipelineState) -> str:
         f"Snapshot: #{state.snapshot_id or 0}\n"
     )
 
+    # v5.8.15 Issue 50 — stage activity counters (proof of real work)
+    try:
+        m = state.metrics
+        msg += (
+            f"Activity (this stage): "
+            f"{m.provider_calls_in_stage} provider calls, "
+            f"{m.artifacts_produced_in_stage} artifacts, "
+            f"{m.mm_writes_in_stage} memory writes\n"
+            f"Activity (total): "
+            f"{m.provider_calls_total} provider calls, "
+            f"{m.artifacts_produced_total} artifacts, "
+            f"{m.mm_writes_total} memory writes\n"
+        )
+    except Exception:
+        pass
+
     if state.war_room_active:
         msg += "\n🔴 WAR ROOM ACTIVE"
     if state.legal_halt:

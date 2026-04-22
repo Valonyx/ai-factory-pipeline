@@ -150,6 +150,61 @@ async def _notify_stage_complete(state: PipelineState, stage_name: str) -> None:
             logger.debug(f"Stage file delivery non-fatal: {_e}")
 
 
+def _contract_bypass_allowed(stage: Stage, state: PipelineState) -> bool:
+    """v5.8.15 Issue 50 — stage-success contract bypass.
+
+    Returns True if the current run is one where the "real work" contract
+    does NOT apply: mock/dry-run executions, the HALTED terminal stage,
+    or MODIFY-mode skips where S2/S4 legitimately no-op.
+    """
+    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+        return True
+    if os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+        return True
+    if os.getenv("AI_FACTORY_CONTRACT_BYPASS", "").lower() in ("true", "1", "yes"):
+        return True
+    if state.current_stage == Stage.HALTED:
+        return True
+    try:
+        from factory.core.state import PipelineMode
+        if getattr(state, "pipeline_mode", None) == PipelineMode.MODIFY and stage in (
+            Stage.S2_BLUEPRINT, Stage.S4_CODEGEN,
+        ):
+            return True
+    except Exception:
+        pass
+    # Handoff is a pure orchestration step — no provider calls required
+    if stage == Stage.S9_HANDOFF:
+        return True
+    return False
+
+
+def _merge_stage_counters(state: PipelineState, counters: dict) -> None:
+    """Fold contextvar-collected counters into the durable StageMetrics field."""
+    try:
+        m = state.metrics
+        pc = int(counters.get("provider_calls", 0) or 0)
+        ap = int(counters.get("artifacts_produced", 0) or 0)
+        mw = int(counters.get("mm_writes", 0) or 0)
+        if pc:
+            m.record_provider_call(pc)
+        if ap:
+            m.record_artifact(ap)
+        if mw:
+            m.record_mm_write(mw)
+        # Preserve timestamps from context if the model didn't already stamp them
+        for src, dst in (
+            ("last_provider_call_at", "last_provider_call_at"),
+            ("last_artifact_at", "last_artifact_at"),
+            ("last_mm_write_at", "last_mm_write_at"),
+        ):
+            val = counters.get(src)
+            if val and not getattr(m, dst, None):
+                setattr(m, dst, val)
+    except Exception as e:
+        logger.debug(f"[metrics] merge failed (non-fatal): {e}")
+
+
 def pipeline_node(stage: Stage):
     def decorator(fn):
         @wraps(fn)
@@ -185,6 +240,19 @@ def pipeline_node(stage: Stage):
                 return state
             _transition_to(state, stage)
             logger.info(f"[{state.project_id}] Stage {stage.value} START")
+            # v5.8.15 Issue 50 — install per-stage activity counters
+            try:
+                state.metrics.reset_stage()
+            except Exception:
+                pass
+            try:
+                from factory.core.metrics_context import (
+                    start_stage_metrics, clear_stage_metrics,
+                )
+                _stage_counters = start_stage_metrics()
+            except Exception:
+                _stage_counters = None
+                clear_stage_metrics = lambda: None  # type: ignore
             try:
                 state = await fn(state)
             except BudgetExhaustedError as e:
@@ -244,12 +312,69 @@ def pipeline_node(stage: Stage):
                 ))
                 _transition_to(state, Stage.HALTED)
                 return state
+            # v5.8.15 Issue 50 — merge stage counters, detect passive artifacts,
+            # and enforce the stage-success contract.
+            try:
+                if _stage_counters is not None:
+                    _merge_stage_counters(state, dict(_stage_counters))
+                # Passive artifact detection: if the stage populated any of its
+                # declared output fields, count that as an artifact produced.
+                decl = _STAGE_ARTIFACTS.get(stage.value, [])
+                passive_hits = 0
+                for key in decl:
+                    val = getattr(state, key, None)
+                    if val:
+                        passive_hits += 1
+                if passive_hits and state.metrics.artifacts_produced_in_stage == 0:
+                    state.metrics.record_artifact(passive_hits)
+            except Exception as _merr:
+                logger.debug(f"[metrics] post-stage merge non-fatal: {_merr}")
+            finally:
+                try:
+                    clear_stage_metrics()
+                except Exception:
+                    pass
+
+            # Contract check — the stage must show evidence of real work unless
+            # an explicit bypass applies (mock/dry-run/HALTED/MODIFY-skip/S9).
+            if not _contract_bypass_allowed(stage, state):
+                m = state.metrics
+                if (
+                    m.provider_calls_in_stage == 0
+                    and m.artifacts_produced_in_stage == 0
+                    and m.mm_writes_in_stage == 0
+                ):
+                    set_halt(state, HaltReason(
+                        code=HaltCode.STAGE_TRIVIAL_COMPLETION,
+                        title=f"Stage {stage.value} completed with no real work",
+                        detail=(
+                            "The stage handler returned success but produced "
+                            "zero provider calls, zero artifacts, and zero "
+                            "Mother Memory writes. This violates the stage-success "
+                            "contract (v5.8.15 Issue 50)."
+                        ),
+                        stage=stage.value,
+                        failing_gate="stage_success_contract",
+                        remediation_steps=[
+                            "Inspect the stage handler for a silent early-return",
+                            "Set AI_PROVIDER=mock or DRY_RUN=true to bypass locally",
+                            "/restore to a prior snapshot and /continue",
+                        ],
+                    ))
+                    _transition_to(state, Stage.HALTED)
+                    return state
+
             await legal_check_hook(state, stage, "post")
             if state.legal_halt:
                 _transition_to(state, Stage.HALTED)
                 return state
             await _persist_snapshot(state)
-            logger.info(f"[{state.project_id}] Stage {stage.value} COMPLETE")
+            logger.info(
+                f"[{state.project_id}] Stage {stage.value} COMPLETE "
+                f"(provider_calls={state.metrics.provider_calls_in_stage}, "
+                f"artifacts={state.metrics.artifacts_produced_in_stage}, "
+                f"mm_writes={state.metrics.mm_writes_in_stage})"
+            )
             return state
         return wrapper
     return decorator

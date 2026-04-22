@@ -182,6 +182,19 @@ async def call_ai(
     else:
         response, cost = await _call_anthropic(prompt, contract, state, action)
 
+    # ── Step 5b (v5.8.15 Issue 50): record real provider activity on both the
+    # contextvar (read by orchestrator at stage exit) and the state metrics
+    # (for direct handler inspection).
+    try:
+        from factory.core.metrics_context import bump_provider_call
+        bump_provider_call(1)
+    except Exception:
+        pass  # metrics are advisory; never fail a call over them
+    try:
+        state.metrics.record_provider_call(1)
+    except Exception:
+        pass
+
     # ── Step 6: Track cost against circuit breaker (§3.6) ──
     phase = state.current_stage.value
     state.phase_costs[phase] = state.phase_costs.get(phase, 0.0) + cost

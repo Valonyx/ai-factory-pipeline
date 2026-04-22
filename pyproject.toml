@@ -15,6 +15,11 @@ factory-cli = "factory.cli:main"
 asyncio_mode = "strict"
 testpaths = ["tests"]
 timeout = 120
+markers = [
+    "unit: fast isolated tests; may use mocks (default autouse fixtures patch AI/Telegram/Supabase/Neo4j/build_chain)",
+    "integration: exercises real free-tier providers and real file system; NO mocks of factory.integrations.* / factory.pipeline.* allowed; skipped unless INTEGRATION_TEST_MODE=1",
+    "e2e: full pipeline run end-to-end via real CLI or Telegram harness; skipped unless E2E_TEST_MODE=1",
+]
 
 [tool.ruff]
 line-length = 100

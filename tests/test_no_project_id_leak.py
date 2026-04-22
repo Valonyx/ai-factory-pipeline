@@ -109,10 +109,13 @@ def test_display_name_falls_back_to_idea_name():
 
 
 def test_display_name_humanizes_id_only_as_last_resort():
+    # v5.8.15 Issue 56 — pre-name projects must fall back to the literal
+    # "your new project" string; never leak a "Project <hex>" form either.
     s = PipelineState(project_id="proj_58856403", operator_id="op")
     out = project_display_name(s)
     assert "proj_" not in out
-    assert out.startswith("Project ")
+    assert "58856403" not in out
+    assert out == "your new project"
 
 
 def test_display_name_on_dict_row():

@@ -333,7 +333,18 @@ async def cmd_cost(update: Any, context: Any):
         return
 
     state = PipelineState.model_validate(active["state_json"])
-    await update.message.reply_text(format_cost_message(state))
+    # v5.8.15 Issue 55 — /cost must be mode-aware so BASIC operators
+    # don't see paid-phase ceilings that do not apply to them.
+    try:
+        from factory.telegram.mode_store import ModeStore
+        mm = await ModeStore.get_effective_master_mode(user_id, state)
+        mode_name = getattr(mm, "value", str(mm))
+    except Exception:
+        mode_name = None
+    await update.message.reply_text(
+        format_cost_message(state, master_mode=mode_name),
+        parse_mode="Markdown",
+    )
 
 
 @require_auth

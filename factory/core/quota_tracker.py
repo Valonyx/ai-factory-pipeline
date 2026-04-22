@@ -215,7 +215,10 @@ class QuotaTracker:
             s = self._states[provider]
             s.check_month_rollover()
             call_pct = int(s.usage_fraction_calls() * 100)
-            bar = "▓" * (call_pct // 10) + "░" * (10 - call_pct // 10)
+            # v5.8.15 Issue 53 — iOS renders U+2593 (▓) as a tofu box in
+            # Telegram's monospace font. Use U+2588 (█) which renders
+            # consistently across iOS / Android / Web, matching /cost.
+            bar = "█" * (call_pct // 10) + "░" * (10 - call_pct // 10)
             status = " ⛔" if s.at_capacity() else (" ⚠" if call_pct >= 80 else "")
             lines.append(
                 f"  {provider:15s} [{bar}] {s.calls}/{s.quota_calls or '∞'}"

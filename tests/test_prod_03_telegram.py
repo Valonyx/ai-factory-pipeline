@@ -118,10 +118,19 @@ class TestMessageFormatting:
         assert "/restore" in msg
 
     def test_project_started(self):
+        # v5.8.15 Issue 56 — without an app_name, the user-facing string
+        # must fall back to "your new project", never leak the raw id.
         state = PipelineState(project_id="new-proj", operator_id="123")
-        msg = format_project_started("new-proj", state)
-        assert "new-proj" in msg
+        state.intake["app_name"] = "Pulsey"
+        msg = format_project_started("Pulsey", state)
+        assert "Pulsey" in msg
         assert "started" in msg
+
+    def test_project_started_without_name_uses_fallback(self):
+        state = PipelineState(project_id="proj_abc123", operator_id="123")
+        msg = format_project_started("proj_abc123", state)
+        assert "proj_" not in msg
+        assert "your new project" in msg
 
 
 # ═══════════════════════════════════════════════════════════════════

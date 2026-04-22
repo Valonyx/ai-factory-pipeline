@@ -114,19 +114,18 @@ NOTIFICATION_EMOJI: dict[str, str] = {
 def project_display_name(project_or_state: Any) -> str:
     """Return a human-facing name for a project.
 
-    v5.8.12 Issue 15: user-facing Telegram strings must never show the
-    raw `proj_<hex>` identifier. Resolution order:
+    v5.8.12 Issue 15 + v5.8.15 Issue 56: user-facing Telegram strings
+    must NEVER show the raw `proj_<hex>` identifier.
+
+    Resolution order:
       1. state.intake["app_name"]
       2. project_metadata["app_name"] / project["app_name"]
       3. project["name"]
       4. state.idea_name
-      5. humanized suffix — "Project <short-id>"
-
-    Accepts either a PipelineState (duck-typed) or a plain dict (e.g. the
-    Supabase active_project row).
+      5. Fallback: "your new project" (NEVER the hex id)
     """
     if project_or_state is None:
-        return "your project"
+        return "your new project"
 
     # Dict path (Supabase active_project row or bare dict).
     if isinstance(project_or_state, dict):
@@ -140,9 +139,7 @@ def project_display_name(project_or_state: Any) -> str:
         )
         if name:
             return str(name)
-        pid = str(d.get("project_id") or d.get("id") or "")
-        short = pid.replace("proj_", "").replace("proj-", "")[:8] or "unknown"
-        return f"Project {short}"
+        return "your new project"
 
     # Object path (PipelineState or similar).
     intake = getattr(project_or_state, "intake", None) or {}
@@ -158,9 +155,7 @@ def project_display_name(project_or_state: Any) -> str:
         name = getattr(project_or_state, "idea_name", None)
     if name:
         return str(name)
-    pid = str(getattr(project_or_state, "project_id", "") or "")
-    short = pid.replace("proj_", "").replace("proj-", "")[:8] or "unknown"
-    return f"Project {short}"
+    return "your new project"
 
 
 def truncate_message(text: str, max_length: int = 4096) -> str:
@@ -259,21 +254,50 @@ def format_status_message(state: PipelineState) -> str:
     return truncate_message(msg)
 
 
-def format_cost_message(state: PipelineState) -> str:
+def format_cost_message(
+    state: PipelineState,
+    master_mode: Optional[str] = None,
+) -> str:
     """Format the /cost budget breakdown.
 
     Spec: §5.2 (/cost)
+
+    v5.8.15 Issue 55 — when ``master_mode`` is BASIC, annotate the header
+    and each phase row so operators see that paid budgets do not apply:
+    BASIC is a free-chain-only mode, so phase ceilings are effectively $0.
     """
-    msg = f"💰 {project_display_name(state)}\n\n"
+    mode_upper = (master_mode or "").upper() if master_mode else ""
+    is_basic = mode_upper == "BASIC"
+
+    header = f"💰 {project_display_name(state)}"
+    if mode_upper:
+        header += f"  \u2014 mode: *{mode_upper}*"
+    msg = header + "\n"
+    if is_basic:
+        msg += (
+            "_BASIC is free-chain only; paid phase ceilings do not apply._\n"
+        )
+    msg += "\n"
 
     # Show all phase budget categories (even if $0)
     all_phases = {**{k: 0.0 for k in PHASE_BUDGET_LIMITS}, **state.phase_costs}
     for phase, cost in sorted(all_phases.items()):
         limit = PHASE_BUDGET_LIMITS.get(phase, 2.00)
-        bar_filled = min(10, int(cost / (limit / 10)))
-        bar_empty = max(0, 10 - bar_filled)
-        bar = "█" * bar_filled + "░" * bar_empty
-        msg += f"  {phase}: ${cost:.3f} [{bar}] ${limit:.2f}\n"
+        # Phase names contain underscores — wrap in backticks so Telegram
+        # Markdown V1 doesn't interpret them as italics.
+        phase_tok = f"`{phase}`"
+        if is_basic:
+            # BASIC: every phase ceiling is effectively $0 (free-only).
+            bar = "░" * 10
+            msg += (
+                f"  {phase_tok}: ${cost:.3f} [{bar}] "
+                f"$0.00 (BASIC free-only)\n"
+            )
+        else:
+            bar_filled = min(10, int(cost / (limit / 10)))
+            bar_empty = max(0, 10 - bar_filled)
+            bar = "█" * bar_filled + "░" * bar_empty
+            msg += f"  {phase_tok}: ${cost:.3f} [{bar}] ${limit:.2f}\n"
 
     msg += (
         f"\nTotal: ${state.total_cost_usd:.2f} "

@@ -243,6 +243,28 @@ def force_mock_ai_provider(request):
 
 
 @pytest.fixture(autouse=True)
+def isolate_factory_workspace(request, tmp_path_factory):
+    """v5.8.16 Issue 60: redirect FACTORY_WORKSPACE_DIR to a tmp dir so
+    tests can never overwrite real user projects under ~/factory-projects/.
+
+    Before this fixture, tests like test_prod_07/08/09 wrote
+    `foodapp/`, `riyadh_eats/`, `quicktask/` etc. straight into the
+    user's home directory. Any real project a user created with a
+    colliding name would have been clobbered on the next test run.
+
+    Scope: unit tier. Integration/e2e opt out (they may legitimately
+    need to inspect a real workspace).
+    """
+    if _skip_for_integration(request):
+        yield
+        return
+    # One tmp dir per session keeps file writes fast but isolated from $HOME.
+    ws = tmp_path_factory.mktemp("factory-workspace")
+    with patch.dict(os.environ, {"FACTORY_WORKSPACE_DIR": str(ws)}):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def mock_store_pipeline_decision(request):
     """Unit tier: patch Mother Memory writes. Integration/e2e: no-op."""
     if _skip_for_integration(request):

@@ -2739,7 +2739,14 @@ async def setup_bot() -> Any:
             logger.warning("TELEGRAM_BOT_TOKEN not set — bot in dry-run mode")
             return None
 
-        app = Application.builder().token(token).build()
+        # v5.8.16 Issue 59: python-telegram-bot defaults to SEQUENTIAL update
+        # dispatch. That deadlocks any wizard that `await`s a pending reply
+        # (setup, platform selection, logo approval) — the next user message
+        # can't resolve the future because the dispatcher is still blocked on
+        # the wizard handler. concurrent_updates=True lets each update run in
+        # its own task so the reply message actually reaches handle_message
+        # while the wizard is still awaiting.
+        app = Application.builder().token(token).concurrent_updates(True).build()
 
         # ── Initialize Mother Memory chain (all 4 backends) in background ──
         async def _init_memory_chain():

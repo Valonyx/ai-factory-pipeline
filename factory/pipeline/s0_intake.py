@@ -550,10 +550,19 @@ async def _scope_confirmation(
 # ═══════════════════════════════════════════════════════════════════
 
 
-def _save_logo_to_disk(logo_bytes: bytes, project_id: str, app_name: str) -> Optional[str]:
+def _save_logo_to_disk(
+    logo_bytes: bytes,
+    project_id: str,
+    app_name: str,
+    variant_index: Optional[int] = None,
+) -> Optional[str]:
     """Save logo bytes to brand/ inside the project workspace.
 
     Issue 13: ensures state.intake["logo_path"] points to a real file.
+    v5.8.15 Issue 58: when ``variant_index`` is provided, save as
+    ``logo_{idx:02d}.png`` so all 3 auto-generated variants land on
+    disk (proof-of-work for the 3-variant album) while logo.png keeps
+    pointing at the primary variant.
     Returns the file path on success, None on failure.
     """
     import os as _os
@@ -562,7 +571,11 @@ def _save_logo_to_disk(logo_bytes: bytes, project_id: str, app_name: str) -> Opt
         workspace = _get_project_workspace(project_id, app_name)
         brand_dir = _os.path.join(workspace, "brand")
         _os.makedirs(brand_dir, exist_ok=True)
-        logo_path = _os.path.join(brand_dir, "logo.png")
+        if variant_index is None:
+            filename = "logo.png"
+        else:
+            filename = f"logo_{variant_index:02d}.png"
+        logo_path = _os.path.join(brand_dir, filename)
         with open(logo_path, "wb") as _f:
             _f.write(logo_bytes)
         logger.info(f"[{project_id}] Logo saved: {logo_path}")
@@ -797,7 +810,14 @@ async def _logo_flow_auto(state: PipelineState, requirements: dict) -> Optional[
             except Exception as e:
                 logger.warning(f"[{state.project_id}] AUTOPILOT logo send failed: {e}")
 
-        # Save first (primary) variant to disk for downstream stages
+        # v5.8.15 Issue 58: save ALL variants to disk so the 3-variant album
+        # is verifiable on filesystem (logo_01.png, logo_02.png, logo_03.png)
+        # and logo.png points at the primary variant for downstream stages.
+        variant_paths: list[str] = []
+        for i, vb in enumerate(logo_variants):
+            p = _save_logo_to_disk(vb, state.project_id, app_name, variant_index=i + 1)
+            if p:
+                variant_paths.append(p)
         primary = logo_variants[0]
         logo_path = _save_logo_to_disk(primary, state.project_id, app_name)
         return {
@@ -806,6 +826,7 @@ async def _logo_flow_auto(state: PipelineState, requirements: dict) -> Optional[
             "logo_prompt": logo_prompt,
             "logo_path": logo_path,
             "logo_variant_count": len(logo_variants),
+            "logo_variant_paths": variant_paths,
             "source": "auto",
         }
 

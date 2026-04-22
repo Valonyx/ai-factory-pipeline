@@ -242,4 +242,8 @@ async def test_logo_flow_auto_result_has_logo_path():
     assert result is not None
     assert "logo_path" in result, f"Return dict missing 'logo_path': {result}"
     assert result["logo_path"] == "/tmp/pathapp_logo.png"
-    mock_save.assert_called_once()
+    # v5.8.15 Issue 58: _save_logo_to_disk is now called once per variant
+    # (variant_index=1..3) PLUS once for the primary logo.png — 4 total.
+    assert mock_save.call_count == 4, (
+        f"Expected 4 calls (3 variants + primary), got {mock_save.call_count}"
+    )

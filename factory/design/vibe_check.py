@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from pathlib import Path
 from typing import Optional
 
 from factory.core.state import (
@@ -22,6 +24,7 @@ from factory.core.state import (
     AutonomyMode,
     PipelineState,
 )
+from factory.core.mode_router import MasterMode
 from factory.core.roles import call_ai
 from factory.design.grid_enforcer import grid_enforcer_validate, create_default_design
 
@@ -89,6 +92,10 @@ async def vibe_check(
 
     # ── Step 4: Grid Enforcer validates ──
     validated = grid_enforcer_validate(refined)
+
+    # ── Step 5: Vision verify rendered mockups (G5 closure) ──
+    # Non-blocking: degraded result stored in metadata, never halts the stage.
+    await _vision_verify_mockup(state, validated, description)
 
     logger.info(
         f"[{state.project_id}] Vibe Check complete: "
@@ -222,3 +229,130 @@ async def quick_vibe_check(
     design = _parse_design_json(design_dna, category)
 
     return grid_enforcer_validate(design)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# §G5 — Vision Mockup Verification (v5.8.16)
+# ═══════════════════════════════════════════════════════════════════
+
+_MAX_SCREENSHOTS = 3  # cap to bound cost
+
+
+async def _vision_verify_mockup(
+    state: PipelineState,
+    design: dict,
+    description: str,
+) -> None:
+    """G5: Verify rendered mockup PNGs match the Design DNA via Claude Vision.
+
+    Reads up to _MAX_SCREENSHOTS PNGs from
+    artifacts/<project_id>/design/screenshots/ and asks Claude Vision
+    whether each screen is consistent with the validated design.
+
+    Result is stored in state.project_metadata["vision_analysis"]:
+      - skipped:  True when BASIC mode or no screenshots present
+      - degraded: True when key is missing (non-fatal)
+      - analyses: list of per-screenshot analysis dicts on success
+
+    This step is non-blocking: failure or absence of screenshots never
+    prevents vibe_check from returning the validated design dict.
+
+    Cost: claude-haiku-4-5-20251001 at ~$0.001–0.003/screenshot.
+    """
+    result_key = "vision_analysis"
+
+    # ── Gate: BASIC mode → free-only, skip paid vision ──
+    master_mode = getattr(state, "master_mode", MasterMode.BALANCED)
+    if master_mode == MasterMode.BASIC:
+        logger.info(f"[{state.project_id}] G5 vision: skipped (BASIC mode)")
+        state.project_metadata[result_key] = {
+            "skipped": True,
+            "reason": "basic_mode",
+        }
+        return
+
+    # ── Gate: locate screenshot directory ──
+    screenshots_dir = Path("artifacts") / state.project_id / "design" / "screenshots"
+    pngs = sorted(screenshots_dir.glob("*.png"))[:_MAX_SCREENSHOTS]
+    if not pngs:
+        logger.info(f"[{state.project_id}] G5 vision: skipped (no screenshots in {screenshots_dir})")
+        state.project_metadata[result_key] = {
+            "skipped": True,
+            "reason": "no_screenshots",
+        }
+        return
+
+    # ── Gate: API key ──
+    from factory.integrations.claude_vision import call_claude_vision, is_available
+    if not is_available():
+        logger.warning(f"[{state.project_id}] G5 vision: ANTHROPIC_API_KEY missing — degraded")
+        state.project_metadata[result_key] = {
+            "degraded": True,
+            "reason": "api_key_missing",
+        }
+        return
+
+    # ── Analyse each screenshot ──
+    dna_summary = json.dumps({
+        "primary": design.get("color_palette", {}).get("primary", ""),
+        "style":   design.get("visual_style", ""),
+        "layout":  design.get("layout_patterns", []),
+    })
+    prompt_template = (
+        "Design DNA: {dna}\n\n"
+        "App description: {desc}\n\n"
+        "Look at this UI mockup screenshot. Does it match the Design DNA? "
+        "Reply with JSON: "
+        '{{"match": true|false, "issues": ["..."], "score": 0-10, "summary": "..."}}'
+    )
+
+    analyses = []
+    total_cost = 0.0
+    for png_path in pngs:
+        try:
+            image_bytes = png_path.read_bytes()
+            prompt = prompt_template.format(dna=dna_summary, desc=description[:300])
+            text, cost = await call_claude_vision(image_bytes, prompt)
+            total_cost += cost
+            analyses.append({
+                "screenshot": png_path.name,
+                "analysis": text,
+                "cost_usd": round(cost, 6),
+                "source": "claude_vision",
+            })
+            logger.info(
+                f"[{state.project_id}] G5 vision: {png_path.name} analysed "
+                f"(${cost:.5f})"
+            )
+        except Exception as e:
+            logger.warning(f"[{state.project_id}] G5 vision: {png_path.name} failed: {e}")
+            analyses.append({
+                "screenshot": png_path.name,
+                "error": str(e),
+                "source": "degraded",
+            })
+
+    # Track cost through QuotaTracker so /cost reports real spend
+    if total_cost > 0:
+        try:
+            from factory.core.quota_tracker import get_quota_tracker
+            qt = get_quota_tracker()
+            await qt.record_usage(
+                "claude_vision",
+                tokens=0,
+                calls=len(pngs),
+                cost_usd=total_cost,
+            )
+        except Exception:
+            pass  # quota tracking is advisory
+
+    state.project_metadata[result_key] = {
+        "analyses": analyses,
+        "screenshots_checked": len(pngs),
+        "total_cost_usd": round(total_cost, 6),
+        "source": "claude_vision",
+    }
+    logger.info(
+        f"[{state.project_id}] G5 vision complete: "
+        f"{len(analyses)} screenshots, ${total_cost:.5f}"
+    )

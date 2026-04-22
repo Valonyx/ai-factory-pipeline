@@ -50,20 +50,26 @@ def is_available() -> bool:
 async def parse_screenshot(
     image_bytes: bytes,
     task_description: str = "identify all interactive UI elements",
+    mode: str = "balanced",
 ) -> dict:
     """Parse a UI screenshot into structured element data.
 
     Args:
         image_bytes: Raw PNG/JPEG screenshot bytes.
         task_description: What the agent is trying to do.
+        mode: Master execution mode ("basic"|"balanced"|"custom"|"turbo").
+              BASIC mode skips paid Claude Vision fallback.
 
     Returns:
         Dict with:
           - "elements": list of UI element dicts (label, bbox, type, text)
           - "structured_text": flat text representation of the UI
-          - "source": "omniparser" | "nim_vision_fallback"
+          - "source": "omniparser" | "nim_vision_fallback" |
+                      "claude_vision_fallback" | "degraded" | "mock"
+          - "degraded": True only when all real providers failed
 
-    Falls back to NIM vision analysis if OmniParser is not available.
+    Falls back through NIM vision → Claude Vision. Returns a typed
+    degraded result (never fakes success) when all options are exhausted.
     """
     if os.getenv("AI_PROVIDER", "").lower() == "mock":
         return {
@@ -76,9 +82,9 @@ async def parse_screenshot(
         try:
             return await _parse_with_omniparser(image_bytes, task_description)
         except Exception as e:
-            logger.warning(f"[omniparser] OmniParser failed ({e}), falling back to NIM vision")
+            logger.warning(f"[omniparser] OmniParser failed ({e}), falling back to vision chain")
 
-    return await _parse_with_nim_vision_fallback(image_bytes, task_description)
+    return await _parse_with_vision_fallback(image_bytes, task_description, mode)
 
 
 async def _parse_with_omniparser(image_bytes: bytes, task: str) -> dict:
@@ -136,17 +142,70 @@ async def _parse_with_omniparser(image_bytes: bytes, task: str) -> dict:
     return {"elements": elements, "structured_text": structured, "source": "omniparser"}
 
 
-async def _parse_with_nim_vision_fallback(image_bytes: bytes, task: str) -> dict:
-    """Fallback: use NIM vision model to describe UI elements."""
+async def _parse_with_vision_fallback(image_bytes: bytes, task: str, mode: str) -> dict:
+    """Fallback vision chain: NIM → Claude Vision → typed degraded result.
+
+    Tries NIM vision first (free-tier eligible), then Claude Vision when
+    the key is present and mode is not 'basic'. Never returns fake success:
+    if all providers fail the result carries degraded=True so callers can
+    surface the gap instead of silently proceeding with empty data.
+    """
+    # ── Tier 1: NIM vision (free when NVIDIA_NIM_VISION_API_KEY is set) ──
+    nim_error: str = ""
     try:
         from factory.integrations.nvidia_nim_vision import analyze_ui_screenshot
         description = await analyze_ui_screenshot(image_bytes)
+        return {
+            "elements": [],
+            "structured_text": description,
+            "source": "nim_vision_fallback",
+        }
     except Exception as e:
-        logger.warning(f"[omniparser] NIM vision fallback also failed: {e}")
-        description = "UI analysis unavailable"
+        nim_error = str(e)
+        logger.warning(f"[omniparser] NIM vision failed: {e}")
 
-    return {
-        "elements": [],
-        "structured_text": description,
-        "source": "nim_vision_fallback",
-    }
+    # ── Tier 2: Claude Vision (paid — skip in BASIC mode) ──
+    if mode.lower() == "basic":
+        logger.info("[omniparser] BASIC mode — skipping paid Claude Vision fallback")
+        return {
+            "elements": [],
+            "structured_text": "",
+            "source": "degraded",
+            "degraded": True,
+            "error": f"NIM vision failed ({nim_error}); Claude Vision skipped in BASIC mode",
+        }
+
+    try:
+        from factory.integrations.claude_vision import call_claude_vision
+        prompt = (
+            f"Task: {task}\n\n"
+            "Analyze this UI screenshot. Identify all interactive elements "
+            "(buttons, inputs, links, icons) and describe the layout. "
+            "Return a plain-text structured list: one element per line, "
+            "format: <type>: <text or description>"
+        )
+        description, _cost = await call_claude_vision(image_bytes, prompt)
+        return {
+            "elements": [],
+            "structured_text": description,
+            "source": "claude_vision_fallback",
+        }
+    except ValueError as e:
+        # Key missing — degraded, not a halt
+        logger.warning(f"[omniparser] Claude Vision skipped: {e}")
+        return {
+            "elements": [],
+            "structured_text": "",
+            "source": "degraded",
+            "degraded": True,
+            "error": f"NIM vision failed ({nim_error}); {e}",
+        }
+    except Exception as e:
+        logger.warning(f"[omniparser] Claude Vision also failed: {e}")
+        return {
+            "elements": [],
+            "structured_text": "",
+            "source": "degraded",
+            "degraded": True,
+            "error": f"NIM vision: {nim_error}; Claude Vision: {e}",
+        }

@@ -394,7 +394,7 @@ async def upsert_active_project(
             "current_stage": state.current_stage.value,
             "state_json": state.model_dump(mode="json"),
             "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        }, on_conflict="operator_id").execute()
         return True
     except Exception as e:
         logger.error(f"Failed to upsert active project for {operator_id}: {e}")

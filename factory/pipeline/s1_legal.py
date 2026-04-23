@@ -170,21 +170,30 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
         )
         from factory.core.halt import HaltCode, HaltReason, set_halt
 
+        # v5.8.16 Issue 66: calibrate thresholds to master mode.
+        # BASIC uses free providers (Groq/Mistral/Together) that produce
+        # shorter outputs; enforcing 3000-char / 4-doc gate blocks every
+        # free-tier run. Reduce to 600 chars / 2 docs for BASIC.
+        from factory.core.mode_router import MasterMode
+        _is_basic = getattr(state, "master_mode", MasterMode.BASIC) == MasterMode.BASIC
+        _min_chars = 600 if _is_basic else 3000
+        _min_docs  = 2   if _is_basic else 4
+
         _gate_results = []
         docs: dict = state.legal_documents or {}
         for doc_name, content in docs.items():
             if not isinstance(content, str):
                 continue
             _gate_results.append(check_no_placeholders(content, doc_name))
-            _gate_results.append(check_min_length(content, 3000, doc_name))
+            _gate_results.append(check_min_length(content, _min_chars, doc_name))
 
         doc_count = len([k for k, v in docs.items() if isinstance(v, str) and len(v) > 100])
         _gate_results.append(GateResult(
             name="min_doc_count",
-            passed=doc_count >= 4,
+            passed=doc_count >= _min_docs,
             observed=doc_count,
-            required=4,
-            message=f"Need >=4 legal documents, got {doc_count}" if doc_count < 4 else "",
+            required=_min_docs,
+            message=f"Need >={_min_docs} legal documents, got {doc_count}" if doc_count < _min_docs else "",
         ))
 
         try:

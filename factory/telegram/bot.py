@@ -482,7 +482,8 @@ async def cmd_execution_mode(update: Any, context: Any):
             f"  💻  local  — your machine (Cloudflare tunnel)\n"
             f"  🔀  hybrid — cloud build, local deploy\n\n"
             f"*Current:* {_EMOJI.get(em.value, '')} {em.value.upper()}\n\n"
-            f"Set: /execution_mode cloud | local | hybrid\n\n"
+            f"Set: /execution_mode cloud | local | hybrid\n"
+            f"Shortcuts: /exec_local · /exec_cloud · /exec_hybrid\n\n"
             f"See also: /mode (Master axis) | /online /local (Transport axis)"
         )
 
@@ -3061,20 +3062,52 @@ async def run_bot_polling() -> None:
     Spec: §5.1.1 — polling is the local-dev alternative to the production webhook.
     Use when Cloud Run is not yet deployed.
 
+    v5.8.16 Issue 67: If a Render/Cloud Run deployment sets a webhook while
+    we are polling, Telegram returns 409 Conflict and updates stop arriving.
+    We add a background task that watches for this and calls deleteWebhook
+    to reclaim polling mode.
+
     Run: python scripts/run_bot.py
     """
+    import asyncio
+    import httpx as _httpx
+
     app = await setup_bot()
     if app is None:
         logger.error(
             "Bot not configured — set TELEGRAM_BOT_TOKEN and try again."
         )
         return
+
+    from factory.core.secrets import get_secret as _get_secret
+    _token = _get_secret("TELEGRAM_BOT_TOKEN") or ""
+
+    async def _webhook_conflict_watchdog():
+        """Every 60 s, delete any active webhook so polling stays primary."""
+        while True:
+            await asyncio.sleep(60)
+            try:
+                async with _httpx.AsyncClient(timeout=10) as _hc:
+                    _r = await _hc.post(
+                        f"https://api.telegram.org/bot{_token}/deleteWebhook",
+                        data={"drop_pending_updates": "false"},
+                    )
+                    if _r.status_code == 200:
+                        _data = _r.json()
+                        if _data.get("result"):
+                            logger.info(
+                                "[webhook-watchdog] deleteWebhook OK — polling reclaimed"
+                            )
+            except Exception as _ww_exc:
+                logger.debug(f"[webhook-watchdog] check failed: {_ww_exc}")
+
     logger.info("Starting Telegram bot in polling mode (Ctrl+C or cancel task to stop)…")
     await app.initialize()
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
+    # Launch watchdog to evict any webhook that would conflict with polling
+    asyncio.create_task(_webhook_conflict_watchdog())
     # Block until cancelled (asyncio.CancelledError) or Ctrl+C
-    import asyncio
     try:
         await asyncio.Event().wait()
     except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):

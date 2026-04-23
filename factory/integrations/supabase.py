@@ -174,7 +174,7 @@ async def upsert_pipeline_state(
             "selected_stack": (state.selected_stack.value if state.selected_stack else "flutterflow"),
             "execution_mode": state.execution_mode.value,
             "updated_at": now,
-        }).execute()
+        }, on_conflict="project_id").execute()
         result["write_1"] = True
     except Exception as e:
         logger.error(f"Write 1 (current state) failed for {project_id}: {e}")
@@ -190,7 +190,7 @@ async def upsert_pipeline_state(
             "git_commit_hash": git_commit_hash,
             "checksum": checksum,
             "created_at": now,
-        }).execute()
+        }, on_conflict="project_id,snapshot_id").execute()
         result["write_2"] = True
     except Exception as e:
         logger.error(f"Write 2 (snapshot) failed for {project_id}: {e}")
@@ -712,7 +712,9 @@ class _FallbackTable:
         self._pending = ("insert", data)
         return self
 
-    def upsert(self, data: dict) -> "_FallbackTable":
+    def upsert(self, data: dict, **_kwargs: Any) -> "_FallbackTable":
+        # _kwargs absorbs `on_conflict=...` (supabase-py v2 arg) so callers
+        # don't need to branch between the real client and this fallback.
         self._pending = ("upsert", data)
         return self
 

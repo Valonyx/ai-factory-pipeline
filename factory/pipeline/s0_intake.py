@@ -588,12 +588,15 @@ def _save_logo_to_disk(
 async def _logo_flow(state: PipelineState, requirements: dict) -> Optional[dict]:
     """Run the logo selection flow.
 
-    COPILOT: interactive 3-variant pick with infinite regeneration.
-    AUTOPILOT: silent single-logo generation + Telegram notification.
+    v5.8.16 Issue 65: the logo is the single most visible brand decision
+    in the whole pipeline — users expect to see 3 variants and pick,
+    even in autopilot. Opt into silent single-logo generation by setting
+    project_metadata["logo_autopilot"] = True, otherwise always run the
+    3-variant copilot flow regardless of AutonomyMode.
     """
-    if state.autonomy_mode == AutonomyMode.COPILOT:
-        return await _logo_flow_copilot(state, requirements)
-    return await _logo_flow_auto(state, requirements)
+    if state.project_metadata.get("logo_autopilot") is True:
+        return await _logo_flow_auto(state, requirements)
+    return await _logo_flow_copilot(state, requirements)
 
 
 async def _logo_flow_copilot(state: PipelineState, requirements: dict) -> Optional[dict]:

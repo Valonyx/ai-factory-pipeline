@@ -197,6 +197,7 @@ from factory.integrations.supabase import (
     upsert_active_project as _sb_upsert_active,
     archive_project as _sb_archive,
     upsert_pipeline_state,
+    get_pipeline_state,
 )
 
 # In-memory fallback for when Supabase is unavailable
@@ -215,19 +216,24 @@ async def get_active_project(operator_id: str) -> Optional[dict]:
 
 
 async def update_project_state(state: PipelineState) -> None:
-    """Update project state — triple-write to Supabase + in-memory fallback.
+    """Update project state — triple-write to Supabase + in-memory mirror.
 
     Spec: §2.9 (Triple-Write), §5.6 (active_projects)
+
+    v5.8.16 Issue 61: The in-memory dict is now a *mirror*, not just a
+    fallback. The orphan-task sweeper consults it to decide whether a
+    running task is orphaned; if it's only populated on Supabase failure,
+    transient 409s (or any downstream persistence hiccup) cause the
+    sweeper to false-cancel live pipelines. Always mirror on every write.
     """
+    _active_projects_fallback[state.operator_id] = {
+        "project_id": state.project_id,
+        "current_stage": state.current_stage.value,
+        "state_json": state.model_dump(mode="json"),
+    }
     success = await _sb_upsert_active(state.operator_id, state)
     if success:
         await upsert_pipeline_state(state.project_id, state)
-    else:
-        _active_projects_fallback[state.operator_id] = {
-            "project_id": state.project_id,
-            "current_stage": state.current_stage.value,
-            "state_json": state.model_dump(mode="json"),
-        }
 
 
 async def archive_project(project_id: str) -> None:
@@ -388,7 +394,7 @@ async def cmd_mode(update: Any, context: Any):
             ctx = "active project"
         else:
             prefs = await load_operator_preferences(user_id)
-            mm = MasterMode(prefs.get("master_mode", "balanced"))
+            mm = MasterMode(prefs.get("master_mode", "basic"))
             em = ExecutionMode(prefs.get("execution_mode", "cloud"))
             ctx = "default (no active project)"
         # Issue 44: show current transport mode, not just the setter commands
@@ -479,6 +485,27 @@ async def cmd_execution_mode(update: Any, context: Any):
             f"Set: /execution_mode cloud | local | hybrid\n\n"
             f"See also: /mode (Master axis) | /online /local (Transport axis)"
         )
+
+
+@require_auth
+async def cmd_exec_local(update: Any, context: Any):
+    """Shortcut: /exec_local — set Execution axis to LOCAL (your machine)."""
+    context.args = ["local"]
+    await cmd_execution_mode(update, context)
+
+
+@require_auth
+async def cmd_exec_cloud(update: Any, context: Any):
+    """Shortcut: /exec_cloud — set Execution axis to CLOUD (Render/Cloud Run)."""
+    context.args = ["cloud"]
+    await cmd_execution_mode(update, context)
+
+
+@require_auth
+async def cmd_exec_hybrid(update: Any, context: Any):
+    """Shortcut: /exec_hybrid — set Execution axis to HYBRID (cloud build, local deploy)."""
+    context.args = ["hybrid"]
+    await cmd_execution_mode(update, context)
 
 
 @require_auth
@@ -1708,6 +1735,18 @@ async def handle_callback(update: Any, context: Any):
 # ═══════════════════════════════════════════════════════════════════
 
 
+# v5.8.16 Issue 63: timestamp-based stale-message filter.
+# drop_pending_updates on start_polling only flushes the update backlog
+# at startup — it cannot help with messages that were queued by Telegram
+# during a bot deadlock (e.g. pre-Issue-59 wizard hang). Once the bot
+# recovers, those stale messages replay with concurrent dispatch and
+# trigger AI responses to commands the user sent minutes/hours earlier.
+# We refuse to act on any message older than this grace window.
+import time as _time_mod
+_BOT_STARTED_AT = _time_mod.time()
+_STALE_MESSAGE_GRACE_SECONDS = 120
+
+
 async def handle_message(update: Any, context: Any):
     """Intelligent message handler — AI-powered intent routing.
 
@@ -1723,6 +1762,23 @@ async def handle_message(update: Any, context: Any):
     """
     if not await authenticate_operator(update):
         return  # Silent — strangers see nothing
+
+    # v5.8.16 Issue 63: drop messages that predate bot startup by more
+    # than the grace window. Prevents replay of stale queued messages.
+    msg = getattr(update, "message", None) or getattr(update, "edited_message", None)
+    msg_date = getattr(msg, "date", None) if msg is not None else None
+    if msg_date is not None:
+        try:
+            msg_ts = msg_date.timestamp()
+            if msg_ts < _BOT_STARTED_AT - _STALE_MESSAGE_GRACE_SECONDS:
+                logger.info(
+                    f"[stale-drop] Ignoring message from "
+                    f"{getattr(update.effective_user, 'id', '?')} "
+                    f"sent {int(_BOT_STARTED_AT - msg_ts)}s before bot startup"
+                )
+                return
+        except Exception:
+            pass
 
     from factory.telegram.ai_handler import (
         _check_rate_limit, _is_injection_attempt, _sanitize,
@@ -2008,7 +2064,7 @@ async def handle_message(update: Any, context: Any):
     # Issue 29: load master mode once; pass to router + AI calls so BASIC
     # operators never hit paid providers in bot-side AI calls.
     _msg_prefs = await load_operator_preferences(user_id)
-    _master_mode = (_msg_prefs.get("master_mode") or "balanced").upper()
+    _master_mode = (_msg_prefs.get("master_mode") or "basic").upper()
 
     intent, confidence = await classify_intent(text, master_mode=_master_mode)
 
@@ -2082,7 +2138,7 @@ async def _handle_start_project_intent(
 
     # Issue 35: cost estimate reflects the operator's current master mode.
     _prefs = await load_operator_preferences(user_id)
-    _mode = (_prefs.get("master_mode") or "balanced").upper()
+    _mode = (_prefs.get("master_mode") or "basic").upper()
     _COST_BY_MODE: dict[str, str] = {
         "BASIC":    "$0.00 (free tier only — Gemini / Groq)",
         "BALANCED": "$0.05–$2.00 (smart paid/free mix)",
@@ -2554,8 +2610,8 @@ async def _start_project(
         execution_mode=ExecutionMode(
             prefs.get("execution_mode", "cloud"),
         ),
-        master_mode=MasterMode(               # Issue 36: was never read from prefs
-            prefs.get("master_mode", "balanced"),
+        master_mode=MasterMode(               # Issue 36/62: default to basic (free tier)
+            prefs.get("master_mode", "basic"),
         ),
         project_metadata={
             "raw_input": description,
@@ -2678,34 +2734,62 @@ async def _orphan_task_sweeper() -> None:
     On each sweep:
     1. Removes any done/cancelled task from _project_tasks.
     2. Cancels tasks whose project is no longer in _active_projects_fallback
-       (i.e. was archived externally while the task kept running).
+       AND cannot be confirmed active in Supabase (i.e. was archived
+       externally while the task kept running).
     3. Logs warnings for any orphaned tasks found.
+
+    v5.8.16 Issue 61: previously consulted only the in-memory dict, which
+    led to false-positive cancels whenever the mirror was stale. Now we
+    require TWO consecutive "not active" sweeps AND a Supabase miss
+    before killing — so a transient persistence hiccup cannot murder a
+    live pipeline.
     """
     import asyncio as _asyncio
+    suspect_count: dict[str, int] = {}
     while True:
         try:
             await _asyncio.sleep(30)
             for project_id, task in list(_project_tasks.items()):
                 if task.done():
-                    # Clean up finished / already-cancelled tasks
                     _project_tasks.pop(project_id, None)
+                    suspect_count.pop(project_id, None)
                     logger.debug(
                         f"[sweeper] Removed done task for {project_id}"
                     )
                     continue
 
-                # Check whether the project is still active in the fallback dict
                 still_active = any(
                     p.get("project_id") == project_id
                     for p in _active_projects_fallback.values()
                 )
-                if not still_active:
-                    # Project was archived externally — cancel the runaway task
+                if still_active:
+                    suspect_count.pop(project_id, None)
+                    continue
+
+                # Mirror says "gone" — confirm with Supabase before killing.
+                sb_state = None
+                try:
+                    sb_state = await get_pipeline_state(project_id)
+                except Exception as exc:
+                    logger.debug(f"[sweeper] Supabase check failed: {exc}")
+                if sb_state is not None:
+                    # Project IS active in Supabase; our mirror was stale.
+                    suspect_count.pop(project_id, None)
+                    _active_projects_fallback[sb_state.get("operator_id", project_id)] = {
+                        "project_id": project_id,
+                        "current_stage": sb_state.get("current_stage"),
+                        "state_json": sb_state.get("state_json"),
+                    }
+                    continue
+
+                suspect_count[project_id] = suspect_count.get(project_id, 0) + 1
+                if suspect_count[project_id] >= 2:
                     logger.warning(
-                        f"[sweeper] Orphan task detected for archived project "
-                        f"{project_id} — cancelling"
+                        f"[sweeper] Orphan task confirmed for archived project "
+                        f"{project_id} (2 consecutive misses) — cancelling"
                     )
                     cancel_project_task(project_id)
+                    suspect_count.pop(project_id, None)
         except Exception as exc:
             logger.warning(f"[sweeper] Unexpected error in orphan sweeper: {exc}")
 
@@ -2819,6 +2903,9 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("mode", cmd_mode))
         app.add_handler(CommandHandler("switch_mode", cmd_switch_mode))      # v5.8 alias
         app.add_handler(CommandHandler("execution_mode", cmd_execution_mode)) # Issue 25
+        app.add_handler(CommandHandler("exec_local", cmd_exec_local))        # Issue 64 shortcuts
+        app.add_handler(CommandHandler("exec_cloud", cmd_exec_cloud))
+        app.add_handler(CommandHandler("exec_hybrid", cmd_exec_hybrid))
         app.add_handler(CommandHandler("turbo", cmd_turbo))                  # master shortcuts
         app.add_handler(CommandHandler("basic", cmd_basic))
         app.add_handler(CommandHandler("balanced", cmd_balanced))
@@ -2916,6 +3003,9 @@ async def setup_bot() -> Any:
                 # Mode control
                 BotCommand("mode",           "Show or set master mode (basic/balanced/turbo/custom)"),
                 BotCommand("execution_mode", "Set execution axis: cloud/local/hybrid"),
+                BotCommand("exec_local",     "💻 Run pipeline on your local machine"),
+                BotCommand("exec_cloud",     "☁️ Run pipeline on Render/Cloud Run"),
+                BotCommand("exec_hybrid",    "🔀 Cloud build, local deploy"),
                 BotCommand("switch_mode",    "Alias for /mode"),
                 BotCommand("basic",          "🆓 Switch to BASIC mode (free providers only)"),
                 BotCommand("balanced",       "⚖️ Switch to BALANCED mode (default)"),

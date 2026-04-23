@@ -194,9 +194,9 @@ class ModeStore:
                 return mm
         prefs = await load_operator_preferences(operator_id)
         try:
-            return MasterMode(prefs.get("master_mode", "balanced"))
+            return MasterMode(prefs.get("master_mode", "basic"))
         except ValueError:
-            return MasterMode.BALANCED
+            return MasterMode.BASIC
 
     def __repr__(self) -> str:
         if not self._loaded:

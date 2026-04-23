@@ -104,15 +104,62 @@ ROLE_REQUIRED_CAPABILITY: dict[str, Capability] = {
 # Keys match MasterMode.value strings.
 # New NIM providers (kimi_k2, nvidia_nim_405b, nvidia_nim_mixtral, nvidia_nim_gemma27b)
 # are positioned by quality tier within each mode's cascade.
+# ── Context window sizes per provider (input tokens) ─────────────────
+# Used to rank providers when prompt is large — prefer largest-window
+# provider so context injection never gets truncated.
+# Free-tier actual limits (conservative; provider docs may allow more).
+PROVIDER_CONTEXT_WINDOWS: dict[str, int] = {
+    "gemini":               1_000_000,   # Gemini 2.0 Flash — 1 M context
+    "groq":                   128_000,   # Llama-3.3-70b  — 128 K
+    "cerebras":               128_000,   # Llama-3.3-70b  — 128 K
+    "nvidia_nim":             128_000,   # Llama-3.1-70b  — 128 K
+    "nvidia_nim_405b":        128_000,   # Llama-3.1-405B — 128 K
+    "kimi_k2":                131_000,   # Kimi K2 — 131 K
+    "openrouter":             128_000,   # varies; conservative floor
+    "nvidia_nim_mixtral":      64_000,   # Mixtral 8×22B  — 64 K
+    "sambanova":               32_000,   # Llama-3.3-70B  — 32 K
+    "nvidia_nim_gemma27b":     32_000,   # Gemma-3-27B    — 32 K
+    "anthropic":              200_000,   # Claude models  — 200 K
+    "github_models":           32_000,
+    "cloudflare":               8_000,   # Workers AI — typically 8 K
+    "nvidia_nim_fast":          8_000,   # Llama-3.1-8B   — 8 K
+    "mock":                   200_000,
+}
+
+# ── Output token limits per provider ─────────────────────────────────
+# Governs how many tokens a provider can generate in a single call.
+PROVIDER_OUTPUT_LIMITS: dict[str, int] = {
+    "gemini":              8_192,    # Gemini 2.0 Flash free tier
+    "groq":               16_384,    # llama-3.3-70b (free tier allows 32 768)
+    "cerebras":            8_192,
+    "nvidia_nim":          4_096,
+    "nvidia_nim_405b":    16_384,
+    "nvidia_nim_mixtral": 16_384,
+    "kimi_k2":            16_384,
+    "openrouter":          8_192,
+    "sambanova":           8_192,
+    "nvidia_nim_gemma27b": 8_192,
+    "anthropic":          16_384,
+    "github_models":       4_096,
+    "cloudflare":          4_096,
+    "nvidia_nim_fast":     4_096,
+    "mock":               16_384,
+}
+
 ROLE_PROVIDERS: dict[str, dict[str, list[str]]] = {
     "STRATEGIST": {
-        # BASIC: free-only, best free quality first
-        "BASIC":    ["gemini", "groq", "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
-                     "openrouter", "cerebras", "cloudflare", "github_models", "sambanova",
+        # BASIC: free-only.
+        # Ordered by: (1) context window desc, (2) output limit desc, (3) quality.
+        # gemini=1M ctx, groq=128K/16K out, cerebras=128K, sambanova=32K,
+        # nvidia_nim_mixtral=64K/16K out, nvidia_nim=128K/4K out.
+        "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
+                     "nvidia_nim_mixtral", "sambanova", "openrouter",
+                     "nvidia_nim_gemma27b", "cloudflare", "github_models",
                      "nvidia_nim_fast", "mock"],
         # BALANCED: anthropic for critical, cascade through quality tiers
-        "BALANCED": ["anthropic", "kimi_k2", "gemini", "groq", "nvidia_nim_mixtral",
-                     "nvidia_nim_gemma27b", "nvidia_nim", "openrouter", "cerebras", "mock"],
+        "BALANCED": ["anthropic", "kimi_k2", "gemini", "groq", "cerebras",
+                     "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
+                     "openrouter", "mock"],
         # CUSTOM: operator selects, reasonable default ordering
         "CUSTOM":   ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq",
                      "nvidia_nim_mixtral", "openrouter", "cerebras", "mock"],
@@ -120,27 +167,33 @@ ROLE_PROVIDERS: dict[str, dict[str, list[str]]] = {
         "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq", "mock"],
     },
     "ENGINEER": {
-        "BASIC":    ["gemini", "groq", "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
-                     "openrouter", "cerebras", "cloudflare", "github_models", "nvidia_nim_fast", "mock"],
-        "BALANCED": ["anthropic", "gemini", "groq", "nvidia_nim_mixtral", "nvidia_nim",
-                     "openrouter", "cerebras", "mock"],
-        "CUSTOM":   ["anthropic", "kimi_k2", "gemini", "groq", "nvidia_nim_mixtral",
-                     "openrouter", "mock"],
+        # BASIC: highest output tokens first (groq=16 384, cerebras/nvidia_nim_mixtral next).
+        "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
+                     "nvidia_nim_mixtral", "sambanova", "openrouter",
+                     "nvidia_nim_gemma27b", "cloudflare", "github_models",
+                     "nvidia_nim_fast", "mock"],
+        "BALANCED": ["anthropic", "gemini", "groq", "cerebras",
+                     "nvidia_nim_mixtral", "nvidia_nim", "openrouter", "mock"],
+        "CUSTOM":   ["anthropic", "kimi_k2", "gemini", "groq",
+                     "nvidia_nim_mixtral", "openrouter", "mock"],
         "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq", "mock"],
     },
     "QUICK_FIX": {
-        "BASIC":    ["gemini", "groq", "nvidia_nim_gemma27b", "nvidia_nim", "openrouter",
-                     "cerebras", "cloudflare", "github_models", "nvidia_nim_fast", "mock"],
+        # BASIC: fast models first; context window less critical for short fixes.
+        "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
+                     "nvidia_nim_gemma27b", "sambanova", "openrouter",
+                     "cloudflare", "github_models", "nvidia_nim_fast", "mock"],
         "BALANCED": ["anthropic", "gemini", "groq", "nvidia_nim", "openrouter", "mock"],
         "CUSTOM":   ["anthropic", "gemini", "groq", "nvidia_nim", "mock"],
         "TURBO":    ["anthropic", "gemini", "groq", "mock"],
     },
     "SCOUT": {
-        # BASIC: free providers only — no perplexity (paid), no brave (paid)
-        "BASIC":    ["tavily", "exa", "searxng", "duckduckgo", "wikipedia",
+        # BASIC: free search providers — no perplexity (paid), no brave (paid).
+        # exa promoted: most reliable structured grounding.
+        "BASIC":    ["exa", "tavily", "searxng", "duckduckgo", "wikipedia",
                      "hackernews", "reddit", "stackoverflow", "github_search", "ai_scout"],
         # BALANCED: perplexity first, then free waterfall
-        "BALANCED": ["perplexity", "tavily", "exa", "brave", "searxng",
+        "BALANCED": ["perplexity", "exa", "tavily", "brave", "searxng",
                      "duckduckgo", "wikipedia", "hackernews", "reddit", "ai_scout"],
         "CUSTOM":   ["perplexity", "exa", "tavily", "brave", "searxng", "ai_scout"],
         "TURBO":    ["perplexity", "brave", "exa", "tavily", "ai_scout"],

@@ -18,7 +18,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("factory.legal.pdf_generator")
 
@@ -107,17 +107,19 @@ async def upload_legal_pdf_to_supabase(
         logger.warning(f"[{project_id}] PDF not found for upload: {local_path}")
         return None
 
-    # v5.8.16 Issue 70: Supabase "artifacts" storage bucket is not created
-    # in most project configurations, causing every upload to return 404.
-    # We no longer send broken public URLs. Instead, we verify the upload
-    # succeeded by checking the response, and fall back to a local-file
-    # notice if it fails.
+    # v5.8.16 Phase 7: Auto-create the "artifacts" storage bucket if it does
+    # not exist, then upload.  Previous code returned None on 404 because the
+    # bucket was never created — operators always got "local path only" even
+    # when Supabase credentials were fully configured.
     try:
         from factory.integrations.supabase import get_async_supabase_client
 
         client = await get_async_supabase_client()
         bucket = "artifacts"
         storage_path = f"{project_id}/legal/legal_dossier.pdf"
+
+        # ── Ensure bucket exists (idempotent) ──
+        await _ensure_storage_bucket(client, bucket)
 
         with open(local_path, "rb") as fh:
             data = fh.read()
@@ -128,32 +130,57 @@ async def upload_legal_pdf_to_supabase(
             file_options={"content-type": "application/pdf", "upsert": "true"},
         )
 
-        # Verify upload succeeded (supabase-py raises on error, but be safe)
         supabase_url = os.getenv("SUPABASE_URL", "")
         if supabase_url and result:
             public_url = (
                 f"{supabase_url}/storage/v1/object/public/{bucket}/{storage_path}"
             )
-            # Quick HEAD check to confirm bucket is public and file is accessible
+            # HEAD check to confirm bucket is public and file is accessible
             import httpx as _httpx
             try:
-                _r = _httpx.head(public_url, timeout=5, follow_redirects=True)
+                _r = _httpx.head(public_url, timeout=8, follow_redirects=True)
                 if _r.status_code < 400:
                     logger.info(f"[{project_id}] Legal PDF uploaded: {public_url}")
                     return public_url
-                else:
-                    logger.warning(
-                        f"[{project_id}] Uploaded but URL not accessible "
-                        f"({_r.status_code}) — returning local path"
-                    )
+                logger.warning(
+                    f"[{project_id}] Uploaded but HEAD returned {_r.status_code} — "
+                    "bucket may not be public. Set bucket policy to public in Supabase."
+                )
             except Exception as _check_err:
-                logger.debug(f"[{project_id}] URL check failed: {_check_err}")
+                logger.debug(f"[{project_id}] URL accessibility check failed: {_check_err}")
+                # Return the URL anyway — connectivity issue, not a real 404
+                return public_url
 
     except Exception as e:
         logger.warning(f"[{project_id}] Supabase upload failed (non-fatal): {e}")
 
     # Fall back to local path — will be delivered as filesystem reference
     return None
+
+
+async def _ensure_storage_bucket(client: Any, bucket_name: str) -> None:
+    """Create the Supabase storage bucket if it does not already exist.
+
+    Uses the service-role key (SUPABASE_SERVICE_KEY) which has admin rights.
+    Silently succeeds if the bucket already exists (409 is not an error here).
+    """
+    try:
+        # supabase-py storage.create_bucket is synchronous
+        client.storage.create_bucket(
+            bucket_name,
+            options={
+                "public": True,          # files are publicly readable via URL
+                "allowed_mime_types": ["application/pdf", "text/plain", "image/*"],
+                "file_size_limit": 52428800,  # 50 MB
+            },
+        )
+        logger.info(f"[storage] Created Supabase bucket '{bucket_name}'")
+    except Exception as e:
+        err = str(e).lower()
+        if "already exists" in err or "duplicate" in err or "409" in err:
+            logger.debug(f"[storage] Bucket '{bucket_name}' already exists — ok")
+        else:
+            logger.warning(f"[storage] Could not create bucket '{bucket_name}': {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

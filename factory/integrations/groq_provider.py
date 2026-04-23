@@ -78,7 +78,10 @@ async def call_groq(
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": prompt},
             ],
-            max_tokens=min(contract.max_output_tokens, 8192),
+            # llama-3.3-70b-versatile supports 32 768 output tokens on free tier.
+            # Cap at 16 384 — matches ENGINEER contract and prevents runaway cost
+            # on a single call. QuickFix still naturally stays well below this.
+            max_tokens=min(contract.max_output_tokens, 16384),
             temperature=0.7,
         )
         text = response.choices[0].message.content or ""

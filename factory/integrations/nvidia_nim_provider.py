@@ -1,19 +1,20 @@
 """
-AI Factory Pipeline v5.8.12 — NVIDIA NIM Chat Provider
+AI Factory Pipeline v5.8.16 — NVIDIA NIM Chat Provider
 
 NVIDIA NIM provides OpenAI-compatible LLM inference across many models.
 All models use https://integrate.api.nvidia.com/v1/chat/completions
 
-Primary chat model: meta/llama-3.3-70b-instruct (NVIDIA_NIM_API_KEY)
-Additional models routed via dedicated per-model keys.
-
-Model tiers (routed from _call_nvidia_nim via provider arg):
-  ULTRA-PREMIUM  kimi_k2      moonshotai/kimi-k2.5 (reasoning)
-  ULTRA-PREMIUM  nvidia_nim_405b meta/llama-3.1-405b-instruct
-  FREE/MID       nvidia_nim_mixtral mistralai/mixtral-8x22b-instruct-v0.1
-  FREE/MID       nvidia_nim_gemma27b google/gemma-3-27b-it
-  FREE           nvidia_nim   meta/llama-3.3-70b-instruct  [default]
-  FREE           nvidia_nim_fast meta/llama-3.1-8b-instruct
+Model tiers (routed from call_nvidia_nim via provider arg):
+  ULTRA-PREMIUM  kimi_k2              moonshotai/kimi-k2.5 (reasoning)
+  ULTRA-PREMIUM  nvidia_nim_405b      meta/llama-3.1-405b-instruct
+  PAID_PREMIUM   nvidia_nim_mistral_large mistralai/mistral-large-3-675b-instruct-2512
+  PAID_CHEAP     nvidia_nim_mixtral   mistralai/mixtral-8x22b-instruct-v0.1
+  PAID_CHEAP     nvidia_nim_ministral14b mistralai/ministral-14b-instruct-2512
+  FREE           nvidia_nim           meta/llama-3.3-70b-instruct  [default]
+  FREE           nvidia_nim_gemma27b  google/gemma-3-27b-it
+  FREE           nvidia_nim_gemma2b   google/gemma-2-2b-it
+  FREE           nvidia_nim_phi4mini  microsoft/phi-4-mini-instruct
+  FREE           nvidia_nim_fast      meta/llama-3.1-8b-instruct
 
 All models use NVIDIA_NIM_MULTI_API_KEY as fallback when dedicated key absent.
 """
@@ -61,6 +62,27 @@ _MODEL_REGISTRY: dict[str, dict] = {
     "nvidia_nim_fast": {
         "model": "meta/llama-3.1-8b-instruct",
         "key_env": "NVIDIA_NIM_LLAMA8B_API_KEY",
+        "cost": 0.0,
+    },
+    # ── New in v5.8.16 ───────────────────────────────────────────────
+    "nvidia_nim_mistral_large": {
+        "model": "mistralai/mistral-large-3-675b-instruct-2512",
+        "key_env": "NVIDIA_NIM_MULTI_API_KEY",
+        "cost": 0.003,
+    },
+    "nvidia_nim_ministral14b": {
+        "model": "mistralai/ministral-14b-instruct-2512",
+        "key_env": "NVIDIA_NIM_MULTI_API_KEY",
+        "cost": 0.0,
+    },
+    "nvidia_nim_phi4mini": {
+        "model": "microsoft/phi-4-mini-instruct",
+        "key_env": "NVIDIA_NIM_MULTI_API_KEY",
+        "cost": 0.0,
+    },
+    "nvidia_nim_gemma2b": {
+        "model": "google/gemma-2-2b-it",
+        "key_env": "NVIDIA_NIM_MULTI_API_KEY",
         "cost": 0.0,
     },
 }
@@ -155,3 +177,15 @@ async def call_nvidia_nim_gemma27b(prompt: str, contract: "RoleContract") -> tup
 
 async def call_nvidia_nim_fast(prompt: str, contract: "RoleContract") -> tuple[str, float]:
     return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_fast")
+
+async def call_nvidia_nim_mistral_large(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_mistral_large")
+
+async def call_nvidia_nim_ministral14b(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_ministral14b")
+
+async def call_nvidia_nim_phi4mini(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_phi4mini")
+
+async def call_nvidia_nim_gemma2b(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_gemma2b")

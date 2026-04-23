@@ -23,7 +23,9 @@ logger = logging.getLogger("factory.integrations.jina_provider")
 
 JINA_READER_BASE = "https://r.jina.ai"
 JINA_EMBEDDINGS_ENDPOINT = "https://api.jina.ai/v1/embeddings"
+JINA_RERANK_ENDPOINT = "https://api.jina.ai/v1/rerank"
 JINA_EMBEDDINGS_MODEL = "jina-embeddings-v3"
+JINA_RERANK_MODEL = "jina-reranker-v2-base-multilingual"
 
 
 async def call_jina_reader(url: str) -> str:
@@ -113,3 +115,68 @@ async def call_jina_embeddings(
     embeddings = [item["embedding"] for item in data["data"]]
     logger.debug(f"[jina_embeddings] returned {len(embeddings)} vectors of dim {len(embeddings[0]) if embeddings else 0}")
     return embeddings
+
+
+async def call_jina_rerank(
+    query: str,
+    documents: list[str],
+    top_n: int | None = None,
+    api_key: str = "",
+) -> list[tuple[int, float, str]]:
+    """Rerank documents by relevance to a query using Jina Reranker v2.
+
+    Args:
+        query:     The search query.
+        documents: List of text passages to rerank.
+        top_n:     Return only top N results (None = all).
+        api_key:   Jina API key (falls back to JINA_API_KEY env var).
+
+    Returns:
+        List of (original_index, relevance_score, text) tuples, score-descending.
+
+    Raises:
+        ValueError if JINA_API_KEY is absent or documents is empty.
+    """
+    if not api_key:
+        api_key = os.getenv("JINA_API_KEY", "")
+    if not api_key:
+        raise ValueError("JINA_API_KEY not set — cannot call Jina Rerank API")
+    if not documents:
+        return []
+
+    payload: dict = {
+        "model": JINA_RERANK_MODEL,
+        "query": query,
+        "documents": documents,
+    }
+    if top_n is not None:
+        payload["top_n"] = top_n
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    logger.debug(f"[jina_rerank] reranking {len(documents)} docs with {JINA_RERANK_MODEL}")
+
+    import httpx
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(JINA_RERANK_ENDPOINT, headers=headers, json=payload)
+
+    if response.status_code == 401:
+        raise ValueError("Jina Rerank: invalid JINA_API_KEY")
+    if response.status_code == 429:
+        raise ValueError("Jina Rerank rate limited — try again later")
+    response.raise_for_status()
+
+    data = response.json()
+    results: list[tuple[int, float, str]] = []
+    for item in data.get("results", []):
+        idx = item["index"]
+        score = item["relevance_score"]
+        text = documents[idx]
+        results.append((idx, score, text))
+
+    results.sort(key=lambda x: x[1], reverse=True)
+    logger.debug(f"[jina_rerank] returned {len(results)} reranked results")
+    return results

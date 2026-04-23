@@ -609,6 +609,23 @@ AI_PROVIDERS: list[ProviderDescriptor] = [
     ProviderDescriptor("nvidia_nim_fast",   ProviderTier.FREE,
                        free_quality_rank=11, performance_rank=16,
                        cost_per_1k_tokens=0.0, model_id="meta/llama-3.1-8b-instruct"),
+    # ── v5.8.16 additions ────────────────────────────────────────────
+    ProviderDescriptor("nvidia_nim_mistral_large", ProviderTier.PAID_CHEAP,
+                       free_quality_rank=99, performance_rank=4,
+                       cost_per_1k_tokens=0.003,
+                       model_id="mistralai/mistral-large-3-675b-instruct-2512"),
+    ProviderDescriptor("nvidia_nim_ministral14b", ProviderTier.FREE,
+                       free_quality_rank=12, performance_rank=17,
+                       cost_per_1k_tokens=0.0,
+                       model_id="mistralai/ministral-14b-instruct-2512"),
+    ProviderDescriptor("nvidia_nim_phi4mini", ProviderTier.FREE,
+                       free_quality_rank=13, performance_rank=18,
+                       cost_per_1k_tokens=0.0,
+                       model_id="microsoft/phi-4-mini-instruct"),
+    ProviderDescriptor("nvidia_nim_gemma2b", ProviderTier.FREE,
+                       free_quality_rank=14, performance_rank=19,
+                       cost_per_1k_tokens=0.0,
+                       model_id="google/gemma-2-2b-it"),
     ProviderDescriptor("mock",              ProviderTier.FREE,
                        free_quality_rank=99, performance_rank=99,
                        cost_per_1k_tokens=0.0),
@@ -737,6 +754,58 @@ DESIGN_PROVIDERS: list[ProviderDescriptor] = [
                        model_id="flux"),
 ]
 
+# Embedding Chain — text/code/multimodal embeddings (all free via NIM)
+EMBED_PROVIDERS: list[ProviderDescriptor] = [
+    ProviderDescriptor("nvidia_bge_m3",       ProviderTier.FREE,
+                       free_quality_rank=1, performance_rank=1,
+                       cost_per_1k_tokens=0.0,
+                       model_id="baai/bge-m3"),
+    ProviderDescriptor("nvidia_embedqa_e5",   ProviderTier.FREE,
+                       free_quality_rank=2, performance_rank=2,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/nv-embedqa-e5-v5"),
+    ProviderDescriptor("nvidia_embed_v1",     ProviderTier.FREE,
+                       free_quality_rank=3, performance_rank=3,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/nv-embed-v1"),
+    ProviderDescriptor("nvidia_embed_1b",     ProviderTier.FREE,
+                       free_quality_rank=4, performance_rank=4,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/llama-nemotron-embed-1b-v2"),
+    ProviderDescriptor("jina_embeddings",     ProviderTier.FREE,
+                       free_quality_rank=5, performance_rank=5,
+                       cost_per_1k_tokens=0.0,
+                       model_id="jina-embeddings-v3"),
+]
+
+# Reranking Chain — cross-encoder reranking (all free via NIM + Jina)
+RERANK_PROVIDERS: list[ProviderDescriptor] = [
+    ProviderDescriptor("nvidia_rerank_mistral4b", ProviderTier.FREE,
+                       free_quality_rank=1, performance_rank=1,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/nv-rerank-qa-mistral-4b:1"),
+    ProviderDescriptor("nvidia_rerank_nemotron1b", ProviderTier.FREE,
+                       free_quality_rank=2, performance_rank=2,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/llama-nemotron-rerank-1b-v2"),
+    ProviderDescriptor("jina_rerank",             ProviderTier.FREE,
+                       free_quality_rank=3, performance_rank=3,
+                       cost_per_1k_tokens=0.0,
+                       model_id="jina-reranker-v2-base-multilingual"),
+]
+
+# OCR Chain — document text extraction
+OCR_PROVIDERS: list[ProviderDescriptor] = [
+    ProviderDescriptor("nvidia_nemotron_ocr",     ProviderTier.FREE,
+                       free_quality_rank=1, performance_rank=1,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/nemotron-ocr-v1"),
+    ProviderDescriptor("nvidia_nemoretriever_ocr", ProviderTier.FREE,
+                       free_quality_rank=2, performance_rank=2,
+                       cost_per_1k_tokens=0.0,
+                       model_id="nvidia/nemoretriever-ocr-v1"),
+]
+
 # Catalog lookup
 PROVIDER_CATALOGS: dict[str, list[ProviderDescriptor]] = {
     "ai":        AI_PROVIDERS,
@@ -745,6 +814,9 @@ PROVIDER_CATALOGS: dict[str, list[ProviderDescriptor]] = {
     "vision":    VISION_PROVIDERS,
     "ui_agent":  UI_AGENT_PROVIDERS,
     "design":    DESIGN_PROVIDERS,
+    "embed":     EMBED_PROVIDERS,
+    "rerank":    RERANK_PROVIDERS,
+    "ocr":       OCR_PROVIDERS,
 }
 
 

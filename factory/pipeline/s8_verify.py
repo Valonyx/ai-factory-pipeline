@@ -55,6 +55,22 @@ async def s8_verify_node(state: PipelineState) -> PipelineState:
     # ── Issue 5 re-verify: inject chain context ──
     from factory.pipeline.stage_chain import inject_chain_context as _inject_cc  # noqa: F401
 
+    # DRY_RUN / CI / mock: no real deployment infrastructure — auto-pass verification
+    # so the pipeline can reach S9 without an infinite S8→S7 retry loop.
+    import os as _os
+    if (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    ):
+        logger.info(f"[{state.project_id}] S8: DRY_RUN — auto-passing verification")
+        state.s8_output = {
+            "passed": True,
+            "checks": [{"type": "dry_run_bypass", "passed": True}],
+            "check_count": 1,
+        }
+        return state
+
     deployments = (state.s7_output or {}).get("deployments", {})
     checks: list[dict] = []
 

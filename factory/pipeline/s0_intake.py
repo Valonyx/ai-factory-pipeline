@@ -65,6 +65,21 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     if state.pipeline_mode == PipelineMode.MODIFY:
         return await _s0_modify_intake(state)
 
+    # DRY_RUN / CI: if s0_output is already set (pre-populated by test fixture or
+    # a previous pipeline run), return immediately without re-running intake.
+    # We do NOT generate a stub here — instead, S0 runs its real extraction logic
+    # which degrades correctly with a mock AI provider (explicit "app name: ..." patterns
+    # are resolved without any AI call; mock AI fallback gives app_name=None → APP_NAME_MISSING).
+    import os as _os
+    if (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    ):
+        if state.s0_output:
+            logger.info(f"[{state.project_id}] S0: DRY_RUN — using pre-populated s0_output")
+            return state
+
     raw_input = state.project_metadata.get("raw_input", "")
     attachments = state.project_metadata.get("attachments", [])
 
@@ -597,6 +612,16 @@ async def _logo_flow(state: PipelineState, requirements: dict) -> Optional[dict]
     project_metadata["logo_autopilot"] = True, otherwise always run the
     3-variant copilot flow regardless of AutonomyMode.
     """
+    # CI / DRY_RUN / mock: no real image generation infrastructure — skip logo flow.
+    import os as _os
+    if (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    ):
+        logger.info(f"[{state.project_id}] DRY_RUN — skipping logo generation")
+        return None
+
     if state.project_metadata.get("logo_autopilot") is True:
         return await _logo_flow_auto(state, requirements)
     return await _logo_flow_copilot(state, requirements)
@@ -608,30 +633,62 @@ async def _logo_flow_copilot(state: PipelineState, requirements: dict) -> Option
     from factory.telegram.notifications import send_telegram_message
     from factory.design.logo_gen import generate_logo_variants, send_logo_variants_to_telegram
     from factory.integrations.image_gen import build_logo_prompt
+    from factory.core.state import AutonomyMode as _AutonomyMode
 
     app_name = requirements.get("app_name") or state.idea_name or "App"
     description = requirements.get("app_description", "")
 
-    # Ask how the operator wants to create a logo
-    logo_source = await present_decision(
-        state=state,
-        decision_type="s0_logo_source",
-        question=(
-            f"🎨 *Logo for {app_name}*\n\n"
-            f"How would you like to set your app icon?"
-        ),
-        options=[
-            {"label": "🤖 Auto-Generate (AI picks style)", "value": "auto"},
-            {"label": "✏️ Describe Your Vision",            "value": "describe"},
-            {"label": "📤 Upload Later (/update_logo)",    "value": "skip"},
-            {"label": "⏭ Skip — no logo needed yet",      "value": "skip"},
-        ],
-        recommended=0,
-    )
+    # Logo source selection is a creative choice — always interactive regardless of
+    # pipeline autonomy mode.  Founders must consciously choose their brand direction.
+    _saved_autonomy = state.autonomy_mode
+    state.autonomy_mode = _AutonomyMode.COPILOT
+    try:
+        logo_source = await present_decision(
+            state=state,
+            decision_type="s0_logo_source",
+            question=(
+                f"🎨 *Logo for {app_name}*\n\n"
+                f"How would you like to create your app icon?"
+            ),
+            options=[
+                {"label": "🤖 Auto-Generate (AI picks 3 styles)", "value": "auto"},
+                {"label": "✏️ Describe Your Vision",               "value": "describe"},
+                {"label": "📤 Upload Later (/update_logo)",        "value": "skip"},
+                {"label": "⏭ Skip — no logo needed yet",          "value": "skip"},
+            ],
+            recommended=0,
+            timeout_seconds=3600,
+        )
+    finally:
+        state.autonomy_mode = _saved_autonomy
 
     if logo_source == "skip":
         state.project_metadata["logo_pending"] = True
         return None
+
+    # ── Scout: research design trends for this app category before generating ──
+    _scout_intel = ""
+    try:
+        from factory.core.roles import call_ai as _call_ai
+        from factory.core.state import AIRole as _AIRole
+        app_category = requirements.get("app_category", "mobile app")
+        target_market = requirements.get("target_market", "global")
+        _scout_result = await _call_ai(
+            role=_AIRole.SCOUT,
+            prompt=(
+                f"What are the current app icon design trends for {app_category} apps "
+                f"targeting {target_market} users? "
+                f"Focus on: color palettes, icon shape language (rounded, geometric, flat), "
+                f"competitor icon styles, and what attracts users in this category. "
+                f"Answer in 2-3 concise sentences for a designer prompt."
+            ),
+            state=state,
+            action="general",
+        )
+        _scout_intel = _scout_result[:300] if _scout_result else ""
+        logger.info(f"[{state.project_id}] Logo scout research complete ({len(_scout_intel)} chars)")
+    except Exception as _e:
+        logger.warning(f"[{state.project_id}] Logo scout research failed: {_e} — proceeding without")
 
     # Build the generation prompt
     if logo_source == "describe":
@@ -643,8 +700,10 @@ async def _logo_flow_copilot(state: PipelineState, requirements: dict) -> Option
             state.operator_id, timeout=600, default=description,
         )
         logo_prompt = f"{vision} app icon for {app_name}"
+        if _scout_intel:
+            logo_prompt += f". Market context: {_scout_intel[:150]}"
     else:
-        logo_prompt = build_logo_prompt(app_name, description)
+        logo_prompt = build_logo_prompt(app_name, description, scout_intel=_scout_intel)
 
     # Infinite regeneration loop (capped at 10 for safety)
     for iteration in range(10):
@@ -679,13 +738,26 @@ async def _logo_flow_copilot(state: PipelineState, requirements: dict) -> Option
         ]
         pick_options.append({"label": "♻️ Regenerate All", "value": "regen"})
 
-        pick = await present_decision(
-            state=state,
-            decision_type="s0_logo_pick",
-            question="Which logo variant do you prefer?",
-            options=pick_options,
-            recommended=0,
-        )
+        # Logo pick is a permanent creative decision — always force interactive COPILOT
+        # mode regardless of the pipeline's autonomy setting.  Autopilot is correct for
+        # technical decisions (stack, APIs) but the founder must always pick their brand.
+        from factory.core.state import AutonomyMode as _AutonomyMode
+        _saved_autonomy = state.autonomy_mode
+        state.autonomy_mode = _AutonomyMode.COPILOT
+        try:
+            pick = await present_decision(
+                state=state,
+                decision_type="s0_logo_pick",
+                question=(
+                    f"🎨 *Choose your logo for {app_name}*\n\n"
+                    "Review the variants above and pick one — or regenerate for new styles."
+                ),
+                options=pick_options,
+                recommended=0,
+                timeout_seconds=3600,
+            )
+        finally:
+            state.autonomy_mode = _saved_autonomy
 
         if pick == "regen":
             if logo_source == "describe":

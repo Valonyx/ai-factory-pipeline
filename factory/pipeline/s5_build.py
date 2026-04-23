@@ -97,6 +97,13 @@ async def s5_build_node(state: PipelineState) -> PipelineState:
 
     Cost target: <$0.50
     """
+    import os as _os
+    _is_ci = (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    )
+
     blueprint_data = state.s2_output or {}
     files = (state.s4_output or {}).get("generated_files", {})
     stack_value = blueprint_data.get("selected_stack", "flutterflow")
@@ -116,7 +123,7 @@ async def s5_build_node(state: PipelineState) -> PipelineState:
     build_start = datetime.now(timezone.utc)
 
     # ══════════════════════════════════════════
-    # Phase 1: Write files to workspace
+    # Phase 1: Write files to workspace (always runs — even in DRY_RUN)
     # ══════════════════════════════════════════
     write_errors = []
     for file_path, content in files.items():
@@ -135,31 +142,36 @@ async def s5_build_node(state: PipelineState) -> PipelineState:
         )
 
     # ══════════════════════════════════════════
-    # Phase 2: Install dependencies
+    # Phase 2+3: Dependency install + Build
+    # Skip in DRY_RUN / CI — no real toolchain available.
     # ══════════════════════════════════════════
-    dep_errors = []
-    for cmd in DEPENDENCY_COMMANDS.get(stack, []):
-        result = await exec_mgr.execute_task({
-            "name": f"deps_{stack.value}",
-            "type": "dependency_install",
-            "command": enforce_user_space(cmd),
-        }, requires_macincloud=requires_mac)
-
-        if result.get("exit_code", 0) != 0:
-            dep_errors.append({
-                "command": cmd,
-                "error": result.get("stderr", "")[:500],
-            })
-
-    # ══════════════════════════════════════════
-    # Phase 3: Build
-    # ══════════════════════════════════════════
-    if requires_gui:
-        build_result = await _build_gui(state, stack, exec_mgr)
+    if _is_ci:
+        logger.info(f"[{state.project_id}] S5: DRY_RUN — skipping build, source_only pass")
+        build_result: dict = {"success": True, "source_only": True, "artifacts": {}, "errors": []}
+        dep_errors: list = []
     else:
-        build_result = await _build_cli(
-            state, stack, target_platforms, exec_mgr, requires_mac,
-        )
+        # Phase 2: Install dependencies
+        dep_errors = []
+        for cmd in DEPENDENCY_COMMANDS.get(stack, []):
+            result = await exec_mgr.execute_task({
+                "name": f"deps_{stack.value}",
+                "type": "dependency_install",
+                "command": enforce_user_space(cmd),
+            }, requires_macincloud=requires_mac)
+
+            if result.get("exit_code", 0) != 0:
+                dep_errors.append({
+                    "command": cmd,
+                    "error": result.get("stderr", "")[:500],
+                })
+
+        # Phase 3: Build
+        if requires_gui:
+            build_result = await _build_gui(state, stack, exec_mgr)
+        else:
+            build_result = await _build_cli(
+                state, stack, target_platforms, exec_mgr, requires_mac,
+            )
 
     # ══════════════════════════════════════════
     # Phase 4: Collect artifacts

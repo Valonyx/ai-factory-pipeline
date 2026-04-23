@@ -182,8 +182,17 @@ async def test_s9_output_delivered():
 # ═══════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_pipeline_halts_cleanly_on_s0_ai_failure():
-    """When S0 AI fails AND no app name in raw input, pipeline halts with APP_NAME_MISSING."""
+async def test_pipeline_halts_cleanly_on_s0_ai_failure(monkeypatch):
+    """When S0 AI fails AND no app name in raw input, pipeline halts with APP_NAME_MISSING.
+
+    DRY_RUN is disabled here because the DRY_RUN bypass stubs a valid app_name and
+    never calls call_ai — which would make the halt path untestable. This test
+    exercises the real S0 extraction path to confirm the halt fires correctly.
+    """
+    # Disable DRY_RUN so S0 runs its real extraction path (where the AI error fires).
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("PIPELINE_ENV", "test")  # not "ci" so bypass is off
+
     state = PipelineState(
         project_id="e2e-t8-halt",
         operator_id="op-e2e",

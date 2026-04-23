@@ -198,7 +198,7 @@ _operator_prefs: dict[str, dict] = {}
 _PREFS_DEFAULTS: dict = {
     "autonomy_mode":  "autopilot",
     "execution_mode": "cloud",
-    "master_mode":    "balanced",   # Issue 36: master axis default
+    "master_mode":    "basic",      # Phase 8: default to free tier — fail safe to $0
     "transport_mode": "polling",    # Issue 36: transport axis default
 }
 _PREFS_STATE_KEY = "__prefs"
@@ -409,6 +409,18 @@ async def present_decision(
         )
         return selected
 
+    # CI / DRY_RUN / mock: auto-select recommended option without waiting for human input.
+    # This prevents E2E tests from hanging 3600 s on logo / platform / mode decisions.
+    import os as _os
+    if (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    ):
+        selected = options[recommended]["value"] if options else ""
+        logger.info(f"[CI/DryRun] Decision '{decision_type}' → auto-selected recommended: {selected!r}")
+        return selected
+
     # Copilot: present inline keyboard
     decision_id = f"dec_{uuid.uuid4().hex[:8]}"
 
@@ -538,6 +550,22 @@ async def wait_for_operator_reply(
     Returns:
         The operator's text reply, or default on timeout.
     """
+    # CI / DRY_RUN / mock: no human operator available — return default immediately
+    # for long timeouts (>30s) that would block CI/test runs.
+    # Short timeouts (≤30s) are used by unit tests that exercise the mechanism itself
+    # (e.g. resolving a pending future in 0.05s) — those must run the real logic.
+    import os as _os
+    _is_ci = (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    )
+    if _is_ci and timeout > 30:
+        logger.info(
+            f"[CI/DryRun] wait_for_operator_reply: returning default={default!r} immediately"
+        )
+        return default
+
     loop = asyncio.get_running_loop()
     future: asyncio.Future = loop.create_future()
     _pending_replies[operator_id] = future
@@ -685,6 +713,16 @@ async def present_platform_multiselect(
 
     if state.autonomy_mode == AutonomyMode.AUTOPILOT:
         logger.info(f"[Autopilot] Platform default: {default}")
+        return default
+
+    # CI / DRY_RUN / mock: no human operator — return default immediately.
+    import os as _os
+    if (
+        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
+        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+    ):
+        logger.info(f"[CI/DryRun] present_platform_multiselect: returning default={default}")
         return default
 
     # Build the numbered list message

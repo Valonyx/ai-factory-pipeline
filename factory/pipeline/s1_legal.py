@@ -170,14 +170,15 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
         )
         from factory.core.halt import HaltCode, HaltReason, set_halt
 
-        # v5.8.16 Issue 66: calibrate thresholds to master mode.
-        # BASIC uses free providers (Groq/Mistral/Together) that produce
-        # shorter outputs; enforcing 3000-char / 4-doc gate blocks every
-        # free-tier run. Reduce to 600 chars / 2 docs for BASIC.
+        # v5.8.16 Phase 6: calibrate thresholds to master mode.
+        # Chunked generation (6 sections × ~400 chars each) means every
+        # document should exceed 2 000 chars even in BASIC mode.
+        # BASIC:     2 000 chars / 3 docs (free-provider tolerance)
+        # Non-BASIC: 5 000 chars / 4 docs (richer output expected)
         from factory.core.mode_router import MasterMode
         _is_basic = getattr(state, "master_mode", MasterMode.BASIC) == MasterMode.BASIC
-        _min_chars = 600 if _is_basic else 3000
-        _min_docs  = 2   if _is_basic else 4
+        _min_chars = 2000 if _is_basic else 5000
+        _min_docs  = 3    if _is_basic else 4
 
         _gate_results = []
         docs: dict = state.legal_documents or {}

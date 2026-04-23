@@ -188,22 +188,24 @@ async def generate_logo_variants(
     count: int = 3,
     primary_color: str = "#6366f1",
 ) -> list[Optional[bytes]]:
-    """Generate N logo variants with different styles/seeds.
+    """Generate N logo variants **concurrently** with different styles/seeds.
 
     Spec: v5.8 §4.1 — S0 logo flow (3 variants for operator pick).
-    Each variant uses a different visual style to give the operator real choice.
+    v5.8.16 Phase 6: all variants generated in parallel so total wait time
+    equals one generation (≈30-45 s) rather than 3× sequential (≈90-135 s).
 
     Returns:
         List of raw PNG bytes (None for any variant that failed).
     """
+    import asyncio as _asyncio
+
     styles = [
         "modern flat icon design, geometric shapes, bold colors, clean minimal",
         "minimalist icon, monochrome palette, simple bold shapes, professional",
         "colorful gradient icon, rounded corners, friendly vibrant feel, vector art",
     ]
 
-    results: list[Optional[bytes]] = []
-    for i in range(count):
+    async def _gen_one(i: int) -> Optional[bytes]:
         style = styles[i % len(styles)]
         prompt = (
             f"App icon for '{app_name}'. {description[:100]}. "
@@ -211,19 +213,33 @@ async def generate_logo_variants(
             f"No text, no letters, no numbers. Square format. "
             f"White or transparent background. High quality. App store ready."
         )
-        try:
-            img = await generate_image(
-                prompt=prompt,
-                width=1024,
-                height=1024,
-                seed=42 + i * 1337,
-            )
-            results.append(img)
-        except Exception as e:
-            logger.warning(f"Logo variant {i + 1} generation failed: {e}")
-            results.append(None)
+        # Stagger starts to avoid hitting the same provider rate-limit window
+        await _asyncio.sleep(i * 3)
+        for attempt in range(3):
+            try:
+                img = await generate_image(
+                    prompt=prompt,
+                    width=1024,
+                    height=1024,
+                    seed=42 + i * 1337 + attempt * 997,
+                )
+                if img:
+                    return img
+                # provider returned None without raising — try next seed
+            except Exception as e:
+                logger.warning(
+                    f"Logo variant {i + 1} attempt {attempt + 1} failed: {e}"
+                )
+            if attempt < 2:
+                await _asyncio.sleep(5 * (attempt + 1))  # 5 s, then 10 s back-off
+        return None
 
-    return results
+    results = await _asyncio.gather(*[_gen_one(i) for i in range(count)])
+    succeeded = sum(1 for b in results if b)
+    logger.info(
+        f"[logo_gen] Generated {succeeded}/{count} variants for '{app_name}'"
+    )
+    return list(results)
 
 
 async def send_logo_variants_to_telegram(
@@ -232,6 +248,11 @@ async def send_logo_variants_to_telegram(
     app_name: str,
 ) -> int:
     """Send logo variant images to the operator via Telegram.
+
+    v5.8.16 Phase 6: sends as a single media album (InputMediaPhoto) so all
+    3 variants appear together in one gallery-style message, making the pick
+    experience natural.  Falls back to individual photo sends if the bot
+    version doesn't support send_media_group.
 
     Returns the number of successfully sent variants.
     """
@@ -242,19 +263,57 @@ async def send_logo_variants_to_telegram(
         return 0
 
     import io as _io
+
+    valid: list[tuple[int, bytes]] = [
+        (i + 1, b) for i, b in enumerate(variants) if b
+    ]
+    if not valid:
+        return 0
+
+    # ── Attempt media album (best UX — all 3 in one message) ──
+    try:
+        from telegram import InputMediaPhoto
+
+        media_group = []
+        for idx, img_bytes in valid:
+            caption = (
+                f"🎨 Variant {idx} / {len(valid)}  •  {app_name}"
+                if idx == valid[-1][0]
+                else f"🎨 Variant {idx} / {len(valid)}"
+            )
+            media_group.append(
+                InputMediaPhoto(
+                    media=_io.BytesIO(img_bytes),
+                    caption=caption,
+                )
+            )
+        await bot.send_media_group(
+            chat_id=int(operator_id),
+            media=media_group,
+        )
+        logger.info(
+            f"[logo_gen] Sent {len(valid)}-variant album to {operator_id}"
+        )
+        return len(valid)
+
+    except Exception as album_err:
+        logger.warning(
+            f"[logo_gen] Media album failed ({album_err}), "
+            "falling back to individual photos"
+        )
+
+    # ── Fallback: send individually ──
     sent = 0
-    for i, img_bytes in enumerate(variants, 1):
-        if not img_bytes:
-            continue
+    for idx, img_bytes in valid:
         try:
             await bot.send_photo(
                 chat_id=int(operator_id),
                 photo=_io.BytesIO(img_bytes),
-                caption=f"🎨 Variant {i} / {len([v for v in variants if v])}",
+                caption=f"🎨 Variant {idx} / {len(valid)}  •  {app_name}",
             )
             sent += 1
         except Exception as e:
-            logger.warning(f"Failed to send logo variant {i}: {e}")
+            logger.warning(f"[logo_gen] Failed to send variant {idx}: {e}")
 
     return sent
 

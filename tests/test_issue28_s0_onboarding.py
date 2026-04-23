@@ -240,7 +240,13 @@ async def test_pre_selected_logo_skip():
 
 @pytest.mark.asyncio
 async def test_pre_selected_logo_auto():
-    """s0_intake_node calls _logo_flow_auto when pre_selected_logo='auto'."""
+    """pre_selected_logo='auto' now routes through _logo_flow (3-variant picker).
+
+    v5.8.16 Phase 6: The 'auto' shortcut no longer bypasses the interactive
+    3-variant selection.  'auto' means 'AI picks the style prompts', but the
+    operator still gets to pick from the 3 generated variants.  Only the
+    explicit logo_autopilot=True flag routes to _logo_flow_auto (silent).
+    """
     from factory.pipeline import s0_intake
 
     state = _make_state()
@@ -249,7 +255,7 @@ async def test_pre_selected_logo_auto():
         "app_name": "SocialMe",
         "pre_selected_platforms": ["ios", "android"],
         "pre_selected_market": "global",
-        "pre_selected_logo": "auto",
+        "pre_selected_logo": "auto",   # <-- triggers _logo_flow (interactive)
     }
 
     logo_auto_called = []
@@ -275,24 +281,28 @@ async def test_pre_selected_logo_auto():
         logo_auto_called.append(True)
         return {"logo_path": "/tmp/auto_logo.png", "asset_type": "logo"}
 
-    async def _mock_logo_interactive(*args):
+    async def _mock_logo_flow(*args):
         logo_flow_called.append(True)
-        return None
+        return {"logo_path": "/tmp/picked_logo.png", "asset_type": "logo"}
 
     with patch.object(s0_intake, "_extract_requirements", _mock_extract), \
          patch.object(s0_intake, "_select_platforms", AsyncMock(return_value=["ios", "android"])), \
          patch.object(s0_intake, "_select_market", AsyncMock(return_value="global")), \
          patch.object(s0_intake, "_scout_scan", AsyncMock(side_effect=lambda s, r, _: r)), \
          patch.object(s0_intake, "_scope_confirmation", AsyncMock(side_effect=lambda s, r, _: r)), \
-         patch.object(s0_intake, "_logo_flow", _mock_logo_interactive), \
+         patch.object(s0_intake, "_logo_flow", _mock_logo_flow), \
          patch.object(s0_intake, "_logo_flow_auto", _mock_logo_auto), \
          patch.object(s0_intake, "_mode_selection", AsyncMock(side_effect=lambda s, r: r)), \
          patch("factory.core.stage_enrichment.store_stage_insight", AsyncMock()):
 
         result = await s0_intake.s0_intake_node(state)
 
-    assert logo_auto_called, "_logo_flow_auto should be called for logo=auto"
-    assert not logo_flow_called, "_logo_flow (interactive) should NOT be called"
+    # Since logo_autopilot is not True, _logo_flow (3-variant) should be called
+    assert logo_flow_called, (
+        "_logo_flow (3-variant picker) should be called for pre_selected_logo='auto'. "
+        "Use project_metadata['logo_autopilot']=True for silent single-logo generation."
+    )
+    assert not logo_auto_called, "_logo_flow_auto should NOT be called without logo_autopilot=True"
 
 
 # ═══════════════════════════════════════════════════════════════════

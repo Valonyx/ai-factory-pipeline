@@ -102,44 +102,78 @@ async def _parse_with_omniparser(image_bytes: bytes, task: str) -> dict:
             response.raise_for_status()
             return response.json()
 
-    # Local model path
-    weights_dir = os.getenv("OMNIPARSER_WEIGHTS_DIR", "weights")
-    import sys
-    omniparser_root = os.getenv("OMNIPARSER_DIR", "")
+    # ── Local model path (OmniParser v2 API: util/omniparser.py) ──────
+    import sys, base64, io
+
+    # Locate vendor clone or OMNIPARSER_DIR override
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(os.path.dirname(_script_dir))
+    _vendor_default = os.path.join(_project_root, "vendor", "omniparser")
+    omniparser_root = os.getenv("OMNIPARSER_DIR", _vendor_default)
+    weights_dir = os.getenv(
+        "OMNIPARSER_WEIGHTS_DIR",
+        os.path.join(omniparser_root, "weights"),
+    )
+
     if omniparser_root and omniparser_root not in sys.path:
         sys.path.insert(0, omniparser_root)
 
-    from PIL import Image
-    import io
-    image = Image.open(io.BytesIO(image_bytes))
+    # OmniParser v2: use Omniparser class from util/omniparser.py
+    try:
+        from util.omniparser import Omniparser as OmniparserV2
+        config = {
+            "som_model_path": os.path.join(weights_dir, "icon_detect", "model.pt"),
+            "caption_model_name": "florence2",
+            "caption_model_path": os.path.join(weights_dir, "icon_caption_florence"),
+            "BOX_TRESHOLD": 0.05,
+        }
+        parser = OmniparserV2(config)
+        b64_img = base64.b64encode(image_bytes).decode("utf-8")
+        _annotated_b64, parsed_content_list = parser.parse(b64_img)
 
-    from utils import get_som_labeled_img, check_ocr_box, get_caption_model_processor, get_yolo_model
-    model_path = os.path.join(weights_dir, "icon_detect")
-    caption_model_path = os.path.join(weights_dir, "icon_caption_florence")
-    yolo_model = get_yolo_model(model_path)
-    caption_processor, caption_model = get_caption_model_processor(caption_model_path)
+        elements = []
+        for i, item in enumerate(parsed_content_list):
+            elements.append({
+                "label": item.get("label", f"element_{i}"),
+                "text": item.get("content", item.get("text", "")),
+                "bbox": item.get("bbox", [0, 0, 0, 0]),
+                "type": item.get("type", "unknown"),
+            })
 
-    # This is a simplified call — see OmniParser docs for full usage
-    dino_labeled_img, label_coordinates, parsed_content = get_som_labeled_img(
-        image, yolo_model, BOX_TRESHOLD=0.03, output_coord_in_ratio=True,
-        ocr_bbox=None, draw_bbox_config={}, caption_model_processor=(caption_processor, caption_model),
-        ocr_text=[], use_local_semantics=True, iou_threshold=0.1,
-    )
+        structured = "\n".join(
+            f"{e['type'].title()}: {e['text'] or e['label']}"
+            for e in elements
+        )
+        return {"elements": elements, "structured_text": structured, "source": "omniparser_v2"}
 
-    elements = []
-    for i, item in enumerate(parsed_content):
-        elements.append({
-            "label": item.get("label", f"element_{i}"),
-            "text": item.get("text", ""),
-            "bbox": label_coordinates.get(str(i), [0, 0, 0, 0]),
-            "type": item.get("type", "unknown"),
-        })
-
-    structured = "\n".join(
-        f"{e['type'].title()}: {e['text'] or e['label']}"
-        for e in elements
-    )
-    return {"elements": elements, "structured_text": structured, "source": "omniparser"}
+    except ImportError:
+        # v2 not available — try legacy v1 API (util/utils.py)
+        from PIL import Image as _Image
+        image = _Image.open(io.BytesIO(image_bytes))
+        model_path = os.path.join(weights_dir, "icon_detect")
+        caption_model_path = os.path.join(weights_dir, "icon_caption_florence")
+        from utils import get_som_labeled_img, get_caption_model_processor, get_yolo_model
+        yolo_model = get_yolo_model(model_path)
+        caption_processor, caption_model = get_caption_model_processor(caption_model_path)
+        dino_labeled_img, label_coordinates, parsed_content = get_som_labeled_img(
+            image, yolo_model, BOX_TRESHOLD=0.03, output_coord_in_ratio=True,
+            ocr_bbox=None, draw_bbox_config={},
+            caption_model_processor=(caption_processor, caption_model),
+            ocr_text=[], use_local_semantics=True, iou_threshold=0.1,
+        )
+        elements = [
+            {
+                "label": item.get("label", f"element_{i}"),
+                "text": item.get("text", ""),
+                "bbox": label_coordinates.get(str(i), [0, 0, 0, 0]),
+                "type": item.get("type", "unknown"),
+            }
+            for i, item in enumerate(parsed_content)
+        ]
+        structured = "\n".join(
+            f"{e['type'].title()}: {e['text'] or e['label']}" for e in elements
+        )
+        return {"elements": elements, "structured_text": structured, "source": "omniparser_v1"}
 
 
 async def _parse_with_vision_fallback(image_bytes: bytes, task: str, mode: str) -> dict:

@@ -90,38 +90,148 @@ async def _call_ui_tars(
     instruction: str,
     history: list[dict],
 ) -> dict:
-    """Call the UI-TARS server endpoint."""
+    """Call the UI-TARS server via OpenAI-compatible chat completions API.
+
+    UI-TARS is deployed as a TGI (Text Generation Inference) server on
+    HuggingFace Inference Endpoints. The model ID for TGI is always "tgi".
+
+    The response is parsed by the action_parser from vendor/ui-tars.
+    """
     endpoint = os.getenv("UI_TARS_ENDPOINT", "").rstrip("/")
     api_key = os.getenv("UI_TARS_API_KEY", "")
-    model = os.getenv("UI_TARS_MODEL", "ui-tars-7b")
+    img_height = int(os.getenv("UI_TARS_IMG_HEIGHT", "1080"))
+    img_width = int(os.getenv("UI_TARS_IMG_WIDTH", "1920"))
 
     b64_image = base64.b64encode(screenshot_bytes).decode("utf-8")
+    img_type = "jpeg" if screenshot_bytes[:2] == b"\xff\xd8" else "png"
 
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    # Build system prompt using UI-TARS prompt templates
+    system_prompt = _get_uitars_system_prompt()
 
-    payload = {
-        "model": model,
-        "screenshot": b64_image,
-        "instruction": instruction,
-        "history": history,
-    }
+    # Build history-aware user content
+    history_lines = ""
+    if history:
+        history_lines = "Previous actions:\n" + "\n".join(
+            f"  {i+1}. {h.get('action','?')} → {h.get('target','?')}"
+            for i, h in enumerate(history[-6:])
+        ) + "\n\n"
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"{history_lines}Task: {instruction}"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/{img_type};base64,{b64_image}"},
+                },
+            ],
+        },
+    ]
 
     import httpx
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(f"{endpoint}/predict", headers=headers, json=payload)
+    async with httpx.AsyncClient(timeout=90) as client:
+        response = await client.post(
+            f"{endpoint}/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}" if api_key else "",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "tgi",
+                "messages": messages,
+                "temperature": 0.0,
+                "max_tokens": 400,
+                "stream": False,
+            },
+        )
 
     response.raise_for_status()
-    data = response.json()
+    raw_text = response.json()["choices"][0]["message"]["content"]
+
+    # Parse UI-TARS action output using vendor action_parser
+    parsed_actions = _parse_uitars_response(raw_text, img_height, img_width)
+    if not parsed_actions:
+        return {
+            "action": "fail",
+            "target": None,
+            "coordinates": None,
+            "value": None,
+            "reasoning": f"UI-TARS parse failed: {raw_text[:200]}",
+            "source": "ui_tars",
+        }
+
+    act = parsed_actions[0]
+    action_type = act.get("action_type", "fail").lower()
+    inputs = act.get("action_inputs", {})
+
+    # Normalise to pipeline action dict
+    coordinates = None
+    if "start_box" in inputs:
+        try:
+            raw_box = inputs["start_box"].strip("[]()").split(",")
+            cx = float(raw_box[0].strip())
+            cy = float(raw_box[1].strip())
+            # UI-TARS outputs 0-1 normalised coords
+            coordinates = [cx, cy]
+        except (ValueError, IndexError):
+            pass
 
     return {
-        "action": data.get("action", "done"),
-        "target": data.get("target"),
-        "value": data.get("value"),
-        "reasoning": data.get("reasoning", ""),
+        "action": action_type if action_type in ("click", "type", "scroll", "finished", "fail") else "click",
+        "target": inputs.get("element", inputs.get("text", "")),
+        "coordinates": coordinates,
+        "value": inputs.get("text", inputs.get("content", None)),
+        "reasoning": act.get("thought", raw_text[:300]),
         "source": "ui_tars",
     }
+
+
+def _get_uitars_system_prompt() -> str:
+    """Load UI-TARS system prompt from vendor package, fallback to compact version."""
+    try:
+        import sys
+        import os as _os
+        _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+        _project_root = _os.path.dirname(_os.path.dirname(_script_dir))
+        _vendor = _os.path.join(_project_root, "vendor", "ui-tars", "codes")
+        if _vendor not in sys.path:
+            sys.path.insert(0, _vendor)
+        from ui_tars.prompt import COMPUTER_USE_DOUBAO  # type: ignore[import]
+        return COMPUTER_USE_DOUBAO
+    except Exception:
+        return (
+            "You are a GUI agent. Given a screenshot, determine the next action.\n"
+            "Think step by step. Output: Thought: <reasoning>\nAction: <action_call>"
+        )
+
+
+def _parse_uitars_response(raw_text: str, img_height: int, img_width: int) -> list[dict]:
+    """Parse UI-TARS model output using vendor action_parser."""
+    try:
+        import sys
+        import os as _os
+        _script_dir = _os.path.dirname(_os.path.abspath(__file__))
+        _project_root = _os.path.dirname(_os.path.dirname(_script_dir))
+        _vendor = _os.path.join(_project_root, "vendor", "ui-tars", "codes")
+        if _vendor not in sys.path:
+            sys.path.insert(0, _vendor)
+        from ui_tars.action_parser import parse_action_to_structure_output  # type: ignore[import]
+        return parse_action_to_structure_output(
+            raw_text,
+            factor=1000,
+            origin_resized_height=img_height,
+            origin_resized_width=img_width,
+        )
+    except Exception as e:
+        logger.warning("[ui_tars] action_parser import failed: %s", e)
+        # Minimal fallback parser: extract action type from raw text
+        import re
+        match = re.search(r"Action:\s*(\w+)\(", raw_text)
+        if match:
+            return [{"action_type": match.group(1), "action_inputs": {}, "thought": raw_text[:300]}]
+        return []
 
 
 async def _vision_fallback_action(screenshot_bytes: bytes, instruction: str) -> dict:

@@ -107,6 +107,11 @@ async def upload_legal_pdf_to_supabase(
         logger.warning(f"[{project_id}] PDF not found for upload: {local_path}")
         return None
 
+    # v5.8.16 Issue 70: Supabase "artifacts" storage bucket is not created
+    # in most project configurations, causing every upload to return 404.
+    # We no longer send broken public URLs. Instead, we verify the upload
+    # succeeded by checking the response, and fall back to a local-file
+    # notice if it fails.
     try:
         from factory.integrations.supabase import get_async_supabase_client
 
@@ -117,24 +122,37 @@ async def upload_legal_pdf_to_supabase(
         with open(local_path, "rb") as fh:
             data = fh.read()
 
-        # Use Supabase storage API
         result = client.storage.from_(bucket).upload(
             path=storage_path,
             file=data,
             file_options={"content-type": "application/pdf", "upsert": "true"},
         )
 
-        # Build public URL from project URL
-        from factory.integrations.supabase import get_supabase_client as _sync_client
+        # Verify upload succeeded (supabase-py raises on error, but be safe)
         supabase_url = os.getenv("SUPABASE_URL", "")
-        if supabase_url:
-            public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{storage_path}"
-            logger.info(f"[{project_id}] Legal PDF uploaded: {public_url}")
-            return public_url
+        if supabase_url and result:
+            public_url = (
+                f"{supabase_url}/storage/v1/object/public/{bucket}/{storage_path}"
+            )
+            # Quick HEAD check to confirm bucket is public and file is accessible
+            import httpx as _httpx
+            try:
+                _r = _httpx.head(public_url, timeout=5, follow_redirects=True)
+                if _r.status_code < 400:
+                    logger.info(f"[{project_id}] Legal PDF uploaded: {public_url}")
+                    return public_url
+                else:
+                    logger.warning(
+                        f"[{project_id}] Uploaded but URL not accessible "
+                        f"({_r.status_code}) — returning local path"
+                    )
+            except Exception as _check_err:
+                logger.debug(f"[{project_id}] URL check failed: {_check_err}")
 
     except Exception as e:
         logger.warning(f"[{project_id}] Supabase upload failed (non-fatal): {e}")
 
+    # Fall back to local path — will be delivered as filesystem reference
     return None
 
 

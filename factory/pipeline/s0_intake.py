@@ -99,10 +99,13 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     if pre_logo == "skip":
         logo_asset = None
         logger.info(f"[{state.project_id}] S0: logo skipped by operator onboarding choice")
-    elif pre_logo == "auto":
-        logo_asset = await _logo_flow_auto(state, requirements)
-        logger.info(f"[{state.project_id}] S0: auto-generating logo per onboarding choice")
     else:
+        # v5.8.16 Issue 65 (follow-up): "auto" was bypassing _logo_flow and
+        # calling _logo_flow_auto directly, skipping the 3-variant pick screen
+        # even after we changed _logo_flow to always use copilot. Fix: route
+        # ALL non-skip cases through _logo_flow so the operator always gets
+        # to choose from 3 generated variants. The "auto" value only means
+        # "AI picks the style" — the operator still picks from the result.
         logo_asset = await _logo_flow(state, requirements)
     if logo_asset:
         state.brand_assets.append(logo_asset)

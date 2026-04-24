@@ -370,10 +370,9 @@ async def cmd_mode(update: Any, context: Any):
     _EXEC_MODES   = {"cloud", "local", "hybrid"}
 
     if arg in _MASTER_MODES:
-        if active:
-            state = PipelineState.model_validate(active["state_json"])
-            state.master_mode = MasterMode(arg)
-            await update_project_state(state)
+        # Save preference only — no blocking state write.
+        # The running pipeline reads master_mode from state_json; the NEXT
+        # pipeline will pick it up from operator prefs via _start_project.
         await set_operator_preference(user_id, "master_mode", arg)
         mm = MasterMode(arg)
         scope = "project + default" if active else "default (no active project)"
@@ -386,9 +385,17 @@ async def cmd_mode(update: Any, context: Any):
             parse_mode="Markdown",
         )
     elif arg in _EXEC_MODES:
-        # Issue 25: redirect execution-axis args to the dedicated command
-        context.args = [arg]
-        await cmd_execution_mode(update, context)
+        # Inline — no delegation to avoid context.args mutation issues
+        await set_operator_preference(user_id, "execution_mode", arg)
+        _EXEC_EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
+        scope = "project + default" if active else "default (no active project)"
+        await update.message.reply_text(
+            f"{_EXEC_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅\n"
+            f"Scope: {scope}\n"
+            f"Next pipeline will run on *{arg.upper()}*.\n\n"
+            f"Run /execution\\_mode to verify.",
+            parse_mode="Markdown",
+        )
     else:
         # Show three-axis status
         if active:
@@ -450,27 +457,13 @@ async def cmd_execution_mode(update: Any, context: Any):
     _EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
 
     if arg in _EXEC_MODES:
-        if active:
-            state = PipelineState.model_validate(active["state_json"])
-            state.execution_mode = ExecutionMode(arg)
-            await update_project_state(state)
+        # Save preference only — no blocking state write.
         await set_operator_preference(user_id, "execution_mode", arg)
-        # v5.8.15 Issue 51 — verify via effective read so the user sees the
-        # value that mode-consuming code will actually observe.
-        from factory.telegram.mode_store import ModeStore
-        verify_state = (
-            PipelineState.model_validate(active["state_json"]) if active else None
-        )
-        if verify_state is not None and arg:
-            verify_state.execution_mode = ExecutionMode(arg)
-        effective = await ModeStore.get_effective_execution_mode(
-            user_id, verify_state,
-        )
         scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
             f"{_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅\n"
             f"Scope: {scope}\n"
-            f"Effective: *{effective.value.upper()}*\n\n"
+            f"Next pipeline will run on *{arg.upper()}*.\n\n"
             f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n"
             f"Run /execution\\_mode to verify.",
             parse_mode="Markdown",
@@ -498,53 +491,93 @@ async def cmd_execution_mode(update: Any, context: Any):
         )
 
 
+async def _set_master_mode(update: Any, user_id: str, mode_str: str) -> None:
+    """Shared logic for master-mode shortcut commands.
+
+    Saves the preference directly — no delegation through cmd_mode so there
+    are no context.args mutations or blocking state-writes that could silently
+    swallow the reply.
+    """
+    try:
+        mm = MasterMode(mode_str)
+        await set_operator_preference(user_id, "master_mode", mode_str)
+        await update.message.reply_text(
+            f"{mm.emoji} *Master mode set: {mm.label}* ✅\n"
+            f"Next pipeline will use *{mm.label}* AI providers.\n\n"
+            f"Shortcuts: /basic · /balanced · /turbo · /custom\n"
+            f"Run /mode to see all axis status.",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error(f"[bot] cmd master_mode '{mode_str}' failed: {e}", exc_info=True)
+        await update.message.reply_text(
+            f"⚠️ Could not set master mode to {mode_str}: {e}"
+        )
+
+
+async def _set_execution_mode(update: Any, user_id: str, mode_str: str) -> None:
+    """Shared logic for execution-mode shortcut commands.
+
+    Saves the preference directly — no delegation through cmd_execution_mode.
+    """
+    _EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
+    try:
+        em = ExecutionMode(mode_str)
+        await set_operator_preference(user_id, "execution_mode", mode_str)
+        await update.message.reply_text(
+            f"{_EMOJI[mode_str]} *Execution mode set: {em.value.upper()}* ✅\n"
+            f"Next pipeline will run on *{em.value.upper()}*.\n\n"
+            f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n"
+            f"Run /execution\\_mode to see all axis status.",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error(f"[bot] cmd execution_mode '{mode_str}' failed: {e}", exc_info=True)
+        await update.message.reply_text(
+            f"⚠️ Could not set execution mode to {mode_str}: {e}"
+        )
+
+
 @require_auth
 async def cmd_exec_local(update: Any, context: Any):
-    """Shortcut: /exec_local — set Execution axis to LOCAL (your machine)."""
-    context.args = ["local"]
-    await cmd_execution_mode(update, context)
+    """Shortcut: /exec_local — set Execution axis to LOCAL."""
+    await _set_execution_mode(update, str(update.effective_user.id), "local")
 
 
 @require_auth
 async def cmd_exec_cloud(update: Any, context: Any):
-    """Shortcut: /exec_cloud — set Execution axis to CLOUD (Render/Cloud Run)."""
-    context.args = ["cloud"]
-    await cmd_execution_mode(update, context)
+    """Shortcut: /exec_cloud — set Execution axis to CLOUD."""
+    await _set_execution_mode(update, str(update.effective_user.id), "cloud")
 
 
 @require_auth
 async def cmd_exec_hybrid(update: Any, context: Any):
-    """Shortcut: /exec_hybrid — set Execution axis to HYBRID (cloud build, local deploy)."""
-    context.args = ["hybrid"]
-    await cmd_execution_mode(update, context)
+    """Shortcut: /exec_hybrid — set Execution axis to HYBRID."""
+    await _set_execution_mode(update, str(update.effective_user.id), "hybrid")
 
 
 @require_auth
 async def cmd_turbo(update: Any, context: Any):
     """Shortcut: /turbo — set master mode to TURBO (max performance)."""
-    context.args = ["turbo"]
-    await cmd_mode(update, context)
+    await _set_master_mode(update, str(update.effective_user.id), "turbo")
 
 
 @require_auth
 async def cmd_basic(update: Any, context: Any):
     """Shortcut: /basic — set master mode to BASIC (free-only, $0)."""
-    context.args = ["basic"]
-    await cmd_mode(update, context)
+    await _set_master_mode(update, str(update.effective_user.id), "basic")
 
 
 @require_auth
 async def cmd_balanced(update: Any, context: Any):
-    """Shortcut: /balanced — set master mode to BALANCED (default)."""
-    context.args = ["balanced"]
-    await cmd_mode(update, context)
+    """Shortcut: /balanced — set master mode to BALANCED."""
+    await _set_master_mode(update, str(update.effective_user.id), "balanced")
 
 
 @require_auth
 async def cmd_custom(update: Any, context: Any):
     """Shortcut: /custom — set master mode to CUSTOM (manual pick)."""
-    context.args = ["custom"]
-    await cmd_mode(update, context)
+    await _set_master_mode(update, str(update.effective_user.id), "custom")
 
 
 @require_auth

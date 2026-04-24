@@ -378,8 +378,12 @@ async def cmd_mode(update: Any, context: Any):
         mm = MasterMode(arg)
         scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
-            f"{mm.emoji} Master mode → *{mm.label}* ({scope}).\n"
-            f"Shortcuts: /basic /balanced /turbo /custom"
+            f"{mm.emoji} *Master mode set: {mm.label}* ✅\n"
+            f"Scope: {scope}\n"
+            f"Next pipeline will use *{mm.label}* AI providers.\n\n"
+            f"Shortcuts: /basic · /balanced · /turbo · /custom\n"
+            f"Run /mode to verify.",
+            parse_mode="Markdown",
         )
     elif arg in _EXEC_MODES:
         # Issue 25: redirect execution-axis args to the dedicated command
@@ -405,16 +409,17 @@ async def cmd_mode(update: Any, context: Any):
         await update.message.reply_text(
             f"⚙️ *Mode Status* ({ctx})\n\n"
             f"*Master axis* — AI provider strategy\n"
-            f"  {mm.emoji} {mm.label}\n"
-            f"  Change: /basic /balanced /turbo /custom\n\n"
+            f"  {mm.emoji} *{mm.label}*\n"
+            f"  Change: /basic · /balanced · /turbo · /custom\n\n"
             f"*Execution axis* — where pipeline code runs\n"
-            f"  {exec_emoji} {em.value.upper()}\n"
+            f"  {exec_emoji} *{em.value.upper()}*\n"
             f"  Change: /execution\\_mode cloud | local | hybrid\n\n"
             f"*Transport axis* — how the bot connects to Telegram\n"
-            f"  {transport_emoji} {transport.upper()}\n"
+            f"  {transport_emoji} *{transport.upper()}*\n"
             f"  Change: /online (webhook) | /local (polling)\n\n"
             f"⚠️ `/local` = transport polling only.\n"
-            f"To run pipeline code locally: /execution\\_mode local"
+            f"To run pipeline code locally: /execution\\_mode local",
+            parse_mode="Markdown",
         )
 
 
@@ -463,8 +468,12 @@ async def cmd_execution_mode(update: Any, context: Any):
         )
         scope = "project + default" if active else "default (no active project)"
         await update.message.reply_text(
-            f"{_EMOJI[arg]} Execution mode → *{arg.upper()}* ({scope}).\n"
-            f"Effective: *{effective.value.upper()}*"
+            f"{_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅\n"
+            f"Scope: {scope}\n"
+            f"Effective: *{effective.value.upper()}*\n\n"
+            f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n"
+            f"Run /execution\\_mode to verify.",
+            parse_mode="Markdown",
         )
     else:
         # Show current execution mode
@@ -479,12 +488,13 @@ async def cmd_execution_mode(update: Any, context: Any):
         await update.message.reply_text(
             f"⚙️ *Execution Axis* ({ctx})\n\n"
             f"  ☁️  cloud  — Render / Cloud Run (default)\n"
-            f"  💻  local  — your machine (Cloudflare tunnel)\n"
+            f"  💻  local  — your machine via Cloudflare tunnel\n"
             f"  🔀  hybrid — cloud build, local deploy\n\n"
-            f"*Current:* {_EMOJI.get(em.value, '')} {em.value.upper()}\n\n"
-            f"Set: /execution_mode cloud | local | hybrid\n"
-            f"Shortcuts: /exec_local · /exec_cloud · /exec_hybrid\n\n"
-            f"See also: /mode (Master axis) | /online /local (Transport axis)"
+            f"*Current:* {_EMOJI.get(em.value, '')} *{em.value.upper()}*\n\n"
+            f"Set: /execution\\_mode cloud | local | hybrid\n"
+            f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n\n"
+            f"See also: /mode (Master axis) | /online /local (Transport axis)",
+            parse_mode="Markdown",
         )
 
 

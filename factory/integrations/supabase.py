@@ -510,42 +510,131 @@ async def add_operator_to_whitelist(
 # §5.6 Operator State
 # ═══════════════════════════════════════════════════════════════════
 
+def _sb_http_headers() -> dict:
+    """Build Supabase REST API headers using env vars (no supabase-py needed)."""
+    key = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_KEY", ""))
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+
+
+def _sb_http_base() -> str:
+    return os.getenv("SUPABASE_URL", "").rstrip("/")
+
+
 async def set_operator_state_db(
     telegram_id: str, state_name: str, context: Optional[dict] = None,
 ) -> bool:
     """Set operator conversation state in Supabase.
 
     Spec: §5.6 — operator_state table.
+
+    Uses supabase-py if installed; falls back to direct httpx REST call
+    so preferences persist even when supabase-py is not installed.
     """
     client = get_supabase_client()
-    try:
-        client.table("operator_state").upsert({
-            "telegram_id": telegram_id,
-            "state": state_name,
-            "context": context or {},
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+    payload = {
+        "telegram_id": telegram_id,
+        "state": state_name,
+        "context": context or {},
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Fast path: supabase-py client available
+    if not isinstance(client, SupabaseFallback):
+        try:
+            client.table("operator_state").upsert(payload).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to set operator state for {telegram_id}: {e}")
+            return False
+
+    # Fallback path: direct httpx REST call (supabase-py not installed)
+    base = _sb_http_base()
+    if not base:
+        # No Supabase URL — silently succeed (in-memory fallback only)
+        try:
+            client.table("operator_state").upsert(payload).execute()
+        except Exception:
+            pass
         return True
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=10) as http:
+            r = await http.post(
+                f"{base}/rest/v1/operator_state",
+                headers=_sb_http_headers(),
+                json=payload,
+            )
+        if r.status_code in (200, 201, 204):
+            return True
+        logger.warning(
+            f"[supabase-http] operator_state upsert status={r.status_code} "
+            f"telegram_id={telegram_id}"
+        )
+        return False
     except Exception as e:
-        logger.error(f"Failed to set operator state for {telegram_id}: {e}")
+        logger.error(f"[supabase-http] set_operator_state_db failed: {e}")
         return False
 
 
 async def get_operator_state_db(telegram_id: str) -> Optional[dict]:
-    """Get operator conversation state from Supabase."""
+    """Get operator conversation state from Supabase.
+
+    Uses supabase-py if installed; falls back to direct httpx REST call.
+    """
     client = get_supabase_client()
+
+    # Fast path: supabase-py client available
+    if not isinstance(client, SupabaseFallback):
+        try:
+            resp = (
+                client.table("operator_state")
+                .select("*")
+                .eq("telegram_id", telegram_id)
+                .execute()
+            )
+            if resp.data:
+                return resp.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get operator state for {telegram_id}: {e}")
+            return None
+
+    # Fallback path: direct httpx REST call
+    base = _sb_http_base()
+    if not base:
+        # No Supabase URL — read from in-memory fallback only
+        try:
+            resp = (
+                client.table("operator_state")
+                .select("*")
+                .eq("telegram_id", telegram_id)
+                .execute()
+            )
+            if resp.data:
+                return resp.data[0]
+        except Exception:
+            pass
+        return None
     try:
-        resp = (
-            client.table("operator_state")
-            .select("*")
-            .eq("telegram_id", telegram_id)
-            .execute()
-        )
-        if resp.data:
-            return resp.data[0]
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=10) as http:
+            r = await http.get(
+                f"{base}/rest/v1/operator_state",
+                headers=_sb_http_headers(),
+                params={"telegram_id": f"eq.{telegram_id}", "select": "*"},
+            )
+        if r.status_code == 200:
+            data = r.json()
+            if data:
+                return data[0]
         return None
     except Exception as e:
-        logger.error(f"Failed to get operator state for {telegram_id}: {e}")
+        logger.error(f"[supabase-http] get_operator_state_db failed: {e}")
         return None
 
 

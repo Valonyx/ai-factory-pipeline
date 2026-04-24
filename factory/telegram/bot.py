@@ -498,44 +498,53 @@ async def _set_master_mode(update: Any, user_id: str, mode_str: str) -> None:
     are no context.args mutations or blocking state-writes that could silently
     swallow the reply.
     """
+    # Reply FIRST — before any database I/O so the user always sees feedback
+    # even if the preference save fails.
+    _MASTER_LABELS = {
+        "basic":    ("🆓", "Basic (free only, $0)"),
+        "balanced": ("⚖️", "Balanced"),
+        "turbo":    ("🚀", "Turbo (max performance)"),
+        "custom":   ("🎛", "Custom"),
+    }
+    emoji, label = _MASTER_LABELS.get(mode_str, ("⚙️", mode_str.upper()))
     try:
-        mm = MasterMode(mode_str)
+        await update.message.reply_text(
+            f"{emoji} Master mode → {label}\n"
+            f"Saving... use /mode to confirm."
+        )
+    except Exception as reply_err:
+        logger.error(f"[bot] reply_text failed in _set_master_mode: {reply_err}")
+    # Now save the preference
+    try:
         await set_operator_preference(user_id, "master_mode", mode_str)
-        await update.message.reply_text(
-            f"{mm.emoji} *Master mode set: {mm.label}* ✅\n"
-            f"Next pipeline will use *{mm.label}* AI providers.\n\n"
-            f"Shortcuts: /basic · /balanced · /turbo · /custom\n"
-            f"Run /mode to see all axis status.",
-            parse_mode="Markdown",
-        )
+        logger.info(f"[bot] master_mode set to '{mode_str}' for {user_id}")
     except Exception as e:
-        logger.error(f"[bot] cmd master_mode '{mode_str}' failed: {e}", exc_info=True)
-        await update.message.reply_text(
-            f"⚠️ Could not set master mode to {mode_str}: {e}"
-        )
+        logger.error(f"[bot] set_operator_preference master_mode '{mode_str}' failed: {e}", exc_info=True)
 
 
 async def _set_execution_mode(update: Any, user_id: str, mode_str: str) -> None:
     """Shared logic for execution-mode shortcut commands.
 
-    Saves the preference directly — no delegation through cmd_execution_mode.
+    Replies FIRST, then saves — ensures the user always sees feedback.
     """
-    _EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
+    _EXEC_LABELS = {
+        "cloud":  ("☁️", "Cloud (Render / Cloud Run)"),
+        "local":  ("💻", "Local (your machine)"),
+        "hybrid": ("🔀", "Hybrid (cloud build, local deploy)"),
+    }
+    emoji, label = _EXEC_LABELS.get(mode_str, ("⚙️", mode_str.upper()))
     try:
-        em = ExecutionMode(mode_str)
+        await update.message.reply_text(
+            f"{emoji} Execution mode → {label}\n"
+            f"Saving... use /execution_mode to confirm."
+        )
+    except Exception as reply_err:
+        logger.error(f"[bot] reply_text failed in _set_execution_mode: {reply_err}")
+    try:
         await set_operator_preference(user_id, "execution_mode", mode_str)
-        await update.message.reply_text(
-            f"{_EMOJI[mode_str]} *Execution mode set: {em.value.upper()}* ✅\n"
-            f"Next pipeline will run on *{em.value.upper()}*.\n\n"
-            f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n"
-            f"Run /execution\\_mode to see all axis status.",
-            parse_mode="Markdown",
-        )
+        logger.info(f"[bot] execution_mode set to '{mode_str}' for {user_id}")
     except Exception as e:
-        logger.error(f"[bot] cmd execution_mode '{mode_str}' failed: {e}", exc_info=True)
-        await update.message.reply_text(
-            f"⚠️ Could not set execution mode to {mode_str}: {e}"
-        )
+        logger.error(f"[bot] set_operator_preference execution_mode '{mode_str}' failed: {e}", exc_info=True)
 
 
 @require_auth

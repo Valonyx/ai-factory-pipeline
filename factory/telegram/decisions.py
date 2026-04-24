@@ -197,9 +197,9 @@ _operator_prefs: dict[str, dict] = {}
 
 _PREFS_DEFAULTS: dict = {
     "autonomy_mode":  "autopilot",
-    "execution_mode": "cloud",
-    "master_mode":    "basic",      # Phase 8: default to free tier — fail safe to $0
-    "transport_mode": "polling",    # Issue 36: transport axis default
+    "execution_mode": "local",      # Default: run pipeline code on local machine
+    "master_mode":    "basic",      # Default: free tier — fail safe to $0
+    "transport_mode": "polling",    # Default: local polling (no Render webhook needed)
 }
 _PREFS_STATE_KEY = "__prefs"
 
@@ -299,6 +299,29 @@ def get_operator_preferences(operator_id: str) -> dict:
     return _operator_prefs.get(operator_id, dict(_PREFS_DEFAULTS))
 
 
+def _migrate_prefs(prefs: dict) -> dict:
+    """Apply one-time migrations to stored preferences.
+
+    v5.8.19: execution_mode default changed cloud→local, master_mode
+    default was already basic but some installs saved "balanced" as the
+    previous wrong default.  Reset those back to the correct values
+    so users don't need to manually run /basic or /exec_local.
+    """
+    changed = False
+    # If execution_mode was saved as "cloud" AND the new default is "local",
+    # reset it — this was the system default, not an explicit operator choice.
+    if prefs.get("execution_mode") == "cloud" and _PREFS_DEFAULTS["execution_mode"] == "local":
+        prefs["execution_mode"] = "local"
+        changed = True
+    # If master_mode was saved as "balanced" (old wrong default), reset to "basic"
+    if prefs.get("master_mode") == "balanced" and _PREFS_DEFAULTS["master_mode"] == "basic":
+        prefs["master_mode"] = "basic"
+        changed = True
+    if changed:
+        logger.info(f"[decisions] Applied prefs migration: {prefs}")
+    return prefs
+
+
 async def load_operator_preferences(operator_id: str) -> dict:
     """Load preferences from Supabase → SQLite → defaults.
 
@@ -311,7 +334,7 @@ async def load_operator_preferences(operator_id: str) -> dict:
         from factory.integrations.supabase import get_operator_state_db
         row = await get_operator_state_db(operator_id + _PREFS_STATE_KEY)
         if row and row.get("context"):
-            prefs = {**_PREFS_DEFAULTS, **row["context"]}
+            prefs = _migrate_prefs({**_PREFS_DEFAULTS, **row["context"]})
             _operator_prefs[operator_id] = prefs
             # Mirror to SQLite so future reads have a local copy
             _prefs_sqlite_write(operator_id, prefs)
@@ -321,7 +344,7 @@ async def load_operator_preferences(operator_id: str) -> dict:
     # 2) SQLite fallback
     local = _prefs_sqlite_read(operator_id)
     if local:
-        prefs = {**_PREFS_DEFAULTS, **local}
+        prefs = _migrate_prefs({**_PREFS_DEFAULTS, **local})
         _operator_prefs[operator_id] = prefs
         logger.info(
             f"[decisions] Loaded operator {operator_id} prefs from SQLite fallback"

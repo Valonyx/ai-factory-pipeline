@@ -182,6 +182,23 @@ async def _run_online_mode(hours: float = ONLINE_MAX_HOURS) -> None:
 # ── Main loop ─────────────────────────────────────────────────────
 
 async def main(start_online: bool = False) -> None:
+    # ── Render cloud detection ──────────────────────────────────────
+    # Render sets RENDER=true automatically on all deployments.
+    # When running on Render WITHOUT a webhook URL configured, we must
+    # NOT poll Telegram — that would conflict with the local bot.
+    # Instead: stand by silently so Render keeps the process alive
+    # (prevents restart loops) but yields all Telegram traffic to the
+    # local polling bot.
+    if os.getenv("RENDER") and not os.getenv("TELEGRAM_WEBHOOK_URL"):
+        log.info(
+            "☁️  Running on Render without TELEGRAM_WEBHOOK_URL — "
+            "standing by (local polling bot is primary). "
+            "Set TELEGRAM_WEBHOOK_URL on Render to activate webhook mode."
+        )
+        while True:
+            await asyncio.sleep(60)
+        return  # unreachable but explicit
+
     # Make mode events available to bot commands
     get_mode_events()
 

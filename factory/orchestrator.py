@@ -550,6 +550,12 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
     logger.info(f"[{state.project_id}] Pipeline START (mode={state.autonomy_mode.value})")
     budget_governor.set_spend_source(cost_tracker.monthly_total_cents)
 
+    # Fast-exit: if the pipeline was flagged as aborted before we even started
+    # (e.g. a /cancel arrived while the task was queued), skip all stages immediately.
+    if state.pipeline_aborted:
+        logger.info(f"[{state.project_id}] Pipeline pre-aborted — returning without running stages")
+        return state
+
     # ── Credential pre-flight ────────────────────────────────────────
     # Set SKIP_CREDENTIAL_PREFLIGHT=true to bypass in test/dry-run environments.
     _skip_preflight = os.environ.get("SKIP_CREDENTIAL_PREFLIGHT", "").lower() in ("true", "1", "yes")

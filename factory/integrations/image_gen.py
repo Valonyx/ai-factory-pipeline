@@ -264,10 +264,26 @@ def build_logo_prompt(
     description: str,
     primary_color: str = "#6366f1",
     style: str = "modern flat",
+    scout_intel: str = "",
 ) -> str:
-    """Build a high-quality prompt for app logo generation."""
+    """Build a high-quality prompt for app logo generation.
+
+    Args:
+        app_name: The app's name.
+        description: Short description of what the app does.
+        primary_color: Brand primary color hex.
+        style: Base visual style hint.
+        scout_intel: Optional scout research summary (design trends, competitor
+                     icon styles, target market aesthetics) — enriches the prompt
+                     with market-appropriate visual direction.
+    """
+    intel_hint = ""
+    if scout_intel:
+        # Distil the scout intel to a single actionable design direction
+        intel_hint = f" Design direction based on market research: {scout_intel[:200]}."
+
     return (
-        f"App icon for '{app_name}', {description[:120]}. "
+        f"App icon for '{app_name}'. {description[:120]}.{intel_hint} "
         f"Style: {style} icon design, professional, clean, minimal, "
         f"bold geometric shapes, dominant color {primary_color}, "
         f"white or transparent background, no text, no letters, "

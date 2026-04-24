@@ -417,7 +417,23 @@ async def _call_anthropic(
 
             err = str(e)
             remaining_providers = [p for p in providers_to_use if p.name not in tried]
-            if is_quota_error(err):
+            # 413 "Request too large" — prompt exceeded provider's per-request token limit.
+            # Mark exhausted for a short window (60 s) so other providers are tried, then
+            # groq can be used again for smaller calls in the same session.
+            if "413" in err and "too large" in err.lower():
+                ai_chain.mark_quota_exhausted(provider_name, 60)
+                provider_intelligence.on_provider_exhausted(provider_name, 60)
+                logger.warning(
+                    f"[PI/{role_name}/{mode_name}] {provider_name} request too large (413) "
+                    f"— cooling off 60 s, trying next provider"
+                )
+                next_p = await router.on_quota_exhausted(
+                    current_provider, remaining_providers or providers_to_use, ctx
+                )
+                if next_p.name == provider_name:
+                    break
+                current_provider = next_p
+            elif is_quota_error(err):
                 reset_in = parse_retry_delay(err)
                 ai_chain.mark_quota_exhausted(provider_name, reset_in)
                 provider_intelligence.on_provider_exhausted(provider_name, reset_in or 86400)

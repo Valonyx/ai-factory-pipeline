@@ -68,30 +68,42 @@ async def call_groq(
     if system_prompt is None:
         system_prompt = _get_system_prompt(contract)
 
-    try:
-        from groq import AsyncGroq
-        client = AsyncGroq(api_key=api_key)
+    # Groq free tier on_demand: 12 000 TPM (input + output combined per request).
+    # With context_bridge injection (~600 tokens) + prompt (~600 tokens) ≈ 1200 input,
+    # cap output at 8192 to stay within 12K limit.  This still gives full sections
+    # for legal/blueprint generation (400-700 words ≈ 600-1000 tokens output).
+    _max_out = min(contract.max_output_tokens, 8192)
 
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": prompt},
-            ],
-            # llama-3.3-70b-versatile supports 32 768 output tokens on free tier.
-            # Cap at 16 384 — matches ENGINEER contract and prevents runaway cost
-            # on a single call. QuickFix still naturally stays well below this.
-            max_tokens=min(contract.max_output_tokens, 16384),
-            temperature=0.7,
-        )
-        text = response.choices[0].message.content or ""
-        logger.info(f"Groq {model} ({contract.role.value}): {len(text)} chars")
-        return text, GROQ_COST_PER_CALL
+    for _attempt in range(2):
+        try:
+            from groq import AsyncGroq
+            client = AsyncGroq(api_key=api_key)
 
-    except Exception as e:
-        err = str(e)
-        logger.error(f"Groq API error ({model}): {err}")
-        raise
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": prompt},
+                ],
+                max_tokens=_max_out,
+                temperature=0.7,
+            )
+            text = response.choices[0].message.content or ""
+            logger.info(f"Groq {model} ({contract.role.value}): {len(text)} chars")
+            return text, GROQ_COST_PER_CALL
+
+        except Exception as e:
+            err = str(e)
+            # 413 "Request too large" — prompt+max_tokens > free-tier TPM limit.
+            # Halve max_tokens and retry once before propagating to the chain.
+            if "413" in err and _attempt == 0:
+                _max_out = _max_out // 2
+                logger.warning(
+                    f"Groq 413 on {model} — reducing max_tokens to {_max_out} and retrying"
+                )
+                continue
+            logger.error(f"Groq API error ({model}): {err}")
+            raise
 
 
 async def call_groq_raw(

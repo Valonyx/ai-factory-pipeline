@@ -39,7 +39,7 @@ def test_prefs_defaults_has_master_mode():
     assert "master_mode" in _PREFS_DEFAULTS, (
         "_PREFS_DEFAULTS is missing 'master_mode' — Issue 36 fix not applied"
     )
-    assert _PREFS_DEFAULTS["master_mode"] == "balanced"
+    assert _PREFS_DEFAULTS["master_mode"] == "basic"  # Phase 8: default changed to free tier
 
 
 def test_prefs_defaults_has_transport_mode():
@@ -143,8 +143,8 @@ async def test_mode_store_apply_to_state():
     }
 
     state = PipelineState(project_id="t-apply", operator_id="op-test-5")
-    # Before: defaults
-    assert state.master_mode == MasterMode.BALANCED
+    # Before apply_to_state: default is BASIC (Phase 8: changed from BALANCED to free-tier safe default)
+    assert state.master_mode == MasterMode.BASIC
 
     store.apply_to_state(state)
 
@@ -275,7 +275,7 @@ async def test_load_prefs_merges_defaults():
         prefs = await load_operator_preferences("op-legacy-36")
 
     assert "master_mode" in prefs, "master_mode not merged from _PREFS_DEFAULTS"
-    assert prefs["master_mode"] == "balanced"
+    assert prefs["master_mode"] == "basic"  # Phase 8: default changed to free tier
     assert prefs["autonomy_mode"] == "copilot"   # row value preserved
 
     # Cleanup

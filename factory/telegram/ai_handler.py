@@ -507,7 +507,7 @@ async def ai_respond(
 # Tracks pending confirmations for destructive actions
 # Format: {user_id: {"action": str, "expires": float}}
 _pending_confirmations: dict[str, dict] = {}
-_CONFIRM_TTL = 60  # seconds to confirm before the action expires
+_CONFIRM_TTL = 300  # seconds to confirm before the action expires (5 min — generous for mobile users)
 
 
 def request_confirmation(user_id: str, action: str) -> None:

@@ -1,15 +1,17 @@
 """
 AI Factory Pipeline v5.8 — Cerebras Provider (Free Tier)
 
-Cerebras offers the fastest LLM inference available — up to 2,000 tokens/sec
-on Llama 3.3 70B. Free tier requires no credit card.
+Cerebras offers the fastest LLM inference available — up to 2,000 tokens/sec.
+Free tier requires no credit card.
 
 Free account: https://inference.cerebras.ai (email sign-up only)
 API key env var: CEREBRAS_API_KEY
 
-Models:
-  Strategist/Engineer → llama-3.3-70b  (GPT-4 class, 8k context)
-  QuickFix            → llama3.1-8b    (very fast, 8k context)
+v5.8.16-phase8 model update (2026-04-23):
+  llama-3.3-70b was REMOVED from Cerebras. Current available models:
+  Strategist/Engineer → qwen-3-235b-a22b-instruct-2507  (235B — best quality)
+  QuickFix            → llama3.1-8b                    (8B — fast)
+  Fallback            → gpt-oss-120b                   (120B — OSS GPT class)
 
 Rate limits (free tier):
   30 requests/minute, 60,000 tokens/minute, 1M tokens/day
@@ -33,12 +35,18 @@ logger = logging.getLogger("factory.integrations.cerebras_provider")
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 
 CEREBRAS_MODEL_MAP: dict[str, str] = {
-    "claude-opus-4-6":            "llama-3.3-70b",
-    "claude-opus-4-5-20250929":   "llama-3.3-70b",
-    "claude-sonnet-4-5-20250929": "llama-3.3-70b",
-    "claude-sonnet-4-20250514":   "llama-3.3-70b",
+    # Strategist/Engineer (Opus-class / Sonnet-class) → best available Cerebras model.
+    # llama-3.3-70b was removed 2025-Q4; qwen-3-235b is now the highest quality option.
+    "claude-opus-4-6":            "qwen-3-235b-a22b-instruct-2507",
+    "claude-opus-4-5-20250929":   "qwen-3-235b-a22b-instruct-2507",
+    "claude-sonnet-4-5-20250929": "qwen-3-235b-a22b-instruct-2507",
+    "claude-sonnet-4-20250514":   "qwen-3-235b-a22b-instruct-2507",
+    # QuickFix (Haiku-class) → fastest available Cerebras model
     "claude-haiku-4-5-20251001":  "llama3.1-8b",
 }
+
+# Fallback model when contract model is not in the map
+CEREBRAS_DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507"
 
 CEREBRAS_COST_PER_CALL: float = 0.0001  # free tier
 
@@ -53,7 +61,7 @@ async def call_cerebras(
     if not api_key:
         raise ValueError("CEREBRAS_API_KEY not configured")
 
-    model = CEREBRAS_MODEL_MAP.get(contract.model, "llama-3.3-70b")
+    model = CEREBRAS_MODEL_MAP.get(contract.model, CEREBRAS_DEFAULT_MODEL)
     if system_prompt is None:
         system_prompt = _get_system_prompt(contract)
 

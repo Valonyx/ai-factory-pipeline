@@ -891,7 +891,7 @@ class PipelineState(BaseModel):
     # ── Autonomy & Execution ──
     autonomy_mode: AutonomyMode = AutonomyMode.AUTOPILOT
     execution_mode: ExecutionMode = ExecutionMode.CLOUD
-    master_mode: MasterMode = MasterMode.BALANCED  # v5.8 — provider selection strategy
+    master_mode: MasterMode = MasterMode.BASIC  # Phase 8: default free tier — operators opt in to paid
     local_heartbeat_alive: bool = False
 
     # ── Pipeline Mode (CREATE vs MODIFY) ──

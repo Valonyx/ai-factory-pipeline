@@ -539,13 +539,48 @@ async def cmd_custom(update: Any, context: Any):
 
 @require_auth
 async def cmd_switch_stack(update: Any, context: Any):
-    """v5.8: /switch_stack — guidance on changing tech stack mid-pipeline."""
+    """v5.8: /switch_stack [stack_name] — Force a specific tech stack.
+
+    Before S2: sets preferred_stack in project metadata so S2 uses it
+    instead of AI auto-selection.
+    After S2: stack is locked — requires restart.
+
+    Usage:
+      /switch_stack react_native
+      /switch_stack flutterflow
+      /switch_stack swift
+    """
+    from factory.core.state import TechStack
     user_id = str(update.effective_user.id)
     active = await get_active_project(user_id)
+
+    _VALID_STACKS = {s.value for s in TechStack}
+    _STACK_ALIASES = {
+        "react": "react_native",
+        "flutter": "flutterflow",
+        "flutter_flow": "flutterflow",
+        "ios": "swift",
+        "android": "kotlin",
+        "python": "python_backend",
+        "backend": "python_backend",
+    }
+
+    arg = " ".join(context.args).lower().strip().replace(" ", "_") if context.args else ""
+    arg = _STACK_ALIASES.get(arg, arg)
+
     if not active:
-        await update.message.reply_text(
-            "No active project. Start one with /new — stack is selected at S2."
-        )
+        if arg in _VALID_STACKS:
+            # No active project — save as operator default for next project
+            await set_operator_preference(user_id, "preferred_stack", arg)
+            await update.message.reply_text(
+                f"✅ Default stack set to *{arg}* — will be used for your next project."
+            )
+        else:
+            await update.message.reply_text(
+                "No active project. Start one with /new.\n\n"
+                "Usage: `/switch_stack react_native`\n"
+                "Available: `flutterflow`, `react_native`, `swift`, `kotlin`, `unity`, `python_backend`"
+            )
         return
 
     state = PipelineState.model_validate(active["state_json"])
@@ -554,24 +589,45 @@ async def cmd_switch_stack(update: Any, context: Any):
     )
     stage = state.current_stage.value
 
-    # Stack can only safely be changed before S2 completes
+    # Stack can be forced before S2 completes (S0/S1 or waiting at S2)
     pre_s2 = state.current_stage in (
         Stage.S0_INTAKE, Stage.S1_LEGAL, Stage.S2_BLUEPRINT,
     )
-    if pre_s2:
+
+    if not arg:
+        # Show current stack + instructions
+        available = ", ".join(sorted(_VALID_STACKS))
+        locked_note = "" if pre_s2 else f"\n⚠️ Stack locked at S2 (now at {stage}) — changes require a restart."
         await update.message.reply_text(
-            f"🔧 Stack not yet locked (stage: {stage}).\n"
-            f"The Strategist will select the best stack at S2.\n"
-            f"To force a specific stack, cancel with /cancel and include\n"
-            f"'stack: react_native' (or your choice) in the app description."
+            f"🔧 Current stack: *{current}*{locked_note}\n\n"
+            f"Usage: `/switch_stack react_native`\n"
+            f"Available: `{available}`"
+        )
+        return
+
+    if arg not in _VALID_STACKS:
+        await update.message.reply_text(
+            f"❌ Unknown stack: `{arg}`\n\n"
+            f"Available: `flutterflow`, `react_native`, `swift`, `kotlin`, `unity`, `python_backend`"
+        )
+        return
+
+    if pre_s2:
+        # Force the stack — store in project_metadata so S2 reads it
+        state.project_metadata["preferred_stack"] = arg
+        await update_project_state(state)
+        await update.message.reply_text(
+            f"✅ Stack forced to *{arg}*.\n"
+            f"S2 will use this instead of AI selection.\n"
+            f"Use /continue if the pipeline is waiting."
         )
     else:
         await update.message.reply_text(
             f"🔧 Current stack: *{current}* (locked at S2, now at {stage})\n\n"
             f"Stack changes mid-pipeline require a full restart:\n"
             f"  1. /cancel — archive current project\n"
-            f"  2. /new — start fresh, include 'stack: <name>' in description\n\n"
-            f"Available stacks: flutterflow, react_native, swift, kotlin, unity, python_backend"
+            f"  2. /new — start fresh, include `stack: {arg}` in description\n\n"
+            f"Or use `/switch_stack {arg}` immediately after /new."
         )
 
 
@@ -2066,6 +2122,26 @@ async def handle_message(update: Any, context: Any):
     # operators never hit paid providers in bot-side AI calls.
     _msg_prefs = await load_operator_preferences(user_id)
     _master_mode = (_msg_prefs.get("master_mode") or "basic").upper()
+
+    # Phase 8 — guard: very short confirmation words ("yes", "ok", "sure" …) must
+    # NOT be classified as "start_project" regardless of what the AI intent model
+    # says, because they look like confirmations for the cost-estimate prompt.
+    # If the message is ≤25 chars and looks like a confirmation/single-word reply,
+    # treat it as casual chat so the user doesn't accidentally spawn a new project
+    # named "Yes".
+    _CONFIRMATION_WORDS = {
+        "yes", "y", "yep", "yeah", "ok", "okay", "sure", "confirm", "do it",
+        "go", "start", "launch", "proceed", "alright", "fine", "no", "n", "nope",
+        "cancel", "abort", "stop",
+    }
+    if len(text.strip()) <= 25 and text.strip().lower() in _CONFIRMATION_WORDS:
+        # If there's a pending confirmation, the has_pending_confirmation block
+        # above already handled it.  If we're here it means there's no pending
+        # confirmation — treat as casual chat rather than a new project idea.
+        reply = await ai_respond(user_id, text, active, intent="casual_chat",
+                                 master_mode=_master_mode)
+        await update.message.reply_text(reply)
+        return
 
     intent, confidence = await classify_intent(text, master_mode=_master_mode)
 

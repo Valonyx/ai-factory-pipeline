@@ -446,9 +446,19 @@ class ModeRouter:
         """Filter to providers that are currently usable.
 
         Checks: quota tracker availability + mode cost rules.
+
+        PRODUCTION GUARD: "mock" provider is ONLY allowed when AI_PROVIDER=mock
+        is set in the environment (unit-test mode). It is NEVER a valid fallback
+        in production regardless of what chains contain it.
         """
+        import os as _os
+        _is_test_mode = _os.getenv("AI_PROVIDER", "").lower() == "mock"
+
         result = []
         for p in candidates:
+            # Hard guard: never use mock provider in production
+            if p.name == "mock" and not _is_test_mode:
+                continue
             # BASIC mode: only free providers
             if self.mode == MasterMode.BASIC and not p.is_free:
                 continue

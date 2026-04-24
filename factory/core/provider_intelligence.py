@@ -150,42 +150,45 @@ ROLE_PROVIDERS: dict[str, dict[str, list[str]]] = {
     "STRATEGIST": {
         # BASIC: free-only.
         # Ordered by: (1) context window desc, (2) output limit desc, (3) quality.
-        # gemini=1M ctx, groq=128K/16K out, cerebras=128K, sambanova=32K,
+        # gemini=1M ctx, groq=128K/8K out, cerebras=128K, sambanova=32K,
         # nvidia_nim_mixtral=64K/16K out, nvidia_nim=128K/4K out.
+        # NOTE: "mock" is NEVER in production chains — it belongs only in unit
+        # tests (AI_PROVIDER=mock env var). ModeRouter._filter_available also
+        # enforces this at runtime.
         "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
                      "nvidia_nim_mixtral", "sambanova", "openrouter",
                      "nvidia_nim_gemma27b", "cloudflare", "github_models",
-                     "nvidia_nim_fast", "mock"],
-        # BALANCED: anthropic for critical, cascade through quality tiers
+                     "nvidia_nim_fast"],
+        # BALANCED/CUSTOM/TURBO: paid providers lead; real provider must succeed.
+        # When all fail the caller gets [all-providers-exhausted] and the pipeline
+        # halts with a meaningful error instead of silently producing garbage content.
         "BALANCED": ["anthropic", "kimi_k2", "gemini", "groq", "cerebras",
                      "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
-                     "openrouter", "mock"],
-        # CUSTOM: operator selects, reasonable default ordering
+                     "openrouter"],
         "CUSTOM":   ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq",
-                     "nvidia_nim_mixtral", "openrouter", "cerebras", "mock"],
-        # TURBO: max quality first
-        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq", "mock"],
+                     "nvidia_nim_mixtral", "openrouter", "cerebras"],
+        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq"],
     },
     "ENGINEER": {
-        # BASIC: highest output tokens first (groq=16 384, cerebras/nvidia_nim_mixtral next).
+        # BASIC: highest output tokens first (groq=8 192, cerebras next).
         "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
                      "nvidia_nim_mixtral", "sambanova", "openrouter",
                      "nvidia_nim_gemma27b", "cloudflare", "github_models",
-                     "nvidia_nim_fast", "mock"],
+                     "nvidia_nim_fast"],
         "BALANCED": ["anthropic", "gemini", "groq", "cerebras",
-                     "nvidia_nim_mixtral", "nvidia_nim", "openrouter", "mock"],
+                     "nvidia_nim_mixtral", "nvidia_nim", "openrouter"],
         "CUSTOM":   ["anthropic", "kimi_k2", "gemini", "groq",
-                     "nvidia_nim_mixtral", "openrouter", "mock"],
-        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq", "mock"],
+                     "nvidia_nim_mixtral", "openrouter"],
+        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq"],
     },
     "QUICK_FIX": {
         # BASIC: fast models first; context window less critical for short fixes.
         "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
                      "nvidia_nim_gemma27b", "sambanova", "openrouter",
-                     "cloudflare", "github_models", "nvidia_nim_fast", "mock"],
-        "BALANCED": ["anthropic", "gemini", "groq", "nvidia_nim", "openrouter", "mock"],
-        "CUSTOM":   ["anthropic", "gemini", "groq", "nvidia_nim", "mock"],
-        "TURBO":    ["anthropic", "gemini", "groq", "mock"],
+                     "cloudflare", "github_models", "nvidia_nim_fast"],
+        "BALANCED": ["anthropic", "gemini", "groq", "nvidia_nim", "openrouter"],
+        "CUSTOM":   ["anthropic", "gemini", "groq", "nvidia_nim"],
+        "TURBO":    ["anthropic", "gemini", "groq"],
     },
     "SCOUT": {
         # BASIC: free search providers — no perplexity (paid), no brave (paid).

@@ -263,7 +263,25 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # ══════════════════════════════════════
     # Phase 1: Stack Selection
     # ══════════════════════════════════════
-    if state.autonomy_mode == AutonomyMode.COPILOT:
+    # Honor forced stack from /switch_stack command stored pre-S2
+    _forced_stack_raw = state.project_metadata.get("preferred_stack")
+    _forced_stack: "TechStack | None" = None
+    if _forced_stack_raw:
+        try:
+            _forced_stack = TechStack(_forced_stack_raw)
+            logger.info(
+                f"[{state.project_id}] S2: Using forced stack from /switch_stack: "
+                f"{_forced_stack.value}"
+            )
+        except ValueError:
+            logger.warning(
+                f"[{state.project_id}] S2: Invalid preferred_stack "
+                f"'{_forced_stack_raw}' — falling back to AI selection"
+            )
+
+    if _forced_stack is not None:
+        selected_stack = _forced_stack
+    elif state.autonomy_mode == AutonomyMode.COPILOT:
         selected_stack = await copilot_stack_selection(
             state, requirements, legal_output,
         )

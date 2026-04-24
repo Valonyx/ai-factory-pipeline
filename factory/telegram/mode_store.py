@@ -80,12 +80,12 @@ class ModeStore:
 
     @property
     def master_mode(self) -> MasterMode:
-        """Active master axis value (defaults to BALANCED)."""
-        raw = self._prefs.get("master_mode", "balanced")
+        """Active master axis value (defaults to BASIC — free tier, fail-safe to $0)."""
+        raw = self._prefs.get("master_mode", "basic")
         try:
             return MasterMode(raw)
         except ValueError:
-            return MasterMode.BALANCED
+            return MasterMode.BASIC
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -186,7 +186,8 @@ class ModeStore:
     ) -> MasterMode:
         """Return the master mode that SHOULD be applied right now.
 
-        Scope precedence: PipelineState.master_mode → operator pref → BALANCED.
+        Scope precedence: PipelineState.master_mode → operator pref → BASIC.
+        Default is BASIC (free tier, $0 fail-safe) to match _PREFS_DEFAULTS.
         """
         if state is not None:
             mm = getattr(state, "master_mode", None)

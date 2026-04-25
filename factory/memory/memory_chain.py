@@ -92,12 +92,14 @@ class MemoryChain:
         from factory.memory.backends.supabase_backend import SupabaseMemoryBackend
         from factory.memory.backends.upstash_backend import UpstashMemoryBackend
         from factory.memory.backends.turso_backend import TursoMemoryBackend
+        from factory.memory.backends.local_backend import LocalMemoryBackend
 
         backends = [
             Neo4jMemoryBackend(),
             SupabaseMemoryBackend(),
             UpstashMemoryBackend(),
             TursoMemoryBackend(),
+            LocalMemoryBackend(),   # always-on local filesystem fallback
         ]
 
         for b in backends:

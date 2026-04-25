@@ -282,12 +282,25 @@ def build_logo_prompt(
         # Distil the scout intel to a single actionable design direction
         intel_hint = f" Design direction based on market research: {scout_intel[:200]}."
 
+    # Allow letters/text when the user explicitly requests them in the description
+    import re as _re
+    _text_requested = bool(_re.search(
+        r"\b(letter|text|number|digit|word|initial|symbol|[A-Z] letter)\b",
+        description, _re.IGNORECASE,
+    ))
+    _text_clause = (
+        f"include the letter/text as described, bold and clear"
+        if _text_requested else
+        "no text, no letters"
+    )
+
     return (
-        f"App icon for '{app_name}'. {description[:120]}.{intel_hint} "
+        f"App icon for '{app_name}'. {description[:200]}.{intel_hint} "
         f"Style: {style} icon design, professional, clean, minimal, "
         f"bold geometric shapes, dominant color {primary_color}, "
-        f"white or transparent background, no text, no letters, "
-        f"suitable for iOS/Android app store, square format, high quality"
+        f"white or transparent background, {_text_clause}, "
+        f"suitable for iOS/Android app store, square format, high quality, "
+        f"ultra-detailed, vibrant colors, sharp edges"
     )
 
 

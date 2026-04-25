@@ -397,20 +397,14 @@ async def cmd_mode(update: Any, context: Any):
             parse_mode="Markdown",
         )
     else:
-        # Show three-axis status
-        if active:
-            state = PipelineState.model_validate(active["state_json"])
-            mm = state.master_mode
-            em = state.execution_mode
-            ctx = "active project"
-        else:
-            prefs = await load_operator_preferences(user_id)
-            mm = MasterMode(prefs.get("master_mode", "basic"))
-            em = ExecutionMode(prefs.get("execution_mode", "cloud"))
-            ctx = "default (no active project)"
-        # Issue 44: show current transport mode, not just the setter commands
-        transport = prefs.get("transport_mode", "polling") if not active else \
-            (await load_operator_preferences(user_id)).get("transport_mode", "polling")
+        # Show three-axis status — always read from saved operator prefs so
+        # changes made via /basic, /exec_local etc. are reflected immediately
+        # regardless of whether a project is currently active.
+        prefs = await load_operator_preferences(user_id)
+        mm = MasterMode(prefs.get("master_mode", "basic"))
+        em = ExecutionMode(prefs.get("execution_mode", "local"))
+        ctx = "active project" if active else "default (no active project)"
+        transport = prefs.get("transport_mode", "polling")
         transport_emoji = "🌐" if transport == "webhook" else "🏠"
         exec_emoji = "☁️" if em.value == "cloud" else "💻" if em.value == "local" else "🔀"
         await update.message.reply_text(
@@ -469,15 +463,10 @@ async def cmd_execution_mode(update: Any, context: Any):
             parse_mode="Markdown",
         )
     else:
-        # Show current execution mode
-        if active:
-            state = PipelineState.model_validate(active["state_json"])
-            em = state.execution_mode
-            ctx = "active project"
-        else:
-            from factory.telegram.mode_store import ModeStore
-            em = await ModeStore.get_effective_execution_mode(user_id, None)
-            ctx = "default (no active project)"
+        # Always read from saved prefs — state snapshot may be stale
+        prefs = await load_operator_preferences(user_id)
+        em = ExecutionMode(prefs.get("execution_mode", "local"))
+        ctx = "active project" if active else "default (no active project)"
         await update.message.reply_text(
             f"⚙️ *Execution Axis* ({ctx})\n\n"
             f"  ☁️  cloud  — Render / Cloud Run (default)\n"

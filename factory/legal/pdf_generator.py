@@ -523,6 +523,28 @@ def _compliance_matrix(legal_output: dict, styles: dict) -> list:
     return elements
 
 
+def _sanitize_research_text(raw: str) -> str:
+    """Remove debug markers, control chars, and raw-API artifacts from scout output."""
+    import re
+    text = raw or ""
+    # Remove block-marker lines: ■■■■ SOURCE A/B, [FUSED:...], [EXA-SCOUT], etc.
+    text = re.sub(r"^.*\[(?:FUSED|EXA-SCOUT|WIKIPEDIA-SCOUT)[^\]]*\].*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^.*PROJECT MEMORY.*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^■+\s*Source\s+\w+.*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r"^■+\s*\w+.*$", "", text, flags=re.MULTILINE)
+    # Remove stray ■ characters and other block characters
+    text = re.sub(r"[■□▪▫●◆◇★☆✓✗]+", "", text)
+    # Remove Iteration markers
+    text = re.sub(r"---\s*Iteration\s+\d+\s+Research\s*---", "", text)
+    # Remove raw JSON fragments
+    text = re.sub(r'\{[^}]{0,80}\}', "", text)
+    # Remove lines that are just internal metadata
+    text = re.sub(r"^\s*(Project ID|Stage)\s*:.*$", "", text, flags=re.MULTILINE)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _regulatory_research_section(legal_research: str, styles: dict) -> list:
     elements = [
         Paragraph("3. KSA Regulatory Research", styles["h1"]),
@@ -536,14 +558,21 @@ def _regulatory_research_section(legal_research: str, styles: dict) -> list:
         Spacer(1, 8),
     ]
 
-    # Split into paragraphs for better rendering
-    research_text = legal_research or "No research available."
-    for para in research_text.split("\n\n")[:40]:  # cap at 40 paragraphs
+    research_text = _sanitize_research_text(legal_research)
+    if not research_text:
+        research_text = "No research available."
+
+    for para in research_text.split("\n\n")[:40]:
         clean = para.strip()
-        if clean:
-            # Escape XML special chars
-            clean = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            elements.append(Paragraph(clean, styles["body_small"]))
+        if not clean:
+            continue
+        # Escape XML special chars for ReportLab
+        clean = clean.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        # Skip lines that are still just punctuation/symbols after cleanup
+        if len(clean.replace(".", "").replace("-", "").strip()) < 5:
+            continue
+        elements.append(Paragraph(clean, styles["body_small"]))
+        elements.append(Spacer(1, 4))
 
     elements.append(PageBreak())
     return elements

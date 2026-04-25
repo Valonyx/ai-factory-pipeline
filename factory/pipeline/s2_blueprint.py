@@ -310,7 +310,7 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # Phase 2: Architecture Design
     # ══════════════════════════════════════
     _arch_base_prompt = (
-        f"DESIGN THE APP ARCHITECTURE.\n\n"
+        f"DESIGN THE APP ARCHITECTURE AND FEATURE SET.\n\n"
             f"App: {requirements.get('app_description', '')}\n"
             f"Stack: {selected_stack.value}\n"
             f"Features (must): {requirements.get('features_must', [])}\n"
@@ -319,7 +319,8 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
             f"Data classification: "
             f"{legal_output.get('data_classification', 'internal')}\n"
             f"Regulatory: {legal_output.get('regulatory_bodies', [])}\n\n"
-            f"Return ONLY valid JSON (no markdown, no code fences):\n"
+            f"Return ONLY valid JSON (no markdown, no code fences).\n"
+            f"ALL arrays must have AT LEAST the minimum items shown.\n\n"
             f'{{\n'
             f'  "screens": [{{"name": "...", "purpose": "...", '
             f'"components": ["..."], "data_bindings": '
@@ -330,7 +331,21 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
             f'"purpose": "..."}}],\n'
             f'  "auth_method": "email|phone|social|none",\n'
             f'  "services": {{"backend": "...", "storage": "...", "auth": "..."}},\n'
-            f'  "env_vars": {{"VAR_NAME": "description"}}\n'
+            f'  "env_vars": {{"VAR_NAME": "description"}},\n'
+            f'  "feature_list": [\n'
+            f'    {{"id": "F1", "name": "...", "description": "...", '
+            f'"priority": "high|medium|low", "acceptance_criteria": "..."}},\n'
+            f'    ... (minimum 6 features)\n'
+            f'  ],\n'
+            f'  "user_journeys": [\n'
+            f'    {{"id": "J1", "persona": "...", "goal": "...", '
+            f'"steps": ["step1", "step2", "step3"]}},\n'
+            f'    ... (minimum 4 journeys)\n'
+            f'  ],\n'
+            f'  "analytics_events": [\n'
+            f'    {{"event": "...", "trigger": "...", "properties": {{"key": "value"}}}},\n'
+            f'    ... (minimum 6 events)\n'
+            f'  ]\n'
             f'}}'
     )
     from factory.pipeline.stage_chain import inject_chain_context as _inject_cc
@@ -367,15 +382,73 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     # ══════════════════════════════════════
     # Phase 3: Blueprint Assembly
     # ══════════════════════════════════════
+
+    # Derive fallback feature_list, user_journeys, analytics_events from
+    # screens/api_endpoints if AI didn't return them (free tier often omits them).
+    _screens = architecture.get("screens", [])
+    _endpoints = architecture.get("api_endpoints", [])
+    _app_desc = requirements.get("app_description", "")
+    _app_name = requirements.get("app_name", state.project_id)
+
+    _feature_list = architecture.get("feature_list", [])
+    if len(_feature_list) < 5:
+        # Derive from screens + must-have features
+        _derived = []
+        for i, s in enumerate(_screens[:10]):
+            _derived.append({
+                "id": f"F{i+1}", "name": s.get("name", f"Feature {i+1}"),
+                "description": s.get("purpose", ""),
+                "priority": "high" if i < 3 else "medium",
+                "acceptance_criteria": f"{s.get('name','')} screen loads and functions correctly",
+            })
+        for f in requirements.get("features_must", []):
+            _derived.append({
+                "id": f"FM{len(_derived)+1}", "name": str(f),
+                "description": str(f), "priority": "high",
+                "acceptance_criteria": f"{f} works as specified",
+            })
+        _feature_list = (_feature_list + _derived)[:max(6, len(_feature_list))]
+
+    _user_journeys = architecture.get("user_journeys", [])
+    if len(_user_journeys) < 3:
+        _user_journeys = [
+            {"id": "J1", "persona": "New User", "goal": f"Sign up and start using {_app_name}",
+             "steps": ["Open app", "Create account", "Complete onboarding", "Use core feature"]},
+            {"id": "J2", "persona": "Returning User", "goal": f"Complete primary task in {_app_name}",
+             "steps": ["Open app", "Log in", "Navigate to main feature", "Complete action"]},
+            {"id": "J3", "persona": "Power User", "goal": "Access advanced features",
+             "steps": ["Log in", "Access settings", "Configure preferences", "Use advanced feature"]},
+            {"id": "J4", "persona": "Admin", "goal": "Manage content and users",
+             "steps": ["Log in as admin", "View dashboard", "Manage entries", "Review analytics"]},
+        ] + _user_journeys
+
+    _analytics_events = architecture.get("analytics_events", [])
+    if len(_analytics_events) < 5:
+        _derived_events = [
+            {"event": "app_open", "trigger": "App launched", "properties": {"source": "string"}},
+            {"event": "user_signup", "trigger": "New account created", "properties": {"method": "string"}},
+            {"event": "user_login", "trigger": "User authenticates", "properties": {"method": "string"}},
+            {"event": "feature_used", "trigger": "Core feature activated", "properties": {"feature_name": "string"}},
+            {"event": "session_end", "trigger": "App backgrounded", "properties": {"duration_seconds": "int"}},
+            {"event": "error_encountered", "trigger": "Unhandled error", "properties": {"error_type": "string"}},
+        ]
+        for ep in _endpoints[:4]:
+            _derived_events.append({
+                "event": f"api_{ep.get('path','').strip('/').replace('/','_')}",
+                "trigger": ep.get("purpose", "API call"),
+                "properties": {"status": "string"},
+            })
+        _analytics_events = (_analytics_events + _derived_events)[:max(6, len(_analytics_events))]
+
     blueprint_data = {
-        "app_name": requirements.get("app_name", state.project_id),
-        "app_description": requirements.get("app_description", ""),
+        "app_name": _app_name,
+        "app_description": _app_desc,
         "app_category": requirements.get("app_category", "other"),
         "target_platforms": requirements.get("target_platforms", ["ios", "android"]),
         "selected_stack": selected_stack.value,
-        "screens": architecture.get("screens", []),
+        "screens": _screens,
         "data_model": architecture.get("data_model", []),
-        "api_endpoints": architecture.get("api_endpoints", []),
+        "api_endpoints": _endpoints,
         "auth_method": architecture.get("auth_method", "email"),
         "payment_mode": legal_output.get("payment_mode", "SANDBOX"),
         "legal_classification": legal_output.get("data_classification", "internal"),
@@ -385,6 +458,9 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
         "generated_by": ["strategist_opus"],
         "services": architecture.get("services", {}),
         "env_vars": architecture.get("env_vars", {}),
+        "feature_list": _feature_list,
+        "user_journeys": _user_journeys,
+        "analytics_events": _analytics_events,
     }
 
     # ══════════════════════════════════════
@@ -611,11 +687,24 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     except Exception as _si_err:
         logger.debug(f"[{state.project_id}] S2 store_stage_insight failed (non-fatal): {_si_err}")
 
+    # ── Local Memory: persist full blueprint for offline resilience ───
+    try:
+        from factory.memory.backends.local_backend import LocalMemoryBackend
+        _lm = LocalMemoryBackend()
+        await _lm.store_blueprint(state.project_id, {
+            "project_id": state.project_id,
+            "operator_id": state.operator_id,
+            **state.s2_output,
+        })
+    except Exception as _lm_err:
+        logger.debug(f"[{state.project_id}] S2 local-memory write failed (non-fatal): {_lm_err}")
+
     logger.info(
         f"[{state.project_id}] S2 complete: "
         f"stack={selected_stack.value}, "
-        f"screens={len(architecture.get('screens', []))}, "
-        f"collections={len(architecture.get('data_model', []))}, "
+        f"screens={len(_screens)}, "
+        f"features={len(_feature_list)}, "
+        f"journeys={len(_user_journeys)}, "
         f"ieee_docs={len(ieee_docs)}"
     )
     return state

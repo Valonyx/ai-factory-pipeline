@@ -214,6 +214,18 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
 
     state.s1_output = legal_output
 
+    # ── Local Memory: persist legal output for offline resilience ────
+    try:
+        from factory.memory.backends.local_backend import LocalMemoryBackend
+        _lm = LocalMemoryBackend()
+        await _lm.store_legal(state.project_id, {
+            "project_id": state.project_id,
+            "operator_id": state.operator_id,
+            **legal_output,
+        })
+    except Exception as _lm_err:
+        logger.debug(f"[{state.project_id}] S1 local-memory write failed (non-fatal): {_lm_err}")
+
     logger.info(
         f"[{state.project_id}] S1 complete: "
         f"risk={legal_output.get('overall_risk')}, "

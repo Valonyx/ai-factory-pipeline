@@ -160,6 +160,15 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
         ttl_hours=720,
     )
 
+    # Mother Memory: full S0 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        await store_pipeline_state_snapshot(
+            state.project_id, "s0_intake", requirements
+        )
+    except Exception:
+        pass
+
     logger.info(
         f"[{state.project_id}] S0 complete: "
         f"{requirements.get('app_name', 'unnamed')} "

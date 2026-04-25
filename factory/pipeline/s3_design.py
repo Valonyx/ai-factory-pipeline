@@ -281,6 +281,15 @@ async def s3_design_node(state: PipelineState) -> PipelineState:
     except Exception as _si_err:
         logger.debug(f"[{state.project_id}] S3 store_stage_insight failed (non-fatal): {_si_err}")
 
+    # Mother Memory: full S3 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        await store_pipeline_state_snapshot(
+            state.project_id, "s3_design", state.s3_output
+        )
+    except Exception:
+        pass
+
     # ── Operator summary notification ──
     try:
         from factory.telegram.notifications import notify_operator

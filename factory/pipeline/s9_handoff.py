@@ -512,6 +512,15 @@ async def s9_handoff_node(state: PipelineState) -> PipelineState:
         "verify_check_count": (state.s8_output or {}).get("check_count", 0),
     }
 
+    # Mother Memory: full S9 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        await store_pipeline_state_snapshot(
+            state.project_id, "s9_handoff", state.s9_output
+        )
+    except Exception:
+        pass
+
     logger.info(
         f"[{state.project_id}] S9 Handoff complete: "
         f"delivered={True}, "

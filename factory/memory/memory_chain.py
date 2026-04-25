@@ -270,6 +270,76 @@ class MemoryChain:
             "get_insights", operator_id=operator_id, limit=limit
         )
 
+    # ── Stage output snapshots ────────────────────────────────────────
+    # These fan-out to all backends that implement the method.
+    # Only LocalMemoryBackend implements them today; other backends
+    # silently skip via getattr returning None.
+
+    async def store_pipeline_state(
+        self, project_id: str, stage: str, state_dict: dict
+    ) -> bool:
+        record = {
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "stage": stage,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "state": state_dict,
+        }
+        return await self._fan_out("store_pipeline_state", record)
+
+    async def store_blueprint(self, project_id: str, blueprint: dict) -> bool:
+        record = {
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            **blueprint,
+        }
+        return await self._fan_out("store_blueprint", record)
+
+    async def store_legal(self, project_id: str, legal: dict) -> bool:
+        record = {
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            **legal,
+        }
+        return await self._fan_out("store_legal", record)
+
+    async def store_operator_state(
+        self, operator_id: str, state_str: str, context: dict
+    ) -> bool:
+        record = {
+            "id": str(uuid.uuid4()),
+            "operator_id": str(operator_id),
+            "state": state_str,
+            "context": context or {},
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        return await self._fan_out("store_operator_state", record)
+
+    async def store_scout_cache(
+        self,
+        query_hash: str,
+        source: str,
+        query_preview: str,
+        result_preview: str,
+        urls: list,
+        operator_id: str = "",
+        project_id: str = "",
+    ) -> bool:
+        record = {
+            "id": str(uuid.uuid4()),
+            "query_hash": query_hash,
+            "source": source,
+            "query_preview": query_preview,
+            "result_preview": result_preview[:800],
+            "urls": urls[:10],
+            "operator_id": operator_id,
+            "project_id": project_id,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        return await self._fan_out("store_scout_cache", record)
+
     # ═══════════════════════════════════════════════════════════════════
     # Sync-on-Restore
     # ═══════════════════════════════════════════════════════════════════

@@ -6,18 +6,23 @@ Writes every memory record to the local filesystem under
 
 Directory structure:
   local_memory/
-    messages/        — Telegram conversation turns (one JSON file per message)
-    decisions/       — Pipeline stage decisions
-    insights/        — Long-term operator facts and preferences
+    messages/           — Telegram conversation turns (one JSON file per message)
+    decisions/          — Pipeline stage decisions
+    insights/           — Long-term operator facts and preferences
+    operator_states/    — Operator conversational state snapshots
+    scout_cache/        — Scout search result cache entries
     projects/
       {project_id}/
-        blueprint/   — S2 blueprint outputs
-        legal/       — S1 legal classification outputs
-        pipeline/    — Stage-by-stage pipeline state snapshots
-        artifacts/   — Generated file references
+        blueprint/      — S2 blueprint outputs
+        legal/          — S1 legal classification outputs
+        pipeline/       — Stage-by-stage pipeline state snapshots
+        artifacts/      — Generated file references
 
 Always available (no API key, no network). Acts as the ultimate fallback
 and as a human-readable audit trail.
+
+All write methods accept a flat dict (single `record` argument) so they
+are compatible with MemoryChain._fan_out() which calls method(record).
 
 Usage: automatically registered in MemoryChain.initialize() alongside
 Supabase, Turso, Upstash, Neo4j.
@@ -42,7 +47,6 @@ def _root() -> Path:
     """Return local_memory root — next to the project root."""
     base = Path(os.getenv("LOCAL_MEMORY_ROOT", "")).expanduser()
     if not base or base == Path(""):
-        # Walk up from this file to find the project root (contains factory/)
         here = Path(__file__).resolve()
         for parent in here.parents:
             if (parent / "factory").is_dir():
@@ -85,6 +89,9 @@ class LocalMemoryBackend(MemoryBackend):
     Never exhausts quota, never goes offline. Stores everything in
     local_memory/ next to the project root so the team can inspect,
     version-control, or hand off to other tools.
+
+    All write methods accept a flat record dict (single argument) so
+    they work with MemoryChain._fan_out() which calls method(record).
     """
 
     name = "local"
@@ -99,7 +106,14 @@ class LocalMemoryBackend(MemoryBackend):
     async def setup(self) -> bool:
         try:
             root = _root()
-            for sub in ("messages", "decisions", "insights", "projects"):
+            for sub in (
+                "messages",
+                "decisions",
+                "insights",
+                "operator_states",
+                "scout_cache",
+                "projects",
+            ):
                 (root / sub).mkdir(parents=True, exist_ok=True)
             logger.info(f"[local-memory] root: {root}")
             return True
@@ -107,7 +121,7 @@ class LocalMemoryBackend(MemoryBackend):
             logger.warning(f"[local-memory] setup failed: {e}")
             return False
 
-    # ── Write operations ──────────────────────────────────────────────
+    # ── Core write operations ─────────────────────────────────────────
 
     async def store_message(self, record: dict) -> bool:
         try:
@@ -149,47 +163,95 @@ class LocalMemoryBackend(MemoryBackend):
             logger.debug(f"[local-memory] store_insight: {e}")
             return False
 
-    async def store_pipeline_state(self, project_id: str, stage: str, state_dict: dict) -> bool:
-        """Save a pipeline stage snapshot under projects/{pid}/pipeline/."""
+    # ── Stage output snapshots ────────────────────────────────────────
+
+    async def store_pipeline_state(self, record: dict) -> bool:
+        """Save a full pipeline stage output snapshot.
+
+        Accepts a flat dict with at minimum: project_id, stage, state.
+        Compatible with MemoryChain._fan_out("store_pipeline_state", record).
+        """
         try:
             ts = int(time.time() * 1000)
-            pid = _safe_filename(project_id)
-            stg = _safe_filename(stage)
+            pid = _safe_filename(record.get("project_id", "unknown"))
+            stg = _safe_filename(record.get("stage", "unknown"))
             _write(
                 _root() / "projects" / pid / "pipeline" / f"{stg}_{ts}.json",
-                {"project_id": project_id, "stage": stage, "ts": ts, "state": state_dict},
+                record,
             )
             return True
         except Exception as e:
             logger.debug(f"[local-memory] store_pipeline_state: {e}")
             return False
 
-    async def store_blueprint(self, project_id: str, blueprint: dict) -> bool:
-        """Save blueprint output under projects/{pid}/blueprint/."""
+    async def store_blueprint(self, record: dict) -> bool:
+        """Save blueprint output.
+
+        Accepts a flat dict with at minimum: project_id.
+        Compatible with MemoryChain._fan_out("store_blueprint", record).
+        """
         try:
-            pid = _safe_filename(project_id)
+            pid = _safe_filename(record.get("project_id", "unknown"))
             ts = int(time.time() * 1000)
             _write(
                 _root() / "projects" / pid / "blueprint" / f"blueprint_{ts}.json",
-                blueprint,
+                record,
             )
             return True
         except Exception as e:
             logger.debug(f"[local-memory] store_blueprint: {e}")
             return False
 
-    async def store_legal(self, project_id: str, legal: dict) -> bool:
-        """Save legal dossier output under projects/{pid}/legal/."""
+    async def store_legal(self, record: dict) -> bool:
+        """Save legal dossier output.
+
+        Accepts a flat dict with at minimum: project_id.
+        Compatible with MemoryChain._fan_out("store_legal", record).
+        """
         try:
-            pid = _safe_filename(project_id)
+            pid = _safe_filename(record.get("project_id", "unknown"))
             ts = int(time.time() * 1000)
             _write(
                 _root() / "projects" / pid / "legal" / f"legal_{ts}.json",
-                legal,
+                record,
             )
             return True
         except Exception as e:
             logger.debug(f"[local-memory] store_legal: {e}")
+            return False
+
+    # ── Operator state / preferences ─────────────────────────────────
+
+    async def store_operator_state(self, record: dict) -> bool:
+        """Save operator conversational state or preference update.
+
+        Accepts a flat dict with at minimum: operator_id.
+        Compatible with MemoryChain._fan_out("store_operator_state", record).
+        """
+        try:
+            ts = int(time.time() * 1000)
+            op = _safe_filename(record.get("operator_id", "unknown"))
+            _write(_root() / "operator_states" / f"{op}_{ts}.json", record)
+            return True
+        except Exception as e:
+            logger.debug(f"[local-memory] store_operator_state: {e}")
+            return False
+
+    # ── Scout result cache ────────────────────────────────────────────
+
+    async def store_scout_cache(self, record: dict) -> bool:
+        """Save a scout search cache entry.
+
+        Accepts a flat dict with at minimum: query_hash, source.
+        Compatible with MemoryChain._fan_out("store_scout_cache", record).
+        """
+        try:
+            ts = int(time.time() * 1000)
+            qh = _safe_filename(record.get("query_hash", "unknown"))
+            _write(_root() / "scout_cache" / f"{qh}_{ts}.json", record)
+            return True
+        except Exception as e:
+            logger.debug(f"[local-memory] store_scout_cache: {e}")
             return False
 
     # ── Read operations ───────────────────────────────────────────────
@@ -206,7 +268,7 @@ class LocalMemoryBackend(MemoryBackend):
                 r for r in records
                 if r.get("operator_id") == operator_id
             ]
-            return filtered[-(limit + offset) :][-limit:] if limit else filtered
+            return filtered[-(limit + offset):][-limit:] if limit else filtered
         except Exception:
             return []
 
@@ -217,15 +279,26 @@ class LocalMemoryBackend(MemoryBackend):
         except Exception:
             return []
 
-    async def get_insights(self, operator_id: str) -> list[dict]:
+    async def get_insights(self, operator_id: str, limit: int = 8) -> list[dict]:
         try:
-            op = _safe_filename(operator_id)
             records = _read_all(_root() / "insights")
-            return [r for r in records if r.get("operator_id") == operator_id]
+            filtered = [r for r in records if r.get("operator_id") == operator_id]
+            return filtered[-limit:] if limit else filtered
         except Exception:
             return []
 
-    # ── MemoryBackend contract ─────────────────────────────────────────
+    async def get_pipeline_state(self, project_id: str, stage: str = "") -> list[dict]:
+        """Return all pipeline state snapshots for a project (optionally filtered by stage)."""
+        try:
+            pid = _safe_filename(project_id)
+            records = _read_all(_root() / "projects" / pid / "pipeline")
+            if stage:
+                records = [r for r in records if r.get("stage") == stage]
+            return records
+        except Exception:
+            return []
+
+    # ── MemoryBackend contract ────────────────────────────────────────
 
     async def write(self, operation: str, record: dict) -> bool:
         """Route write to the correct sub-store based on operation name."""
@@ -237,15 +310,15 @@ class LocalMemoryBackend(MemoryBackend):
         if op in ("store_insight", "insight"):
             return await self.store_insight(record)
         if op == "store_pipeline_state":
-            return await self.store_pipeline_state(
-                record.get("project_id", ""),
-                record.get("stage", "unknown"),
-                record,
-            )
+            return await self.store_pipeline_state(record)
         if op == "store_blueprint":
-            return await self.store_blueprint(record.get("project_id", ""), record)
+            return await self.store_blueprint(record)
         if op == "store_legal":
-            return await self.store_legal(record.get("project_id", ""), record)
+            return await self.store_legal(record)
+        if op in ("store_operator_state", "operator_state"):
+            return await self.store_operator_state(record)
+        if op == "store_scout_cache":
+            return await self.store_scout_cache(record)
         # Generic fallback — write to decisions
         return await self.store_decision(record)
 
@@ -259,5 +332,13 @@ class LocalMemoryBackend(MemoryBackend):
         if op in ("get_decisions", "decisions"):
             return await self.get_decisions(params.get("project_id", ""))
         if op in ("get_insights", "insights"):
-            return await self.get_insights(params.get("operator_id", ""))
+            return await self.get_insights(
+                params.get("operator_id", ""),
+                limit=params.get("limit", 8),
+            )
+        if op in ("get_pipeline_state", "pipeline_state"):
+            return await self.get_pipeline_state(
+                params.get("project_id", ""),
+                stage=params.get("stage", ""),
+            )
         return []

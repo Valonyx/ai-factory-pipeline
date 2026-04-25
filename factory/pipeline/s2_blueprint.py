@@ -687,17 +687,21 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     except Exception as _si_err:
         logger.debug(f"[{state.project_id}] S2 store_stage_insight failed (non-fatal): {_si_err}")
 
-    # ── Local Memory: persist full blueprint for offline resilience ───
+    # ── Mother Memory: full blueprint snapshot → fan-out to ALL backends
     try:
-        from factory.memory.backends.local_backend import LocalMemoryBackend
-        _lm = LocalMemoryBackend()
-        await _lm.store_blueprint(state.project_id, {
-            "project_id": state.project_id,
+        from factory.memory.mother_memory import (
+            store_blueprint_snapshot,
+            store_pipeline_state_snapshot,
+        )
+        await store_blueprint_snapshot(state.project_id, {
             "operator_id": state.operator_id,
             **state.s2_output,
         })
-    except Exception as _lm_err:
-        logger.debug(f"[{state.project_id}] S2 local-memory write failed (non-fatal): {_lm_err}")
+        await store_pipeline_state_snapshot(
+            state.project_id, "s2_blueprint", state.s2_output
+        )
+    except Exception as _mm_err:
+        logger.debug(f"[{state.project_id}] S2 mother-memory snapshot failed (non-fatal): {_mm_err}")
 
     logger.info(
         f"[{state.project_id}] S2 complete: "

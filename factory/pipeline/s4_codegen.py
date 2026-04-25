@@ -2129,6 +2129,14 @@ async def _codegen_full_generation(
     except Exception as _si_err:
         logger.debug(f"[{state.project_id}] S4 store_stage_insight failed (non-fatal): {_si_err}")
 
+    # Mother Memory: full S4 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        _s4_snap = {k: v for k, v in (state.s4_output or {}).items() if k != "generated_files"}
+        await store_pipeline_state_snapshot(state.project_id, "s4_codegen", _s4_snap)
+    except Exception:
+        pass
+
     # ── Quality Gate (Issue 17) ──────────────────────────────────────
     # Skip gates in dry-run / test mode (DRY_RUN=true).
     if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):

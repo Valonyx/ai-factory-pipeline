@@ -213,6 +213,15 @@ async def s6_test_node(state: PipelineState) -> PipelineState:
     except Exception as _si_err:
         logger.debug(f"[{state.project_id}] S6 store_stage_insight failed (non-fatal): {_si_err}")
 
+    # Mother Memory: full S6 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        await store_pipeline_state_snapshot(
+            state.project_id, "s6_test", state.s6_output
+        )
+    except Exception:
+        pass
+
     # ── Step 4: Pre-deploy gate (FIX-08) ──
     if test_output.get("passed", False):
         deploy_approved = await pre_deploy_gate(state)

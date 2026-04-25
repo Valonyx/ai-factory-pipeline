@@ -154,13 +154,27 @@ _operator_states: dict[str, dict] = {}
 async def set_operator_state(
     operator_id: str, state: str, context: Optional[dict] = None,
 ) -> None:
-    """Set conversational state for operator — write-through to Supabase."""
+    """Set conversational state for operator — write-through to Supabase + Local Memory."""
     _operator_states[operator_id] = {"state": state, "context": context or {}}
     try:
         from factory.integrations.supabase import set_operator_state_db
         await set_operator_state_db(operator_id, state, context)
     except Exception as e:
         logger.warning(f"[decisions] Failed to persist operator state to DB: {e}")
+
+    # Mirror to Local Memory
+    try:
+        from factory.memory.backends.local_backend import LocalMemoryBackend as _LMB
+        from datetime import datetime as _dt, timezone as _tz
+        await _LMB().store_operator_state({
+            "operator_id": str(operator_id),
+            "type": "conv_state",
+            "state": state,
+            "context": context or {},
+            "ts": _dt.now(_tz.utc).isoformat(),
+        })
+    except Exception:
+        pass
 
 
 async def get_operator_state(operator_id: str) -> Optional[dict]:
@@ -382,6 +396,27 @@ async def set_operator_preference(
         logger.warning(f"[decisions] Failed to persist preference to DB: {e}")
 
     sqlite_ok = _prefs_sqlite_write(operator_id, _operator_prefs[operator_id])
+
+    # Mirror to Local Memory — always available, no network needed
+    try:
+        from factory.memory.backends.local_backend import LocalMemoryBackend as _LMB
+        import asyncio as _asyncio
+        from datetime import datetime as _dt, timezone as _tz
+        _lm_record = {
+            "operator_id": str(operator_id),
+            "type": "preference",
+            "key": key,
+            "value": str(value),
+            "prefs": _operator_prefs[operator_id],
+            "ts": _dt.now(_tz.utc).isoformat(),
+        }
+        try:
+            _loop = _asyncio.get_running_loop()
+            _loop.create_task(_LMB().store_operator_state(_lm_record))
+        except RuntimeError:
+            pass
+    except Exception:
+        pass
 
     logger.info(
         f"[pref-write] operator={operator_id} key={key} value={value!r} "

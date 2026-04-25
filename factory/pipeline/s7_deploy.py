@@ -275,6 +275,15 @@ async def s7_deploy_node(state: PipelineState) -> PipelineState:
     except Exception as _si_err:
         logger.debug(f"[{state.project_id}] S7 store_stage_insight failed (non-fatal): {_si_err}")
 
+    # Mother Memory: full S7 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        await store_pipeline_state_snapshot(
+            state.project_id, "s7_deploy", state.s7_output
+        )
+    except Exception:
+        pass
+
     logger.info(
         f"[{state.project_id}] S7 Deploy: "
         f"platforms={list(deploy_results.keys())}, "

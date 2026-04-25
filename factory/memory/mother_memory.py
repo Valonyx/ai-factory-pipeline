@@ -319,6 +319,67 @@ async def store_source_file(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Stage Output Snapshots — fan-out to all backends via chain
+# ═══════════════════════════════════════════════════════════════════
+
+async def store_pipeline_state_snapshot(
+    project_id: str,
+    stage: str,
+    state_dict: dict,
+) -> None:
+    """Persist a full pipeline stage output snapshot to all backends.
+
+    Unlike store_pipeline_decision (which stores a human-readable string),
+    this stores the complete structured output dict so any backend can
+    reconstruct the exact stage state.
+    """
+    _record_mm_write()
+    try:
+        chain = await _get_chain()
+        await chain.store_pipeline_state(project_id, stage, state_dict)
+        logger.debug(f"[mother-memory] pipeline state snapshot: {project_id}/{stage}")
+    except Exception as e:
+        logger.debug(f"[mother-memory] store_pipeline_state_snapshot error: {e}")
+
+
+async def store_blueprint_snapshot(project_id: str, blueprint: dict) -> None:
+    """Persist the full S2 blueprint output to all backends."""
+    _record_mm_write()
+    try:
+        chain = await _get_chain()
+        await chain.store_blueprint(project_id, blueprint)
+        logger.debug(f"[mother-memory] blueprint snapshot: {project_id}")
+    except Exception as e:
+        logger.debug(f"[mother-memory] store_blueprint_snapshot error: {e}")
+
+
+async def store_legal_snapshot(project_id: str, legal: dict) -> None:
+    """Persist the full S1 legal dossier output to all backends."""
+    _record_mm_write()
+    try:
+        chain = await _get_chain()
+        await chain.store_legal(project_id, legal)
+        logger.debug(f"[mother-memory] legal snapshot: {project_id}")
+    except Exception as e:
+        logger.debug(f"[mother-memory] store_legal_snapshot error: {e}")
+
+
+async def store_operator_state_snapshot(
+    operator_id: str,
+    state_str: str,
+    context: dict,
+) -> None:
+    """Mirror operator conversational state to all backends (incl. Local Memory)."""
+    _record_mm_write()
+    try:
+        chain = await _get_chain()
+        await chain.store_operator_state(operator_id, state_str, context)
+        logger.debug(f"[mother-memory] operator state: {operator_id} → {state_str}")
+    except Exception as e:
+        logger.debug(f"[mother-memory] store_operator_state_snapshot error: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Retrieval
 # ═══════════════════════════════════════════════════════════════════
 

@@ -213,6 +213,15 @@ async def s5_build_node(state: PipelineState) -> PipelineState:
             f"[{state.project_id}] S5 store_stage_insight failed (non-fatal): {_si_err}"
         )
 
+    # Mother Memory: full S5 output snapshot → fan-out to ALL backends
+    try:
+        from factory.memory.mother_memory import store_pipeline_state_snapshot
+        await store_pipeline_state_snapshot(
+            state.project_id, "s5_build", state.s5_output
+        )
+    except Exception:
+        pass
+
     # War Room for build failures (skip for source_only — no binary to fix)
     if not build_result.get("success") and build_result.get("errors") and not source_only:
         for error in build_result["errors"][:3]:

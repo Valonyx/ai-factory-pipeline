@@ -214,17 +214,19 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
 
     state.s1_output = legal_output
 
-    # ── Local Memory: persist legal output for offline resilience ────
+    # ── Mother Memory: full legal snapshot → fan-out to ALL backends ─
     try:
-        from factory.memory.backends.local_backend import LocalMemoryBackend
-        _lm = LocalMemoryBackend()
-        await _lm.store_legal(state.project_id, {
-            "project_id": state.project_id,
+        from factory.memory.mother_memory import (
+            store_legal_snapshot,
+            store_pipeline_state_snapshot,
+        )
+        await store_legal_snapshot(state.project_id, {
             "operator_id": state.operator_id,
             **legal_output,
         })
-    except Exception as _lm_err:
-        logger.debug(f"[{state.project_id}] S1 local-memory write failed (non-fatal): {_lm_err}")
+        await store_pipeline_state_snapshot(state.project_id, "s1_legal", legal_output)
+    except Exception as _mm_err:
+        logger.debug(f"[{state.project_id}] S1 mother-memory snapshot failed (non-fatal): {_mm_err}")
 
     logger.info(
         f"[{state.project_id}] S1 complete: "

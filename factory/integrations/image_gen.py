@@ -1,5 +1,5 @@
 """
-AI Factory Pipeline v5.8 — Free Image Generation Chain
+AI Factory Pipeline — Free Image Generation Chain
 
 Resilient chain of free/low-cost image generation providers:
   1. Pollinations.ai — completely free, no API key, no signup
@@ -25,7 +25,11 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
+from factory import __version__ as _VERSION
+
 logger = logging.getLogger("factory.integrations.image_gen")
+
+_UA = f"AI-Factory/{_VERSION}"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -136,7 +140,7 @@ async def _call_pollinations(
     )
 
     def _fetch() -> bytes:
-        req = urllib.request.Request(url, headers={"User-Agent": "AI-Factory/5.8"})
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
         with urllib.request.urlopen(req, timeout=60) as resp:
             return resp.read()
 
@@ -244,7 +248,7 @@ async def _call_together_image(
         return body["data"][0]["url"]
 
     def _fetch_image(img_url: str) -> bytes:
-        req = urllib.request.Request(img_url, headers={"User-Agent": "AI-Factory/5.6"})
+        req = urllib.request.Request(img_url, headers={"User-Agent": _UA})
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read()
 
@@ -318,3 +322,110 @@ def build_splash_prompt(
         f"{primary_color} to {secondary_color}, centered composition, "
         f"friendly and professional, minimal UI, no text, vector-style"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Prompt Enhancer
+# ═══════════════════════════════════════════════════════════════════
+
+async def enhance_image_prompt(
+    raw_prompt: str,
+    app_name: str = "",
+    target_market: str = "KSA",
+    max_tokens: int = 200,
+) -> str:
+    """Use the AI chain to enrich a raw image prompt with market-specific design direction.
+
+    Returns the enhanced prompt string, or ``raw_prompt`` unchanged on any error
+    (so callers never block on a prompt-enhancement failure).
+    """
+    from factory.core.dry_run import is_dry_run, is_mock_provider
+    if is_dry_run() or is_mock_provider():
+        return raw_prompt
+
+    try:
+        from factory.integrations.ai_chain import call_ai
+        system = (
+            "You are a professional art director for mobile app icons. "
+            "Rewrite the user's image prompt to be more vivid, specific, and market-appropriate. "
+            f"Target market: {target_market}. "
+            "Output ONLY the improved prompt — no explanation, no quotes."
+        )
+        user_msg = f"App: {app_name}\nOriginal prompt: {raw_prompt}"
+        enhanced = await call_ai(user_msg, system=system, max_tokens=max_tokens)
+        enhanced = enhanced.strip().strip('"').strip("'")
+        return enhanced if len(enhanced) > 20 else raw_prompt
+    except Exception as e:
+        logger.warning(f"[image_gen] prompt enhancement failed: {e}")
+        return raw_prompt
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Candidate Scoring
+# ═══════════════════════════════════════════════════════════════════
+
+# Provider quality weights: higher = preferred when multiple candidates succeed.
+_PROVIDER_QUALITY: dict[str, float] = {
+    "nvidia_nim_flux": 1.0,
+    "huggingface": 0.85,
+    "together": 0.80,
+    "pollinations": 0.60,
+}
+
+
+def score_image_candidate(data: bytes, provider: str) -> float:
+    """Score a raw image candidate.  Higher is better.
+
+    Combines file-size heuristic (more bytes → more detail) with a
+    provider quality weight so premium providers win ties.
+    """
+    if not data or len(data) < 1000:
+        return 0.0
+    size_score = min(len(data) / 500_000, 1.0)  # cap at 500 KB
+    quality = _PROVIDER_QUALITY.get(provider, 0.5)
+    return round(size_score * 0.6 + quality * 0.4, 4)
+
+
+async def generate_image_best_of(
+    prompt: str,
+    width: int = 1024,
+    height: int = 1024,
+    style: str = "",
+    seed: Optional[int] = None,
+    providers: Optional[list[str]] = None,
+) -> Optional[bytes]:
+    """Generate from up to *providers* in parallel and return the highest-scoring result.
+
+    Falls back to the standard serial chain if all parallel calls fail.
+    """
+    from factory.core.dry_run import is_dry_run, is_mock_provider
+    if is_mock_provider() or is_dry_run():
+        return None
+
+    candidate_providers = providers or _IMAGE_PROVIDER_CHAIN
+    full_prompt = f"{prompt}, {style}" if style else prompt
+    _seed = seed or int(time.time()) % 999999
+
+    tasks = {
+        p: asyncio.create_task(_call_provider(p, full_prompt, width, height, _seed))
+        for p in candidate_providers
+    }
+
+    candidates: list[tuple[float, bytes, str]] = []
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    for provider, result in zip(tasks.keys(), results):
+        if isinstance(result, Exception):
+            logger.warning(f"[image_gen] candidate {provider} failed: {result}")
+            continue
+        if result:
+            score = score_image_candidate(result, provider)
+            candidates.append((score, result, provider))
+            logger.info(f"[image_gen] candidate {provider}: {len(result)} bytes, score={score}")
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda t: t[0], reverse=True)
+    best_score, best_data, best_provider = candidates[0]
+    logger.info(f"[image_gen] best candidate: {best_provider} (score={best_score})")
+    return best_data

@@ -71,10 +71,11 @@ async def s0_intake_node(state: PipelineState) -> PipelineState:
     # which degrades correctly with a mock AI provider (explicit "app name: ..." patterns
     # are resolved without any AI call; mock AI fallback gives app_name=None → APP_NAME_MISSING).
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     ):
         if state.s0_output:
             logger.info(f"[{state.project_id}] S0: DRY_RUN — using pre-populated s0_output")
@@ -623,10 +624,11 @@ async def _logo_flow(state: PipelineState, requirements: dict) -> Optional[dict]
     """
     # CI / DRY_RUN / mock: no real image generation infrastructure — skip logo flow.
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     ):
         logger.info(f"[{state.project_id}] DRY_RUN — skipping logo generation")
         return None

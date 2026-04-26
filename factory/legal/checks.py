@@ -340,7 +340,8 @@ async def check_deploy_time(state: PipelineState) -> dict:
     Default: 06:00–23:00 AST (UTC+3)
     """
     import os as _os
-    if _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+    from factory.core.dry_run import is_dry_run
+    if is_dry_run():
         return {"passed": True, "details": "Dry-run: time-of-day check skipped", "blocking": False}
 
     from datetime import timedelta

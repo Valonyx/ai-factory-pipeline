@@ -90,10 +90,11 @@ async def s6_test_node(state: PipelineState) -> PipelineState:
     # DRY_RUN / CI / mock: no real test runner — auto-pass so the pipeline
     # can reach S7 without triggering the S4→S5→S6 retry loop.
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     ):
         logger.info(f"[{state.project_id}] S6: DRY_RUN — auto-passing tests")
         state.s6_output = {
@@ -172,7 +173,8 @@ async def s6_test_node(state: PipelineState) -> PipelineState:
 
     # ── Issue 10: tests_executed quality gate ──────────────────────
     # Skip in DRY_RUN / test mode to avoid breaking existing mock tests.
-    _dry = os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+    from factory.core.dry_run import is_dry_run
+    _dry = is_dry_run()
     if not _dry:
         total_tests = test_output.get("total_tests", 0)
         if total_tests < MIN_TESTS_EXECUTED:
@@ -357,9 +359,10 @@ async def _analyze_test_results(
     except json.JSONDecodeError:
         import os
         # In CLI/dry-run: mock executor has no exit_code — treat as passed
+        from factory.core.dry_run import is_dry_run as _is_dry_run
         dry_run = (
             os.getenv("TELEGRAM_BOT_TOKEN") is None
-            or os.getenv("DRY_RUN", "false").lower() == "true"
+            or _is_dry_run()
         )
         exit_code = result.get("exit_code", 0 if dry_run else -1)
         passed = exit_code == 0
@@ -542,7 +545,8 @@ async def pre_deploy_gate(state: PipelineState) -> bool:
     """
     # CLI / dry-run bypass — no Telegram configured, auto-approve immediately
     import os
-    if os.getenv("TELEGRAM_BOT_TOKEN") is None or os.getenv("DRY_RUN", "false").lower() == "true":
+    from factory.core.dry_run import is_dry_run as _is_dry_run_gate
+    if os.getenv("TELEGRAM_BOT_TOKEN") is None or _is_dry_run_gate():
         logger.info(f"[{state.project_id}] pre_deploy_gate: CLI/dry-run bypass — auto-approved")
         return True
     from factory.telegram.notifications import notify_operator

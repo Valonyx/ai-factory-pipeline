@@ -98,10 +98,11 @@ async def s5_build_node(state: PipelineState) -> PipelineState:
     Cost target: <$0.50
     """
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     _is_ci = (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     )
 
     blueprint_data = state.s2_output or {}

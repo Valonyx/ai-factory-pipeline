@@ -58,10 +58,11 @@ async def s8_verify_node(state: PipelineState) -> PipelineState:
     # DRY_RUN / CI / mock: no real deployment infrastructure — auto-pass verification
     # so the pipeline can reach S9 without an infinite S8→S7 retry loop.
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     ):
         logger.info(f"[{state.project_id}] S8: DRY_RUN — auto-passing verification")
         state.s8_output = {
@@ -266,7 +267,8 @@ async def _verify_store_guidelines(state: PipelineState) -> Optional[dict]:
     """
     # CLI/dry-run bypass — no real Scout available, auto-pass guidelines check
     import os
-    if os.getenv("TELEGRAM_BOT_TOKEN") is None or os.getenv("DRY_RUN", "false").lower() == "true":
+    from factory.core.dry_run import is_dry_run as _is_dry_run_s8
+    if os.getenv("TELEGRAM_BOT_TOKEN") is None or _is_dry_run_s8():
         logger.info(f"[{state.project_id}] S7: dry-run bypass — guidelines auto-passed")
         return {"type": "store_guidelines", "passed": True, "details": "dry-run bypass"}
 

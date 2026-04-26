@@ -466,10 +466,11 @@ async def present_decision(
     # CI / DRY_RUN / mock: auto-select recommended option without waiting for human input.
     # This prevents E2E tests from hanging 3600 s on logo / platform / mode decisions.
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     ):
         selected = options[recommended]["value"] if options else ""
         logger.info(f"[CI/DryRun] Decision '{decision_type}' → auto-selected recommended: {selected!r}")
@@ -609,10 +610,11 @@ async def wait_for_operator_reply(
     # Short timeouts (≤30s) are used by unit tests that exercise the mechanism itself
     # (e.g. resolving a pending future in 0.05s) — those must run the real logic.
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     _is_ci = (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     )
     if _is_ci and timeout > 30:
         logger.info(
@@ -771,10 +773,11 @@ async def present_platform_multiselect(
 
     # CI / DRY_RUN / mock: no human operator — return default immediately.
     import os as _os
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        _os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_dry_run()
         or _os.getenv("PIPELINE_ENV", "").lower() == "ci"
-        or _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        or is_mock_provider()
     ):
         logger.info(f"[CI/DryRun] present_platform_multiselect: returning default={default}")
         return default

@@ -380,19 +380,75 @@ def format_halt_message(state: PipelineState, reason: str = "") -> str:
     return truncate_message(msg)
 
 
-def format_welcome_message(first_name: str) -> str:
+def format_welcome_message(
+    first_name: str,
+    prefs: dict | None = None,
+    has_active_project: bool = False,
+) -> str:
     """Format the /start welcome message.
+
+    Phase 1 FIX-MODE-04: Renders the *live* three-axis state from operator
+    preferences, with version sourced from factory.__version__ and a build
+    tag (e.g. "F7"). The previous implementation hardcoded "v5.8" and
+    "Defaults: 🆓 Basic | ☁️ Cloud | 🏠 Polling" regardless of what the
+    operator had actually configured.
+
+    Args:
+        first_name: Operator's Telegram first name.
+        prefs: Loaded operator preferences (master_mode, execution_mode,
+            transport_mode). When None, defaults are shown with an explicit
+            "(defaults — no saved preferences)" label.
+        has_active_project: When True, label state as "active project";
+            otherwise "default (no active project)".
 
     Spec: §5.2 (/start)
     """
+    from factory import __version__
+
+    try:
+        from factory import __build_tag__  # type: ignore[attr-defined]
+    except ImportError:
+        __build_tag__ = ""
+
+    version_str = f"v{__version__}"
+    if __build_tag__:
+        version_str = f"{version_str}, {__build_tag__}!"
+
+    _MASTER = {
+        "basic":    ("🆓", "Basic (free only, $0)"),
+        "balanced": ("⚖️", "Balanced"),
+        "turbo":    ("🚀", "Turbo (max performance)"),
+        "custom":   ("🎛", "Custom"),
+    }
+    _EXEC = {
+        "cloud":  ("☁️", "Cloud"),
+        "local":  ("💻", "Local"),
+        "hybrid": ("🔀", "Hybrid"),
+    }
+    _TRANS = {
+        "polling": ("🏠", "Polling"),
+        "webhook": ("🌐", "Webhook"),
+    }
+
+    if prefs is None:
+        prefs = {}
+        scope_label = "defaults — no saved preferences"
+    else:
+        scope_label = "active project" if has_active_project else "default (no active project)"
+
+    mm_emoji, mm_label = _MASTER.get(prefs.get("master_mode", "basic"), ("⚙️", str(prefs.get("master_mode", "basic"))))
+    ex_emoji, ex_label = _EXEC.get(prefs.get("execution_mode", "local"), ("⚙️", str(prefs.get("execution_mode", "local"))))
+    tr_emoji, tr_label = _TRANS.get(prefs.get("transport_mode", "polling"), ("⚙️", str(prefs.get("transport_mode", "polling"))))
+
     return (
-        f"🏭 Welcome to AI Factory v5.8, {first_name}!\n\n"
+        f"🏭 Welcome to AI Factory {version_str}, {first_name}!\n\n"
         f"🔧 Builds apps from your description.\n"
         f"📱 Stacks: FlutterFlow, React Native, Swift, "
         f"Kotlin, Unity, Python\n"
         f"🚀 Deploys: iOS, Android, Web\n\n"
         f"Just describe your app idea, or /new to start.\n\n"
-        f"Defaults: 🆓 Basic (free) | ☁️ Cloud | 🏠 Polling\n"
+        f"Current ({scope_label}):\n"
+        f"  {mm_emoji} {mm_label} | {ex_emoji} {ex_label} | {tr_emoji} {tr_label}\n"
         f"  Change: /mode | /execution_mode | /online\n\n"
         f"/help for all commands."
     )

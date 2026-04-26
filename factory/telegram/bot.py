@@ -282,9 +282,25 @@ async def archive_project(project_id: str) -> None:
 
 @require_auth
 async def cmd_start(update: Any, context: Any):
-    """§5.2: /start — Welcome message."""
+    """§5.2: /start — Welcome message.
+
+    Phase 1 FIX-MODE-04: render live three-axis state from operator prefs
+    instead of the hardcoded "Defaults: ..." line.
+    """
     user = update.effective_user.first_name
-    await update.message.reply_text(format_welcome_message(user))
+    user_id = str(update.effective_user.id)
+    try:
+        prefs = await load_operator_preferences(user_id)
+    except Exception as e:
+        logger.error(f"[bot] cmd_start: load_operator_preferences failed: {e}")
+        prefs = None
+    try:
+        active = await get_active_project(user_id)
+    except Exception:
+        active = None
+    await update.message.reply_text(
+        format_welcome_message(user, prefs=prefs, has_active_project=bool(active))
+    )
 
 
 @require_auth

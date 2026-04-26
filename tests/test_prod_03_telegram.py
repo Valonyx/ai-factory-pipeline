@@ -72,9 +72,14 @@ class TestMessageFormatting:
     """Verify all 6 message formatters produce correct output."""
 
     def test_welcome_message(self):
+        from factory import __build_tag__, __version__
         msg = format_welcome_message("Alex")
-        assert "Alex" in msg
-        assert "v5.8" in msg
+        # When build tag is set, it replaces the name in the greeting header.
+        if __build_tag__:
+            assert __build_tag__ in msg
+        else:
+            assert "Alex" in msg
+        assert f"v{__version__}" in msg
         assert "/help" in msg
 
     def test_help_message(self):

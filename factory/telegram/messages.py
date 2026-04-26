@@ -443,10 +443,10 @@ def format_welcome_message(
     ex_emoji, ex_label = _EXEC.get(prefs.get("execution_mode", "local"), ("⚙️", str(prefs.get("execution_mode", "local"))))
     tr_emoji, tr_label = _TRANS.get(prefs.get("transport_mode", "polling"), ("⚙️", str(prefs.get("transport_mode", "polling"))))
 
-    # When build tag produces its own "!", greet name on a separate token
-    # so the line reads "AI Factory v5.8.0, F7! — Hello, Alex!" not "F7!, Alex!"
+    # When build tag is set, it IS the operator alias — no separate name.
+    # "AI Factory v5.8.0, F7!"  (F7 = the operator, no first_name duplication)
     if __build_tag__:
-        greeting_line = f"🏭 AI Factory {version_str} — Hello, {first_name}!"
+        greeting_line = f"🏭 AI Factory {version_str}"
     else:
         greeting_line = f"🏭 Welcome to AI Factory {version_str}, {first_name}!"
 

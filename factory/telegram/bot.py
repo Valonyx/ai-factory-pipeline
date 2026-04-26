@@ -480,60 +480,89 @@ async def cmd_execution_mode(update: Any, context: Any):
         )
 
 
+_MASTER_LABELS = {
+    "basic":    ("🆓", "Basic (free only, $0)"),
+    "balanced": ("⚖️", "Balanced"),
+    "turbo":    ("🚀", "Turbo (max performance)"),
+    "custom":   ("🎛", "Custom"),
+}
+
+_EXEC_LABELS = {
+    "cloud":  ("☁️", "Cloud (Render / Cloud Run)"),
+    "local":  ("💻", "Local (your machine)"),
+    "hybrid": ("🔀", "Hybrid (cloud build, local deploy)"),
+}
+
+
 async def _set_master_mode(update: Any, user_id: str, mode_str: str) -> None:
     """Shared logic for master-mode shortcut commands.
 
-    Saves the preference directly — no delegation through cmd_mode so there
-    are no context.args mutations or blocking state-writes that could silently
-    swallow the reply.
+    Phase 1 FIX-MODE-02: write-through-await pattern. Persist FIRST, read
+    back the canonical stored value via load_operator_preferences, THEN
+    reply with the confirmed live state. The previous "reply first / save
+    later" pattern was a race window that produced ghost confirmations
+    when the save failed silently.
     """
-    # Reply FIRST — before any database I/O so the user always sees feedback
-    # even if the preference save fails.
-    _MASTER_LABELS = {
-        "basic":    ("🆓", "Basic (free only, $0)"),
-        "balanced": ("⚖️", "Balanced"),
-        "turbo":    ("🚀", "Turbo (max performance)"),
-        "custom":   ("🎛", "Custom"),
-    }
     emoji, label = _MASTER_LABELS.get(mode_str, ("⚙️", mode_str.upper()))
-    try:
-        await update.message.reply_text(
-            f"{emoji} Master mode → {label}\n"
-            f"Saving... use /mode to confirm."
-        )
-    except Exception as reply_err:
-        logger.error(f"[bot] reply_text failed in _set_master_mode: {reply_err}")
-    # Now save the preference
+    save_failed = False
     try:
         await set_operator_preference(user_id, "master_mode", mode_str)
         logger.info(f"[bot] master_mode set to '{mode_str}' for {user_id}")
     except Exception as e:
+        save_failed = True
         logger.error(f"[bot] set_operator_preference master_mode '{mode_str}' failed: {e}", exc_info=True)
+
+    confirmed = mode_str
+    try:
+        prefs = await load_operator_preferences(user_id)
+        confirmed = prefs.get("master_mode", mode_str)
+    except Exception as e:
+        logger.error(f"[bot] read-back load_operator_preferences failed: {e}", exc_info=True)
+
+    if save_failed:
+        body = f"⚠️ Could not save master mode (still {confirmed}). Try again."
+    elif confirmed != mode_str:
+        body = f"⚠️ Master mode requested {label}, but stored value is {confirmed}."
+    else:
+        body = f"{emoji} Master mode → {label} (confirmed)"
+    try:
+        await update.message.reply_text(body)
+    except Exception as reply_err:
+        logger.error(f"[bot] reply_text failed in _set_master_mode: {reply_err}")
 
 
 async def _set_execution_mode(update: Any, user_id: str, mode_str: str) -> None:
     """Shared logic for execution-mode shortcut commands.
 
-    Replies FIRST, then saves — ensures the user always sees feedback.
+    Phase 1 FIX-MODE-02: write-through-await pattern — save, read-back,
+    reply with confirmed live state.
     """
-    _EXEC_LABELS = {
-        "cloud":  ("☁️", "Cloud (Render / Cloud Run)"),
-        "local":  ("💻", "Local (your machine)"),
-        "hybrid": ("🔀", "Hybrid (cloud build, local deploy)"),
-    }
     emoji, label = _EXEC_LABELS.get(mode_str, ("⚙️", mode_str.upper()))
-    try:
-        await update.message.reply_text(
-            f"{emoji} Execution mode → {label}\n"
-            f"Saving... use /execution_mode to confirm."
-        )
-    except Exception as reply_err:
-        logger.error(f"[bot] reply_text failed in _set_execution_mode: {reply_err}")
+    save_failed = False
     try:
         await set_operator_preference(user_id, "execution_mode", mode_str)
         logger.info(f"[bot] execution_mode set to '{mode_str}' for {user_id}")
     except Exception as e:
+        save_failed = True
         logger.error(f"[bot] set_operator_preference execution_mode '{mode_str}' failed: {e}", exc_info=True)
+
+    confirmed = mode_str
+    try:
+        prefs = await load_operator_preferences(user_id)
+        confirmed = prefs.get("execution_mode", mode_str)
+    except Exception as e:
+        logger.error(f"[bot] read-back load_operator_preferences failed: {e}", exc_info=True)
+
+    if save_failed:
+        body = f"⚠️ Could not save execution mode (still {confirmed}). Try again."
+    elif confirmed != mode_str:
+        body = f"⚠️ Execution mode requested {label}, but stored value is {confirmed}."
+    else:
+        body = f"{emoji} Execution mode → {label} (confirmed)"
+    try:
+        await update.message.reply_text(body)
+    except Exception as reply_err:
+        logger.error(f"[bot] reply_text failed in _set_execution_mode: {reply_err}")
 
 
 @require_auth

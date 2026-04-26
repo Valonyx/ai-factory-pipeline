@@ -15,6 +15,8 @@ Required env var:
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import logging
 import os
@@ -49,7 +51,7 @@ async def ocr_image(
     Returns:
         Extracted text content.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return "[MOCK:ocr] extracted text"
 
     api_key = _get_api_key()

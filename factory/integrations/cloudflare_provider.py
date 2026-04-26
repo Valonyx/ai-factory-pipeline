@@ -18,6 +18,8 @@ Issue 20: Added as part of full free-provider integration.
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -42,7 +44,7 @@ async def call_cloudflare(
     Raises ValueError if credentials are not configured.
     Raises on API errors so the caller can update the provider chain.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         mock_text = f"[MOCK:cloudflare:{contract.role.value}] {prompt[:80]}"
         logger.debug(f"[cloudflare] mock mode — returning stub response")
         return mock_text, CLOUDFLARE_COST_PER_CALL

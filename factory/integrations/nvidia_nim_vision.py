@@ -23,6 +23,8 @@ Pipeline uses:
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import logging
 import os
@@ -64,7 +66,7 @@ async def describe_image(
     Returns:
         Model's description/analysis text.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return f"[MOCK:vision] {prompt[:60]}"
 
     api_key = _get_api_key()

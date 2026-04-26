@@ -21,6 +21,8 @@ Cost: $0.00 within free-tier limits.
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import logging
 import os
@@ -41,7 +43,7 @@ def _credentials() -> tuple[str, str]:
 
 
 def is_available() -> bool:
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return True
     account_id, api_token = _credentials()
     return bool(account_id and api_token)
@@ -68,7 +70,7 @@ async def describe_image(
         ValueError: Credentials not configured.
         Exception:  HTTP/API errors.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return f"[MOCK:cloudflare_vision] {prompt[:60]}"
 
     account_id, api_token = _credentials()

@@ -27,6 +27,8 @@ Spec Authority: v5.8.16 §G-embed
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -79,7 +81,7 @@ async def embed_texts(
           "error":      str,                — only when degraded=True
         }
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "embeddings": [[0.0] * 128] * len(texts),
             "model": "mock",
@@ -119,7 +121,7 @@ async def embed_texts(
 
 async def embed_code(texts: list[str]) -> dict:
     """Embed source code using the NIM code-specific model."""
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {"embeddings": [[0.0] * 256] * len(texts), "model": "mock", "source": "mock", "degraded": False}
     try:
         vecs, model = await _call_nvidia_embed(texts, "nvidia/nv-embedcode-7b-v1")
@@ -132,7 +134,7 @@ async def embed_code(texts: list[str]) -> dict:
 
 async def embed_multimodal(texts: list[str]) -> dict:
     """Embed text using the NIM multimodal (VL) model."""
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {"embeddings": [[0.0] * 256] * len(texts), "model": "mock", "source": "mock", "degraded": False}
     try:
         vecs, model = await _call_nvidia_embed(

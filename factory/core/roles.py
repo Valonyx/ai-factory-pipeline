@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from factory.core.dry_run import is_mock_provider
+
 from factory.core.state import (
     AIRole,
     BudgetExceeded,
@@ -222,8 +224,7 @@ async def call_ai(
     # ── Step 7: Persist Strategist decisions to Mother Memory ──
     # Key planning outputs are stored so any future provider has institutional memory.
     # Skip in mock mode to prevent background tasks from connecting to real backends.
-    if role == AIRole.STRATEGIST and len(response) > 50 and \
-            os.getenv("AI_PROVIDER", "").lower() != "mock":
+    if role == AIRole.STRATEGIST and len(response) > 50 and not is_mock_provider():
         try:
             from factory.memory.mother_memory import store_pipeline_decision
             import asyncio
@@ -300,8 +301,9 @@ async def _call_anthropic(
     from factory.core.quota_tracker import get_quota_tracker
     from factory.core.provider_intelligence import provider_intelligence
 
-    # CI / test mock shortcut — preserve existing test infrastructure
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    # CI / test mock shortcut — gated by is_mock_provider() so AI_PROVIDER=mock
+    # is a no-op in production (no PYTEST_CURRENT_TEST / CI / TESTING marker).
+    if is_mock_provider():
         return (f"[MOCK:{contract.role.value}] {prompt[:80]}", 0.0001)
 
     # ── Resolve active master mode + context from pipeline state ──

@@ -451,8 +451,8 @@ class ModeRouter:
         is set in the environment (unit-test mode). It is NEVER a valid fallback
         in production regardless of what chains contain it.
         """
-        import os as _os
-        _is_test_mode = _os.getenv("AI_PROVIDER", "").lower() == "mock"
+        from factory.core.dry_run import is_mock_provider
+        _is_test_mode = is_mock_provider()
 
         result = []
         for p in candidates:

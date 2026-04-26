@@ -25,6 +25,8 @@ Cost: $0.00 within free-tier limits.
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import json
 import logging
@@ -50,7 +52,7 @@ def _api_key() -> str:
 
 
 def is_available() -> bool:
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return True
     return bool(_api_key())
 
@@ -66,7 +68,7 @@ async def describe_image(
     Returns model response text.
     Raises ValueError if OPENROUTER_API_KEY is missing.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return f"[MOCK:qwen_vl] {prompt[:60]}"
 
     api_key = _api_key()

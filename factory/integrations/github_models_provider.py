@@ -18,6 +18,8 @@ Issue 20: Added as part of full free-provider integration.
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -42,7 +44,7 @@ async def call_github_models(
     Raises ValueError if GITHUB_TOKEN is not set.
     Raises on API errors so the caller can update the provider chain.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         mock_text = f"[MOCK:github_models:{contract.role.value}] {prompt[:80]}"
         logger.debug(f"[github_models] mock mode — returning stub response")
         return mock_text, GITHUB_MODELS_COST_PER_CALL

@@ -23,6 +23,8 @@ Spec Authority: v5.8.16 §G-rerank
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -68,7 +70,7 @@ async def rerank_passages(
           "error":    str,   — only when degraded=True
         }
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         ranked = [(i, 1.0 - i * 0.1, p) for i, p in enumerate(passages[:top_n or len(passages)])]
         return {"ranked": ranked, "model": "mock", "source": "mock", "degraded": False}
 

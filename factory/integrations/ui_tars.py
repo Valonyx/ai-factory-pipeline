@@ -29,6 +29,8 @@ Pipeline uses:
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import logging
 import os
@@ -67,7 +69,7 @@ async def plan_ui_action(
 
     Falls back to NIM vision analysis if UI-TARS is not available.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "action": "done",
             "target": None,

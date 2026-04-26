@@ -63,9 +63,10 @@ async def generate_image(
     # ── Mock / CI short-circuit ──
     # When AI_PROVIDER=mock or DRY_RUN=true, skip real HTTPS calls entirely.
     # Tests and CI runs should never hit pollinations.ai / HuggingFace / Together.
+    from factory.core.dry_run import is_dry_run, is_mock_provider
     if (
-        os.getenv("AI_PROVIDER", "").lower() == "mock"
-        or os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes")
+        is_mock_provider()
+        or is_dry_run()
         or os.getenv("IMAGE_PROVIDER_CHAIN", "").lower() == "mock"
     ):
         logger.info("[image_gen] Mock/dry-run mode — skipping real image generation")

@@ -23,6 +23,8 @@ Spec Authority: v5.8.16 §G-ocr
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 
@@ -65,7 +67,7 @@ async def ocr_image(
           "error":    str   — only when degraded=True,
         }
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "text": "[MOCK:ocr] extracted text content",
             "model": "mock",

@@ -15,6 +15,8 @@ Required env var:
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -54,7 +56,7 @@ async def rerank(
     Returns:
         List of (original_index, score, text) tuples, sorted by score descending.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return [(i, 1.0 - i * 0.1, p) for i, p in enumerate(passages[:top_n or len(passages)])]
 
     if not passages:

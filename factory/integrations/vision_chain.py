@@ -29,6 +29,8 @@ Spec Authority: v5.8.16 §G4 (Vision Gap closure)
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -75,7 +77,7 @@ async def analyze_image(
           "error":    str   — error summary (only when degraded=True),
         }
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "text": f"[MOCK:vision_chain] {prompt[:60]}",
             "source": "mock",
@@ -189,7 +191,7 @@ def available_providers() -> list[str]:
 
 
 def _provider_has_key(provider: str) -> bool:
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return True
     env_map = {
         "nvidia_nim_vision":   ["NVIDIA_NIM_VISION_API_KEY", "NVIDIA_NIM_API_KEY"],

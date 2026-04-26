@@ -25,6 +25,8 @@ Required env vars (one per model, falls back to NVIDIA_NIM_MULTI_API_KEY):
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -80,7 +82,7 @@ async def embed_texts(
     Raises:
         ValueError if no key is configured or all models fail.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         logger.debug("[nvidia_nim_embeddings] mock mode")
         return [[0.0] * 1024 for _ in texts]
 

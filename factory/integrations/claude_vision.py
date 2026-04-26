@@ -16,6 +16,8 @@ Key gate:  raises ValueError if ANTHROPIC_API_KEY is absent.
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import logging
 import os
@@ -48,7 +50,7 @@ async def call_claude_vision(
         ValueError: If ANTHROPIC_API_KEY is not set.
         Exception:  On network or API errors (caller should catch).
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return (f"[MOCK:claude_vision] {prompt[:60]}", 0.0001)
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -90,6 +92,6 @@ async def call_claude_vision(
 
 def is_available() -> bool:
     """True when ANTHROPIC_API_KEY is present (or mock mode active)."""
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return True
     return bool(os.getenv("ANTHROPIC_API_KEY", ""))

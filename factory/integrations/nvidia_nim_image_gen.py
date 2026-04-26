@@ -19,6 +19,8 @@ Returns raw bytes (PNG).
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import base64
 import logging
 import os
@@ -61,7 +63,7 @@ async def generate_image_flux(
     Returns:
         PNG bytes, or None if generation fails.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         logger.debug("[nvidia_nim_image_gen] mock mode")
         return None
 

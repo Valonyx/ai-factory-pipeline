@@ -40,6 +40,8 @@ Spec Authority: v5.8.16 §G5-design (Figma-AI-like chain)
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import json
 import logging
 import os
@@ -94,7 +96,7 @@ async def generate_design_asset(
           "error":      error summary (only when degraded),
         }
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         is_image = asset_type in ("mockup_image", "splash_image")
         return {
             "asset_type": asset_type,
@@ -466,7 +468,7 @@ async def generate_design_tokens_from_spec(design_spec: dict, app_name: str = ""
 
     Suitable for import into Figma Tokens, Style Dictionary, or Flutter ThemeData.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "asset_type": "design_tokens",
             "content": json.dumps({"color": {"primary": "#6366f1"}, "font": {"family": "Inter"}}),

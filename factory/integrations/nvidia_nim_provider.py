@@ -20,6 +20,8 @@ All models use NVIDIA_NIM_MULTI_API_KEY as fallback when dedicated key absent.
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -115,7 +117,7 @@ async def call_nvidia_nim(
         ValueError if the API key is not configured.
         Exception on API errors (quota, auth, network) so the caller can cascade.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         cfg = _MODEL_REGISTRY.get(provider, _MODEL_REGISTRY["nvidia_nim"])
         mock_text = f"[MOCK:nvidia_nim:{cfg['model']}:{contract.role.value}] {prompt[:80]}"
         logger.debug(f"[nvidia_nim] mock mode — {provider}")

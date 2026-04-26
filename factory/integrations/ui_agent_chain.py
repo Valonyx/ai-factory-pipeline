@@ -30,6 +30,8 @@ Spec Authority: v5.8.16 §G4 (UI-agent gap closure)
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -78,7 +80,7 @@ async def plan_ui_action(
           "degraded":    True only when all providers failed,
         }
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "action": "done",
             "target": None,
@@ -128,7 +130,7 @@ async def parse_screen_elements(
     Returns list of dicts: {"label", "type", "bbox", "text"}.
     Uses Qwen2.5-VL (best at element grounding) then falls back to OmniParser.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return [{"label": "button", "type": "button", "bbox": [0, 0, 1, 1], "text": "Submit"}]
 
     for provider in _AGENT_CHAIN:

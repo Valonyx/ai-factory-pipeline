@@ -15,6 +15,8 @@ Docs: https://docs.sambanova.ai/cloud/latest/
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -39,7 +41,7 @@ async def call_sambanova(
     Raises ValueError if SAMBANOVA_API_KEY is not configured.
     Raises on API errors so the caller can cascade to the next provider.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         mock_text = f"[MOCK:sambanova:{contract.role.value}] {prompt[:80]}"
         logger.debug("[sambanova] mock mode — returning stub response")
         return mock_text, 0.0

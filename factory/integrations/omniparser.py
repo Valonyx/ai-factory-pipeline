@@ -23,6 +23,8 @@ When not available, falls back to NVIDIA NIM vision models for basic UI analysis
 """
 from __future__ import annotations
 
+from factory.core.dry_run import is_mock_provider
+
 import logging
 import os
 from typing import Optional
@@ -71,7 +73,7 @@ async def parse_screenshot(
     Falls back through NIM vision → Claude Vision. Returns a typed
     degraded result (never fakes success) when all options are exhausted.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    if is_mock_provider():
         return {
             "elements": [{"label": "button", "text": "Submit", "bbox": [0, 0, 100, 40], "type": "button"}],
             "structured_text": "Button: Submit",

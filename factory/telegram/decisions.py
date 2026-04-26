@@ -210,10 +210,15 @@ async def clear_operator_state(operator_id: str) -> None:
 _operator_prefs: dict[str, dict] = {}
 
 _PREFS_DEFAULTS: dict = {
-    "autonomy_mode":  "autopilot",
-    "execution_mode": "local",      # Default: run pipeline code on local machine
-    "master_mode":    "basic",      # Default: free tier — fail safe to $0
-    "transport_mode": "polling",    # Default: local polling (no Render webhook needed)
+    "autonomy_mode":   "autopilot",
+    "execution_mode":  "local",    # Default: run pipeline code on local machine
+    "master_mode":     "basic",    # Default: free tier — fail safe to $0
+    "transport_mode":  "polling",  # Default: local polling (no Render webhook needed)
+    # FIX-CHAIN: CUSTOM mode chain storage.
+    # Comma-separated provider list used when master_mode == "custom".
+    # Empty string = fall back to BALANCED chain.
+    "custom_ai_chain":    "",
+    "custom_scout_chain": "",
 }
 _PREFS_STATE_KEY = "__prefs"
 

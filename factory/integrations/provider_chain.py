@@ -54,6 +54,18 @@ class ProviderStatus:
     consecutive_errors: int = 0
     last_error: str = ""
     last_used_at: Optional[float] = None
+    # FIX-CHAIN: rolling latency estimate (EWMA α=0.2)
+    latency_p50_ms: float = 0.0   # 0 = no data yet
+    _latency_samples: int = field(default=0, repr=False)
+
+    def record_latency(self, ms: float) -> None:
+        """Update rolling latency estimate using exponential moving average."""
+        if self._latency_samples == 0:
+            self.latency_p50_ms = ms
+        else:
+            alpha = 0.2
+            self.latency_p50_ms = alpha * ms + (1 - alpha) * self.latency_p50_ms
+        self._latency_samples += 1
 
     def mark_quota_exhausted(self, reset_in_seconds: int = 86400) -> None:
         """Mark provider as quota-exhausted. Defaults to 24h reset."""
@@ -77,11 +89,13 @@ class ProviderStatus:
                 f"{self.consecutive_errors} consecutive errors: {error}"
             )
 
-    def mark_success(self) -> None:
+    def mark_success(self, latency_ms: float | None = None) -> None:
         self.consecutive_errors = 0
         self.last_error = ""
         self.available = True
         self.last_used_at = time.time()
+        if latency_ms is not None:
+            self.record_latency(latency_ms)
 
     def check_reset(self) -> bool:
         """Returns True if quota has reset since it was exhausted."""
@@ -134,9 +148,9 @@ class ProviderChain:
         if provider in self.statuses:
             self.statuses[provider].mark_error(error)
 
-    def mark_success(self, provider: str) -> None:
+    def mark_success(self, provider: str, latency_ms: float | None = None) -> None:
         if provider in self.statuses:
-            self.statuses[provider].mark_success()
+            self.statuses[provider].mark_success(latency_ms=latency_ms)
 
     def status_summary(self) -> str:
         lines = []

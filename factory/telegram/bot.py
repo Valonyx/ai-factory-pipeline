@@ -648,6 +648,56 @@ async def cmd_custom(update: Any, context: Any):
 
 
 @require_auth
+async def cmd_custom_chain(update: Any, context: Any):
+    """/custom_chain [provider,provider,...] — configure the CUSTOM-mode AI chain.
+
+    FIX-CHAIN: stores the operator-supplied provider list in prefs so that
+    when master_mode == "custom", chain_policy.get_ai_chain_for_mode returns
+    this list instead of the BALANCED default.
+
+    Usage:
+      /custom_chain anthropic,gemini,groq     — set chain
+      /custom_chain                           — show current custom chain
+      /custom_chain clear                     — reset to empty (falls back to BALANCED)
+    """
+    user_id = str(update.effective_user.id)
+    arg = " ".join(context.args).strip() if context.args else ""
+
+    if not arg:
+        prefs = await load_operator_preferences(user_id)
+        current = prefs.get("custom_ai_chain") or "(not set — falls back to BALANCED)"
+        await update.message.reply_text(
+            f"🎛 Custom AI chain: `{current}`\n\n"
+            f"Set: /custom\\_chain provider1,provider2,...\n"
+            f"Clear: /custom\\_chain clear",
+            parse_mode="Markdown",
+        )
+        return
+
+    if arg.lower() == "clear":
+        await set_operator_preference(user_id, "custom_ai_chain", "")
+        await update.message.reply_text(
+            "🎛 Custom AI chain cleared — CUSTOM mode will fall back to BALANCED.",
+        )
+        return
+
+    # Validate + normalize provider names
+    from factory.integrations.chain_policy import get_ai_chain_for_mode
+    from factory.integrations.provider_chain import normalize_provider_name
+    names = [normalize_provider_name(p.strip()) for p in arg.split(",") if p.strip()]
+    if not names:
+        await update.message.reply_text("❌ No valid provider names found. Try: /custom_chain anthropic,gemini,groq")
+        return
+
+    await set_operator_preference(user_id, "custom_ai_chain", ",".join(names))
+    await update.message.reply_text(
+        f"🎛 Custom AI chain saved: `{' → '.join(names)}`\n\n"
+        f"Activate with /custom — then verify with /providers.",
+        parse_mode="Markdown",
+    )
+
+
+@require_auth
 async def cmd_switch_stack(update: Any, context: Any):
     """v5.8: /switch_stack [stack_name] — Force a specific tech stack.
 
@@ -3097,6 +3147,7 @@ async def setup_bot() -> Any:
         app.add_handler(CommandHandler("basic", cmd_basic))
         app.add_handler(CommandHandler("balanced", cmd_balanced))
         app.add_handler(CommandHandler("custom", cmd_custom))
+        app.add_handler(CommandHandler("custom_chain", cmd_custom_chain))   # FIX-CHAIN
         app.add_handler(CommandHandler("switch_stack", cmd_switch_stack)) # stack guidance
         app.add_handler(CommandHandler("quota", cmd_quota))               # v5.8 quota
         app.add_handler(CommandHandler("autonomy", cmd_autonomy))

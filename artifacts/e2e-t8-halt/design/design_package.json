@@ -1,0 +1,95 @@
+{
+  "wcag_contrast_ratio": 4.6,
+  "wcag_aa_pass": true,
+  "color_palette_verified": true,
+  "component_library": {
+    "components": [
+      {
+        "name": "PrimaryButton",
+        "props": {
+          "label": "string",
+          "onPress": "() => void",
+          "disabled": "bool"
+        },
+        "usage": "Primary CTA; filled background, white text.",
+        "style": {
+          "background": "#1976D2",
+          "text": "#FFFFFF",
+          "radius": "8px"
+        }
+      },
+      {
+        "name": "SecondaryButton",
+        "props": {
+          "label": "string",
+          "onPress": "() => void"
+        },
+        "usage": "Secondary action; outlined.",
+        "style": {
+          "background": "transparent",
+          "border": "#1976D2",
+          "text": "#1976D2"
+        }
+      },
+      {
+        "name": "TextField",
+        "props": {
+          "value": "string",
+          "onChange": "(v)=>void",
+          "placeholder": "string"
+        },
+        "usage": "Single-line text input."
+      },
+      {
+        "name": "Card",
+        "props": {
+          "children": "node"
+        },
+        "usage": "Elevated content container.",
+        "style": {
+          "background": "#FFFFFF",
+          "radius": "12px",
+          "elevation": 2
+        }
+      },
+      {
+        "name": "ListItem",
+        "props": {
+          "title": "string",
+          "subtitle": "string?",
+          "onPress": "()=>void?"
+        },
+        "usage": "Row in a scrollable list."
+      }
+    ],
+    "tokens": {
+      "color_primary": "#1976D2",
+      "color_secondary": "#FF9800",
+      "color_background": "#FFFFFF",
+      "color_text_primary": "#212121",
+      "font_family": "Inter",
+      "spacing_xs": "4px",
+      "spacing_sm": "8px",
+      "spacing_md": "16px",
+      "spacing_lg": "24px",
+      "radius_sm": "4px",
+      "radius_md": "8px",
+      "radius_lg": "12px"
+    },
+    "source": "fallback_deterministic"
+  },
+  "app_icon_paths": [
+    "artifacts/e2e-t8-halt/design/icons/icon_fallback.svg"
+  ],
+  "store_screenshot_paths": [],
+  "degraded_sections": [
+    {
+      "section": "component_library",
+      "reason": "exception: Exception"
+    },
+    {
+      "section": "app_icon_paths",
+      "reason": "image-gen unavailable; deterministic SVG fallback written"
+    }
+  ]
+}

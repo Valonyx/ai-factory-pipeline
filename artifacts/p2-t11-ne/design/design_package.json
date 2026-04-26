@@ -1,0 +1,17 @@
+{
+  "wcag_contrast_ratio": 4.51,
+  "wcag_aa_pass": true,
+  "color_palette_verified": true,
+  "component_library": {
+    "components": [],
+    "tokens": {}
+  },
+  "screen_mockup_paths": [
+    "/tmp/mock_p2-t11-ne_0.png",
+    "/tmp/mock_p2-t11-ne_1.png",
+    "/tmp/mock_p2-t11-ne_2.png"
+  ],
+  "selected_mockup_index": 0,
+  "app_icon_paths": [],
+  "store_screenshot_paths": []
+}

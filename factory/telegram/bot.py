@@ -370,32 +370,48 @@ async def cmd_mode(update: Any, context: Any):
     _EXEC_MODES   = {"cloud", "local", "hybrid"}
 
     if arg in _MASTER_MODES:
-        # Save preference only — no blocking state write.
-        # The running pipeline reads master_mode from state_json; the NEXT
-        # pipeline will pick it up from operator prefs via _start_project.
+        # FIX-MODE-03: write-through-await — save then read-back canonical
+        # value before replying so the operator never sees a "saved" message
+        # for a value that didn't actually persist.
         await set_operator_preference(user_id, "master_mode", arg)
-        mm = MasterMode(arg)
+        prefs = await load_operator_preferences(user_id)
+        confirmed = prefs.get("master_mode", arg)
+        mm = MasterMode(confirmed)
         scope = "project + default" if active else "default (no active project)"
-        await update.message.reply_text(
-            f"{mm.emoji} *Master mode set: {mm.label}* ✅\n"
-            f"Scope: {scope}\n"
-            f"Next pipeline will use *{mm.label}* AI providers.\n\n"
-            f"Shortcuts: /basic · /balanced · /turbo · /custom\n"
-            f"Run /mode to verify.",
-            parse_mode="Markdown",
-        )
+        if confirmed != arg:
+            body = (
+                f"⚠️ Master mode requested *{arg}*, but stored value is "
+                f"*{confirmed}*. Try /{arg} again."
+            )
+        else:
+            body = (
+                f"{mm.emoji} *Master mode set: {mm.label}* ✅ (confirmed)\n"
+                f"Scope: {scope}\n"
+                f"Next pipeline will use *{mm.label}* AI providers.\n\n"
+                f"Shortcuts: /basic · /balanced · /turbo · /custom\n"
+                f"Run /mode to verify."
+            )
+        await update.message.reply_text(body, parse_mode="Markdown")
     elif arg in _EXEC_MODES:
-        # Inline — no delegation to avoid context.args mutation issues
+        # FIX-MODE-03: write-through-await
         await set_operator_preference(user_id, "execution_mode", arg)
+        prefs = await load_operator_preferences(user_id)
+        confirmed = prefs.get("execution_mode", arg)
         _EXEC_EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
         scope = "project + default" if active else "default (no active project)"
-        await update.message.reply_text(
-            f"{_EXEC_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅\n"
-            f"Scope: {scope}\n"
-            f"Next pipeline will run on *{arg.upper()}*.\n\n"
-            f"Run /execution\\_mode to verify.",
-            parse_mode="Markdown",
-        )
+        if confirmed != arg:
+            body = (
+                f"⚠️ Execution mode requested *{arg.upper()}*, but stored value is "
+                f"*{confirmed.upper()}*. Try again."
+            )
+        else:
+            body = (
+                f"{_EXEC_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅ (confirmed)\n"
+                f"Scope: {scope}\n"
+                f"Next pipeline will run on *{arg.upper()}*.\n\n"
+                f"Run /execution\\_mode to verify."
+            )
+        await update.message.reply_text(body, parse_mode="Markdown")
     else:
         # Show three-axis status — always read from saved operator prefs so
         # changes made via /basic, /exec_local etc. are reflected immediately
@@ -451,17 +467,25 @@ async def cmd_execution_mode(update: Any, context: Any):
     _EMOJI = {"cloud": "☁️", "local": "💻", "hybrid": "🔀"}
 
     if arg in _EXEC_MODES:
-        # Save preference only — no blocking state write.
+        # FIX-MODE-03: write-through-await
         await set_operator_preference(user_id, "execution_mode", arg)
+        prefs = await load_operator_preferences(user_id)
+        confirmed = prefs.get("execution_mode", arg)
         scope = "project + default" if active else "default (no active project)"
-        await update.message.reply_text(
-            f"{_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅\n"
-            f"Scope: {scope}\n"
-            f"Next pipeline will run on *{arg.upper()}*.\n\n"
-            f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n"
-            f"Run /execution\\_mode to verify.",
-            parse_mode="Markdown",
-        )
+        if confirmed != arg:
+            body = (
+                f"⚠️ Execution mode requested *{arg.upper()}*, but stored value is "
+                f"*{confirmed.upper()}*. Try again."
+            )
+        else:
+            body = (
+                f"{_EMOJI[arg]} *Execution mode set: {arg.upper()}* ✅ (confirmed)\n"
+                f"Scope: {scope}\n"
+                f"Next pipeline will run on *{arg.upper()}*.\n\n"
+                f"Shortcuts: /exec\\_cloud · /exec\\_local · /exec\\_hybrid\n"
+                f"Run /execution\\_mode to verify."
+            )
+        await update.message.reply_text(body, parse_mode="Markdown")
     else:
         # Always read from saved prefs — state snapshot may be stale
         prefs = await load_operator_preferences(user_id)

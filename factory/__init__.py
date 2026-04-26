@@ -23,3 +23,4 @@ Entry points:
 
 __version__ = "5.8.0"
 __pipeline_version__ = "5.8"
+__build_tag__ = "F7"

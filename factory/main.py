@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Factory Pipeline",
     version=PIPELINE_VERSION,
-    description="Automated AI application factory — v5.8",
+    description=f"Automated AI application factory — v{PIPELINE_VERSION}",
     lifespan=lifespan,
 )
 

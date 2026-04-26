@@ -23,8 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from factory import __version__ as _VERSION
 from factory.core.state import AIRole, PipelineState
 from factory.core.roles import call_ai
+
+_PIPELINE_LABEL = f"AI Factory Pipeline v{_VERSION}"
 
 logger = logging.getLogger("factory.pipeline.blueprint_pdf")
 
@@ -473,7 +476,7 @@ def _build_blueprint_pdf(
         topMargin=2.5 * cm,
         bottomMargin=2 * cm,
         title=f"Master Blueprint — {app_name}",
-        author="AI Factory Pipeline v5.8",
+        author=_PIPELINE_LABEL,
         subject="Master Product Blueprint",
     )
     styles = _build_styles()

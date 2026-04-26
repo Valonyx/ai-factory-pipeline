@@ -410,6 +410,9 @@ def format_welcome_message(
     except ImportError:
         __build_tag__ = ""
 
+    # Canonical greeting pattern: "v5.8.0, F7!" when build tag is set;
+    # "v5.8.0" alone otherwise. The name follows separately so there is no
+    # double-punctuation ("F7!, Alex!") in the header line.
     version_str = f"v{__version__}"
     if __build_tag__:
         version_str = f"{version_str}, {__build_tag__}!"
@@ -440,8 +443,15 @@ def format_welcome_message(
     ex_emoji, ex_label = _EXEC.get(prefs.get("execution_mode", "local"), ("⚙️", str(prefs.get("execution_mode", "local"))))
     tr_emoji, tr_label = _TRANS.get(prefs.get("transport_mode", "polling"), ("⚙️", str(prefs.get("transport_mode", "polling"))))
 
+    # When build tag produces its own "!", greet name on a separate token
+    # so the line reads "AI Factory v5.8.0, F7! — Hello, Alex!" not "F7!, Alex!"
+    if __build_tag__:
+        greeting_line = f"🏭 AI Factory {version_str} — Hello, {first_name}!"
+    else:
+        greeting_line = f"🏭 Welcome to AI Factory {version_str}, {first_name}!"
+
     return (
-        f"🏭 Welcome to AI Factory {version_str}, {first_name}!\n\n"
+        f"{greeting_line}\n\n"
         f"🔧 Builds apps from your description.\n"
         f"📱 Stacks: FlutterFlow, React Native, Swift, "
         f"Kotlin, Unity, Python\n"
@@ -461,8 +471,9 @@ def format_help_message() -> str:
     all commands match registered handlers.
     Spec: §5.2 (/help)
     """
+    from factory import __version__
     return (
-        "🏭 AI Factory v5.8 — Command Reference\n\n"
+        f"🏭 AI Factory v{__version__} — Command Reference\n\n"
         "📱 Projects\n"
         "  /new [description]        — start a new app\n"
         "  /status                   — pipeline progress\n"

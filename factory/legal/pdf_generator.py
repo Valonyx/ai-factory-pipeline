@@ -53,6 +53,31 @@ _GOLD   = colors.HexColor("#B8860B") if _REPORTLAB_AVAILABLE else None
 _LIGHT  = colors.HexColor("#F5F5F5") if _REPORTLAB_AVAILABLE else None
 _RED    = colors.HexColor("#C62828") if _REPORTLAB_AVAILABLE else None
 
+# ── Arabic RTL reshaping (FIX-LEGAL) ──────────────────────────────
+# arabic_reshaper + python-bidi are optional; degrade gracefully if absent.
+try:
+    import arabic_reshaper as _ar_reshaper
+    from bidi.algorithm import get_display as _bidi_display
+    _ARABIC_SUPPORT = True
+except ImportError:
+    _ARABIC_SUPPORT = False
+    logger.debug("arabic_reshaper / python-bidi not installed — Arabic text will render unshaped")
+
+
+def reshape_arabic(text: str) -> str:
+    """Return a correctly shaped + bidirectionally ordered Arabic string.
+
+    Safe to call on mixed Arabic/Latin text.  Returns ``text`` unchanged
+    when the optional packages are not installed.
+    """
+    if not _ARABIC_SUPPORT or not text:
+        return text
+    try:
+        reshaped = _ar_reshaper.reshape(text)
+        return _bidi_display(reshaped)
+    except Exception:
+        return text
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Public API
@@ -691,11 +716,23 @@ def _data_residency_plan(legal_output: dict, styles: dict) -> list:
     return elements
 
 
+def _has_arabic(text: str) -> bool:
+    """True when *text* contains at least one Arabic Unicode character."""
+    return any("\u0600" <= ch <= "\u06FF" for ch in text)
+
+
+def _safe_text(text: str) -> str:
+    """Escape XML special chars and apply Arabic reshaping when needed."""
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return reshape_arabic(escaped) if _has_arabic(escaped) else escaped
+
+
 def _legal_document_section(doc_type: str, content: str, styles: dict) -> list:
+    _ar = reshape_arabic  # shorthand
     title_map = {
-        "privacy_policy": "Privacy Policy (سياسة الخصوصية)",
-        "terms_of_use": "Terms of Use (شروط الاستخدام)",
-        "merchant_agreement": "Merchant Agreement (اتفاقية التاجر)",
+        "privacy_policy": f"Privacy Policy ({_ar('سياسة الخصوصية')})",
+        "terms_of_use": f"Terms of Use ({_ar('شروط الاستخدام')})",
+        "merchant_agreement": f"Merchant Agreement ({_ar('اتفاقية التاجر')})",
         "driver_contract": "Driver / Contractor Agreement",
         "data_processing_agreement": "Data Processing Agreement",
     }
@@ -718,7 +755,7 @@ def _legal_document_section(doc_type: str, content: str, styles: dict) -> list:
         if not stripped:
             elements.append(Spacer(1, 4))
             continue
-        clean = stripped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        clean = _safe_text(stripped)
         if clean.startswith("# "):
             elements.append(Paragraph(clean[2:], styles["h1"]))
         elif clean.startswith("## "):

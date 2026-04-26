@@ -347,8 +347,10 @@ class ScoutOrchestrator:
     # ── Cache helpers ─────────────────────────────────────────────────
 
     @staticmethod
-    def _query_hash(query: str) -> str:
-        return hashlib.md5(query.strip().lower().encode()).hexdigest()[:16]
+    def _query_hash(query: str, project_id: str = "") -> str:
+        # FIX-LEGAL: include project_id so different projects never share cache entries
+        key = f"{project_id}:{query.strip().lower()}" if project_id else query.strip().lower()
+        return hashlib.md5(key.encode()).hexdigest()[:16]
 
     async def _check_cache(
         self, q_hash: str, source_filter: str = "",
@@ -611,7 +613,7 @@ class ScoutOrchestrator:
 
         This is the single entry point called by roles._call_perplexity_safe.
         """
-        q_hash = self._query_hash(query)
+        q_hash = self._query_hash(query, project_id=state.project_id or "")
 
         # ── 1. Check Mother Memory cache ──────────────────────────────
         cached_text = await self._check_cache(q_hash)

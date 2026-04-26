@@ -118,3 +118,6 @@ zstandard==0.25.0
 Pillow>=10.2.0,<11.0
 # PDF generation (legal dossier + blueprint)
 reportlab>=4.0
+# Arabic RTL text reshaping for legal dossier PDFs (FIX-LEGAL)
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2

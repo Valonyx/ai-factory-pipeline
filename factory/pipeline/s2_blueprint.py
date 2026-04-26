@@ -21,9 +21,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 from factory.core.state import (
     AIRole,
@@ -36,6 +39,189 @@ from factory.core.roles import call_ai
 from factory.pipeline.graph import pipeline_node, register_stage_node
 
 logger = logging.getLogger("factory.pipeline.s2_blueprint")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# FIX-S2: Structured Architecture Output (Pydantic)
+# ═══════════════════════════════════════════════════════════════════
+
+_MIN_SCREENS = 1
+_MIN_FEATURES = 3
+_MIN_JOURNEYS = 2
+_MAX_REFINE_ROUNDS = 2
+
+
+class _Screen(BaseModel):
+    name: str
+    purpose: str = ""
+    components: list[str] = Field(default_factory=list)
+    data_bindings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class _DataField(BaseModel):
+    name: str
+    type: str = "string"
+
+
+class _Collection(BaseModel):
+    collection: str
+    fields: list[_DataField] = Field(default_factory=list)
+
+
+class _ApiEndpoint(BaseModel):
+    path: str
+    method: str = "GET"
+    purpose: str = ""
+
+
+class _Feature(BaseModel):
+    id: str = ""
+    name: str
+    description: str = ""
+    priority: str = "medium"
+    acceptance_criteria: str = ""
+
+
+class _UserJourney(BaseModel):
+    id: str = ""
+    persona: str = ""
+    goal: str = ""
+    steps: list[str] = Field(default_factory=list)
+
+
+class ArchitectureBlueprint(BaseModel):
+    """Validated architecture output from the Strategist role."""
+    screens: list[_Screen] = Field(default_factory=list)
+    data_model: list[_Collection] = Field(default_factory=list)
+    api_endpoints: list[_ApiEndpoint] = Field(default_factory=list)
+    auth_method: str = "email"
+    services: dict[str, Any] = Field(default_factory=dict)
+    env_vars: dict[str, str] = Field(default_factory=dict)
+    feature_list: list[_Feature] = Field(default_factory=list)
+    user_journeys: list[_UserJourney] = Field(default_factory=list)
+    analytics_events: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("screens")
+    @classmethod
+    def _require_screens(cls, v: list) -> list:
+        if not v:
+            raise ValueError("screens must have at least one entry")
+        return v
+
+    def is_complete(self) -> bool:
+        return (
+            len(self.screens) >= _MIN_SCREENS
+            and len(self.feature_list) >= _MIN_FEATURES
+            and len(self.user_journeys) >= _MIN_JOURNEYS
+        )
+
+    def missing_fields(self) -> list[str]:
+        missing = []
+        if len(self.screens) < _MIN_SCREENS:
+            missing.append(f"screens (got {len(self.screens)}, need {_MIN_SCREENS})")
+        if len(self.feature_list) < _MIN_FEATURES:
+            missing.append(f"feature_list (got {len(self.feature_list)}, need {_MIN_FEATURES})")
+        if len(self.user_journeys) < _MIN_JOURNEYS:
+            missing.append(f"user_journeys (got {len(self.user_journeys)}, need {_MIN_JOURNEYS})")
+        return missing
+
+
+def _extract_json_block(text: str) -> str:
+    """Strip markdown fences and return the first JSON object found."""
+    text = re.sub(r"```(?:json)?", "", text).strip()
+    brace = text.find("{")
+    if brace == -1:
+        return text
+    depth = 0
+    for i, ch in enumerate(text[brace:], brace):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace:i + 1]
+    return text[brace:]
+
+
+_ARCH_FALLBACK: dict[str, Any] = {
+    "screens": [{"name": "Home", "purpose": "Main screen", "components": [], "data_bindings": []}],
+    "data_model": [{"collection": "users", "fields": [{"name": "email", "type": "string"}]}],
+    "api_endpoints": [],
+    "auth_method": "email",
+    "services": {},
+    "env_vars": {},
+    "feature_list": [],
+    "user_journeys": [],
+    "analytics_events": [],
+}
+
+
+async def _parse_architecture(
+    raw: str,
+    state: "PipelineState",
+    arch_prompt: str,
+) -> dict[str, Any]:
+    """Parse + validate architecture JSON with up to _MAX_REFINE_ROUNDS retry.
+
+    On each round where the model returns malformed/incomplete JSON, we ask
+    the AI to fix only the specific missing or invalid fields.
+    """
+    for attempt in range(_MAX_REFINE_ROUNDS + 1):
+        text = raw if attempt == 0 else (
+            await call_ai(
+                role=AIRole.STRATEGIST,
+                prompt=(
+                    f"The previous architecture JSON was incomplete. "
+                    f"Missing required fields: {missing}. "
+                    f"Original request:\n{arch_prompt}\n\n"
+                    f"Previous response (to improve):\n{raw}\n\n"
+                    f"Return ONLY valid JSON fixing the missing fields."
+                ),
+                state=state,
+                action="refine_architecture",
+            )
+        )
+        json_str = _extract_json_block(text)
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as exc:
+            missing = [f"valid JSON ({exc})"]
+            logger.warning(
+                f"[{state.project_id}] S2 parse attempt {attempt + 1}: "
+                f"JSONDecodeError — {exc}"
+            )
+            raw = text
+            continue
+
+        try:
+            model = ArchitectureBlueprint.model_validate(data)
+        except Exception as exc:
+            missing = [str(exc)]
+            logger.warning(
+                f"[{state.project_id}] S2 parse attempt {attempt + 1}: "
+                f"validation error — {exc}"
+            )
+            raw = text
+            continue
+
+        missing = model.missing_fields()
+        if missing and attempt < _MAX_REFINE_ROUNDS:
+            logger.info(
+                f"[{state.project_id}] S2 attempt {attempt + 1}: "
+                f"incomplete fields {missing}, refining…"
+            )
+            raw = text
+            continue
+
+        if missing:
+            logger.warning(
+                f"[{state.project_id}] S2: still incomplete after "
+                f"{_MAX_REFINE_ROUNDS} refinement rounds: {missing}"
+            )
+        return model.model_dump()
+
+    logger.error(f"[{state.project_id}] S2: all parse attempts failed, using scaffold")
+    return dict(_ARCH_FALLBACK)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -377,21 +563,7 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
         action="plan_architecture",
     )
 
-    try:
-        architecture = json.loads(architecture_result)
-    except json.JSONDecodeError:
-        logger.warning(
-            f"[{state.project_id}] S2: Failed to parse architecture JSON, "
-            f"using minimal scaffold"
-        )
-        architecture = {
-            "screens": [{"name": "Home", "purpose": "Main screen", "components": [], "data_bindings": []}],
-            "data_model": [{"collection": "users", "fields": [{"name": "email", "type": "string"}]}],
-            "api_endpoints": [],
-            "auth_method": "email",
-            "services": {},
-            "env_vars": {},
-        }
+    architecture = await _parse_architecture(architecture_result, state, _arch_prompt)
 
     # ══════════════════════════════════════
     # Phase 3: Blueprint Assembly

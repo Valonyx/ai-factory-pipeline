@@ -247,6 +247,20 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
     requirements = state.s0_output or {}
     legal_output = state.s1_output or {}
 
+    # FIX-MEM Issue #16: read prior decisions before starting stage work
+    try:
+        from factory.memory.mother_memory import recall_stage_context
+        _prior_ctx = await recall_stage_context(
+            project_id=state.project_id,
+            operator_id=state.operator_id or "",
+            for_stage="S2_BLUEPRINT",
+        )
+        if _prior_ctx:
+            state.project_metadata["s2_prior_context"] = _prior_ctx
+            logger.debug(f"[{state.project_id}] S2: recalled prior memory context ({len(_prior_ctx)} chars)")
+    except Exception as _mm_err:
+        logger.debug(f"[{state.project_id}] S2: recall_stage_context skipped: {_mm_err}")
+
     # ── Pre-enrichment: Scout design patterns + memory ──
     from factory.core.stage_enrichment import enrich_prompt, store_stage_insight  # noqa: F401
 
@@ -560,7 +574,8 @@ async def s2_blueprint_node(state: PipelineState) -> PipelineState:
 
     # ── Quality Gate (Issue 17) ──────────────────────────────────────
     # Skip gates in dry-run / test mode (DRY_RUN=true).
-    if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+    from factory.core.dry_run import is_dry_run
+    if not is_dry_run():
         from factory.core.quality_gates import (
             check_min_list, check_no_placeholders,
             raise_if_failed, GateResult, QualityGateFailure,

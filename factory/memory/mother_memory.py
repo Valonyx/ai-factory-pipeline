@@ -476,6 +476,102 @@ async def build_memory_block(
 
 
 # ═══════════════════════════════════════════════════════════════════
+# FIX-MEM: Project-scoped decision retrieval
+# Issue #16: stages wrote decisions to memory but never read them back
+# before starting work. These functions form the READ side of the
+# memory contract so stages enter with prior-decision context.
+# ═══════════════════════════════════════════════════════════════════
+
+async def get_project_decisions(
+    project_id: str,
+    operator_id: str = "",
+    stage_filter: Optional[str] = None,
+    limit: int = 12,
+) -> list[dict]:
+    """Return stored pipeline decisions for a project, newest first.
+
+    Resolution order:
+      1. In-process cache (fast, within-session recall)
+      2. Backend chain via get_insights (cross-session, needs operator_id)
+
+    Args:
+        project_id: The pipeline project ID.
+        operator_id: Used for cross-session backend fallback.
+        stage_filter: When set, only return decisions from that stage name.
+        limit: Maximum number of records to return.
+    """
+    records: list[dict] = []
+
+    # 1. In-process cache (populated by _mirror_insight via store_pipeline_decision)
+    for r in reversed(_fallback_insights):
+        if r.get("project_id") != project_id:
+            continue
+        if r.get("type") not in ("decision", "insight"):
+            continue
+        if stage_filter and r.get("stage", "") != stage_filter:
+            continue
+        records.append(r)
+        if len(records) >= limit:
+            break
+
+    if records:
+        return records
+
+    # 2. Backend chain fallback (cross-session)
+    if operator_id:
+        try:
+            chain = await _get_chain()
+            backend_records = await chain.get_insights(operator_id, limit=limit * 2)
+            for r in backend_records:
+                if r.get("project_id") != project_id:
+                    continue
+                if stage_filter and r.get("stage", "") != stage_filter:
+                    continue
+                records.append(r)
+                if len(records) >= limit:
+                    break
+        except Exception as e:
+            logger.debug(f"[mother-memory] get_project_decisions backend fallback error: {e}")
+
+    return records
+
+
+async def recall_stage_context(
+    project_id: str,
+    operator_id: str,
+    for_stage: str,
+    limit: int = 8,
+) -> str:
+    """Build a compact prior-decisions block for injection at stage entry.
+
+    Returns an empty string when no decisions are available (so callers
+    can safely append it to prompts without checking).
+
+    Format:
+        ╔══ PRIOR DECISIONS (project: proj_xxx) ══
+        │ [s1_legal] Legal framework: PDPL, SAMA — High risk: data residency
+        │ [s2_blueprint] Stack selected: FlutterFlow + Firebase
+        ╚══ END PRIOR DECISIONS ══
+    """
+    decisions = await get_project_decisions(
+        project_id=project_id,
+        operator_id=operator_id,
+        limit=limit,
+    )
+    if not decisions:
+        return ""
+
+    lines = [f"╔══ PRIOR PIPELINE DECISIONS (project: {project_id}, entering {for_stage}) ══"]
+    for d in decisions:
+        stage = d.get("stage", "?")
+        dtype = d.get("decision_type", d.get("insight_type", ""))
+        content = d.get("content", "")[:200].replace("\n", " ")
+        lines.append(f"│ [{stage}:{dtype}] {content}")
+    lines.append("╚══ END PRIOR DECISIONS ══\n")
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Scout Result Cache (Exa quota conservation + cross-call reuse)
 # ═══════════════════════════════════════════════════════════════════
 

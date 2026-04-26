@@ -71,6 +71,21 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
     """
     from factory.core.stage_enrichment import enrich_prompt, store_stage_insight
 
+    # FIX-MEM Issue #16: read prior decisions before starting stage work
+    # so the AI has cross-session context (e.g. a previous S1 attempt).
+    try:
+        from factory.memory.mother_memory import recall_stage_context
+        _prior_ctx = await recall_stage_context(
+            project_id=state.project_id,
+            operator_id=state.operator_id or "",
+            for_stage="S1_LEGAL",
+        )
+        if _prior_ctx:
+            state.project_metadata["s1_prior_context"] = _prior_ctx
+            logger.debug(f"[{state.project_id}] S1: recalled prior memory context ({len(_prior_ctx)} chars)")
+    except Exception as _mm_err:
+        logger.debug(f"[{state.project_id}] S1: recall_stage_context skipped: {_mm_err}")
+
     requirements = state.s0_output or {}
     app_name = requirements.get("app_name") or state.idea_name or state.project_id
     app_category = requirements.get("app_category", "other")
@@ -163,7 +178,8 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
 
     # ── Quality Gate (Issue 17) ──────────────────────────────────────
     # Skip gates in dry-run / test mode (DRY_RUN=true).
-    if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+    from factory.core.dry_run import is_dry_run
+    if not is_dry_run():
         from factory.core.quality_gates import (
             check_no_placeholders, check_min_length, check_min_list,
             raise_if_failed, QualityGateFailure, GateResult,

@@ -1723,6 +1723,20 @@ async def s4_codegen_node(state: PipelineState) -> PipelineState:
     """
     blueprint_data = state.s2_output or {}
 
+    # FIX-MEM Issue #16: read prior decisions before starting stage work
+    try:
+        from factory.memory.mother_memory import recall_stage_context
+        _prior_ctx = await recall_stage_context(
+            project_id=state.project_id,
+            operator_id=state.operator_id or "",
+            for_stage="S4_CODEGEN",
+        )
+        if _prior_ctx:
+            state.project_metadata["s4_prior_context"] = _prior_ctx
+            logger.debug(f"[{state.project_id}] S4: recalled prior memory context ({len(_prior_ctx)} chars)")
+    except Exception as _mm_err:
+        logger.debug(f"[{state.project_id}] S4: recall_stage_context skipped: {_mm_err}")
+
     # ── MODIFY mode: generate targeted diffs instead of full files ──
     from factory.core.state import PipelineMode
     if state.pipeline_mode == PipelineMode.MODIFY:
@@ -2140,7 +2154,8 @@ async def _codegen_full_generation(
 
     # ── Quality Gate (Issue 17) ──────────────────────────────────────
     # Skip gates in dry-run / test mode (DRY_RUN=true).
-    if not os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+    from factory.core.dry_run import is_dry_run
+    if not is_dry_run():
         from factory.core.quality_gates import GateResult, raise_if_failed, QualityGateFailure
         from factory.core.halt import HaltCode, HaltReason, set_halt
         from factory.core.mode_router import MasterMode

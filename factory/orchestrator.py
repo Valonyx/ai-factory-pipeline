@@ -157,9 +157,10 @@ def _contract_bypass_allowed(stage: Stage, state: PipelineState) -> bool:
     does NOT apply: mock/dry-run executions, the HALTED terminal stage,
     or MODIFY-mode skips where S2/S4 legitimately no-op.
     """
-    if os.getenv("AI_PROVIDER", "").lower() == "mock":
+    from factory.core.dry_run import is_dry_run, is_mock_provider
+    if is_mock_provider():
         return True
-    if os.getenv("DRY_RUN", "").lower() in ("true", "1", "yes"):
+    if is_dry_run():
         return True
     if os.getenv("AI_FACTORY_CONTRACT_BYPASS", "").lower() in ("true", "1", "yes"):
         return True
@@ -556,8 +557,10 @@ async def run_pipeline(state: PipelineState) -> PipelineState:
         logger.info(f"[{state.project_id}] Pipeline pre-aborted — returning without running stages")
         return state
 
-    # ── Credential pre-flight ────────────────────────────────────────
-    # Set SKIP_CREDENTIAL_PREFLIGHT=true to bypass in test/dry-run environments.
+    # ── Credential pre-flight ─────────────────────────────────────
+    # FIX-PERSIST: SKIP_CREDENTIAL_PREFLIGHT is honoured in all contexts but
+    # FIX-PERSIST: explicit env flag only — is_dry_run() intentionally excluded
+    # so tests can set SKIP_CREDENTIAL_PREFLIGHT=false to force the check to run.
     _skip_preflight = os.environ.get("SKIP_CREDENTIAL_PREFLIGHT", "").lower() in ("true", "1", "yes")
     if not _skip_preflight:
         from factory.core.credentials import check_credentials, get_missing_critical, format_credential_error

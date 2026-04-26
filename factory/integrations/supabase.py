@@ -578,7 +578,13 @@ async def set_operator_state_db(
         return False
     except Exception as e:
         logger.error(f"[supabase-http] set_operator_state_db failed: {e}")
-        return False
+        # Network failed but we still have the in-memory SupabaseFallback —
+        # persist there so callers get a usable result.
+        try:
+            client.table("operator_state").upsert(payload).execute()
+            return True
+        except Exception:
+            return False
 
 
 async def get_operator_state_db(telegram_id: str) -> Optional[dict]:
@@ -635,6 +641,18 @@ async def get_operator_state_db(telegram_id: str) -> Optional[dict]:
         return None
     except Exception as e:
         logger.error(f"[supabase-http] get_operator_state_db failed: {e}")
+        # Network failed — read from in-memory SupabaseFallback.
+        try:
+            resp = (
+                client.table("operator_state")
+                .select("*")
+                .eq("telegram_id", telegram_id)
+                .execute()
+            )
+            if resp.data:
+                return resp.data[0]
+        except Exception:
+            pass
         return None
 
 

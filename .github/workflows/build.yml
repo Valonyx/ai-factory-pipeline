@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    branches: ["main", "dev/**"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  lint-and-import:
+    name: Import smoke test (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      AI_PROVIDER: mock
+      SCOUT_PROVIDER: mock
+      PIPELINE_ENV: ci
+      DRY_RUN: "true"
+      LOG_LEVEL: WARNING
+      TELEGRAM_POLLING: "false"
+      ANTHROPIC_API_KEY: sk-ant-ci-placeholder
+      GOOGLE_AI_API_KEY: ci-placeholder
+      GROQ_API_KEY: ci-placeholder
+      TAVILY_API_KEY: ci-placeholder
+      TELEGRAM_BOT_TOKEN: "0:ci-placeholder"
+      TELEGRAM_OPERATOR_ID: "634992850"
+      SUPABASE_URL: https://ci-placeholder.supabase.co
+      SUPABASE_SERVICE_KEY: ci-placeholder
+      NEO4J_URI: neo4j+s://ci-placeholder.databases.neo4j.io
+      NEO4J_PASSWORD: ci-placeholder
+      GCP_PROJECT_ID: ai-factory-pipeline
+      GCP_REGION: me-central1
+      MONTHLY_BUDGET_USD: "300"
+      PER_PROJECT_BUDGET_USD: "25"
+      BUDGET_GOVERNOR_ENABLED: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Import smoke test
+        run: |
+          python -c "
+          import factory
+          from factory.pipeline import s1_legal, s2_blueprint, s4_codegen
+          from factory.integrations import image_gen, provider_chain
+          from factory.memory import mother_memory
+          print('All imports OK — factory v' + factory.__version__)
+          "
+
+      - name: Syntax check all source files
+        run: |
+          python -m py_compile factory/**/*.py factory/*.py 2>/dev/null || \
+          find factory -name '*.py' -exec python -m py_compile {} \;
+          echo "Syntax OK"

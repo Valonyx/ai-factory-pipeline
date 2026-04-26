@@ -165,9 +165,14 @@ async def _parse_architecture(
 
     On each round where the model returns malformed/incomplete JSON, we ask
     the AI to fix only the specific missing or invalid fields.
+    In dry-run / mock mode refinement rounds are skipped immediately to avoid
+    extra AI calls that will also fail.
     """
+    from factory.core.dry_run import is_dry_run, is_mock_provider
+    _skip_refine = is_dry_run() or is_mock_provider()
+
     for attempt in range(_MAX_REFINE_ROUNDS + 1):
-        text = raw if attempt == 0 else (
+        text = raw if (attempt == 0 or _skip_refine) else (
             await call_ai(
                 role=AIRole.STRATEGIST,
                 prompt=(
@@ -205,7 +210,7 @@ async def _parse_architecture(
             continue
 
         missing = model.missing_fields()
-        if missing and attempt < _MAX_REFINE_ROUNDS:
+        if missing and attempt < _MAX_REFINE_ROUNDS and not _skip_refine:
             logger.info(
                 f"[{state.project_id}] S2 attempt {attempt + 1}: "
                 f"incomplete fields {missing}, refining…"

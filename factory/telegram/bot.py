@@ -1315,6 +1315,8 @@ async def cmd_providers(update: Any, context: Any):
         statuses = get_memory_chain_status()
         if not statuses:
             return "  ⬜ not yet initialized"
+        # First available backend is the actual read-primary
+        first_available = next((s["name"] for s in statuses if s["available"]), None)
         lines = []
         for s in statuses:
             name = s["name"]
@@ -1328,7 +1330,7 @@ async def cmd_providers(update: Any, context: Any):
             elif not s["available"]:
                 err_ct = s.get("consecutive_errors", 0)
                 lines.append(f"  ❌ {name}: offline ({err_ct} errors){pend_str}")
-            elif s == statuses[0]:  # first available = read-primary
+            elif name == first_available:
                 lines.append(f"  ✅ {name}: ACTIVE (read-primary + write){pend_str}")
             else:
                 lines.append(f"  💾 {name}: write-mirror (standby read){pend_str}")

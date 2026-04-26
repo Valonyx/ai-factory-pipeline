@@ -156,7 +156,10 @@ class ProviderChain:
 # Global Chain Singletons
 # ═══════════════════════════════════════════════════════════════════
 
-_AI_DEFAULT_CHAIN = ["anthropic", "gemini", "groq", "openrouter", "cerebras", "together", "mistral", "mock"]
+_AI_DEFAULT_CHAIN = ["anthropic", "gemini", "groq", "openrouter", "cerebras", "together", "mistral"]
+# "mock" is intentionally excluded from the default production chain.
+# It is only enabled in tests via AI_PROVIDER_CHAIN=mock (or when DRY_RUN is set
+# explicitly by the test runner — Phase 5 will tighten the DRY_RUN gate).
 
 # Full Scout chain — 12 providers.
 # Unlimited (no quota):  searxng, duckduckgo, wikipedia, hackernews, reddit, stackoverflow, github_search, ai_scout
@@ -176,8 +179,42 @@ _SCOUT_DEFAULT_CHAIN = [
     "ai_scout",      # ∞ — LLM fallback using free AI chain
 ]
 
-ai_chain    = ProviderChain("AI_PROVIDER_CHAIN",    _AI_DEFAULT_CHAIN)
-scout_chain = ProviderChain("SCOUT_PROVIDER_CHAIN", _SCOUT_DEFAULT_CHAIN)
+# ── Lazy singletons ───────────────────────────────────────────────────
+# Initialised on first access so env vars set after import (e.g. by test
+# fixtures or the secrets loader) are picked up correctly.
+# FIX-PROV-01: the previous eager init at module-load time read env before
+# GCP Secret Manager had a chance to populate AI_PROVIDER_CHAIN.
+
+_ai_chain: ProviderChain | None = None
+_scout_chain: ProviderChain | None = None
+
+
+def _get_ai_chain() -> ProviderChain:
+    global _ai_chain
+    if _ai_chain is None:
+        _ai_chain = ProviderChain("AI_PROVIDER_CHAIN", _AI_DEFAULT_CHAIN)
+    return _ai_chain
+
+
+def _get_scout_chain() -> ProviderChain:
+    global _scout_chain
+    if _scout_chain is None:
+        _scout_chain = ProviderChain("SCOUT_PROVIDER_CHAIN", _SCOUT_DEFAULT_CHAIN)
+    return _scout_chain
+
+
+def __getattr__(name: str) -> object:
+    """Module-level lazy attribute resolver (PEP 562).
+
+    Allows ``from factory.integrations.provider_chain import ai_chain``
+    to work transparently while deferring the ProviderChain constructor
+    (and its os.getenv calls) until first use.
+    """
+    if name == "ai_chain":
+        return _get_ai_chain()
+    if name == "scout_chain":
+        return _get_scout_chain()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -301,3 +338,186 @@ def is_auth_error(error_str: str) -> bool:
         "401", "403", "AuthenticationError", "invalid_api_key",
         "Unauthorized", "authentication_error",
     ])
+
+
+# ═══════════════════════════════════════════════════════════════════
+# FIX-PROV-03: Provider name normalization
+# ═══════════════════════════════════════════════════════════════════
+
+_PROVIDER_ALIASES: dict[str, str] = {
+    # Claude / Anthropic aliases
+    "claude":      "anthropic",
+    "anthropic-claude": "anthropic",
+    # Gemini aliases
+    "google":      "gemini",
+    "google-gemini": "gemini",
+    "bard":        "gemini",
+    # OpenRouter aliases
+    "openrouter":  "openrouter",
+    "open-router": "openrouter",
+    "or":          "openrouter",
+    # Groq aliases
+    "llama":       "groq",
+    "meta":        "groq",
+    # Cerebras aliases
+    "cerebras-ai": "cerebras",
+    # Together.ai aliases
+    "together-ai": "together",
+    "togetherai":  "together",
+    # Mistral aliases
+    "mistral-ai":  "mistral",
+    "mistraiai":   "mistral",
+    # Perplexity aliases
+    "pplx":        "perplexity",
+    "sonar":       "perplexity",
+    # DuckDuckGo aliases
+    "ddg":         "duckduckgo",
+    "duck":        "duckduckgo",
+    # Wikipedia aliases
+    "wiki":        "wikipedia",
+    # HackerNews aliases
+    "hn":          "hackernews",
+    "hacker-news": "hackernews",
+}
+
+
+def normalize_provider_name(name: str) -> str:
+    """Return the canonical provider name for a given alias or raw input.
+
+    Lowercases and strips whitespace before lookup so env-var typos like
+    "Anthropic" or "GROQ" still resolve correctly.
+
+    >>> normalize_provider_name("claude")
+    'anthropic'
+    >>> normalize_provider_name("ddg")
+    'duckduckgo'
+    >>> normalize_provider_name("gemini")
+    'gemini'
+    """
+    key = name.strip().lower()
+    return _PROVIDER_ALIASES.get(key, key)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# FIX-PROV-04: Live provider ping
+# ═══════════════════════════════════════════════════════════════════
+
+async def ping_provider(name: str, *, timeout: float = 5.0) -> bool:
+    """Attempt a minimal health check on a named AI provider.
+
+    Returns True when the provider is reachable and the API key is
+    accepted. Returns False on auth failure, quota exhaustion, or
+    network error. Never raises.
+
+    Used by /providers --ping and the pre-pipeline provider selector.
+    """
+    canonical = normalize_provider_name(name)
+    try:
+        if canonical == "anthropic":
+            return await _ping_anthropic(timeout)
+        elif canonical == "gemini":
+            return await _ping_gemini(timeout)
+        elif canonical == "groq":
+            return await _ping_groq(timeout)
+        elif canonical == "openrouter":
+            return await _ping_openrouter(timeout)
+        else:
+            # For providers without a dedicated ping, key presence is the check.
+            key_env = {
+                "cerebras":   "CEREBRAS_API_KEY",
+                "together":   "TOGETHER_API_KEY",
+                "mistral":    "MISTRAL_API_KEY",
+                "perplexity": "PERPLEXITY_API_KEY",
+                "tavily":     "TAVILY_API_KEY",
+                "exa":        "EXA_API_KEY",
+                "brave":      "BRAVE_API_KEY",
+            }
+            env_var = key_env.get(canonical)
+            if env_var:
+                return bool(os.getenv(env_var))
+            # Key-free providers (duckduckgo, wikipedia, hackernews, ai_scout) are
+            # always considered available from a ping perspective.
+            return True
+    except Exception as exc:
+        logger.debug(f"[ping] {canonical}: {exc}")
+        return False
+
+
+async def _ping_anthropic(timeout: float) -> bool:
+    import asyncio
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        return False
+    try:
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=key)
+        await asyncio.wait_for(
+            client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1,
+                messages=[{"role": "user", "content": "ping"}],
+            ),
+            timeout=timeout,
+        )
+        return True
+    except Exception as e:
+        return not is_auth_error(str(e))
+
+
+async def _ping_gemini(timeout: float) -> bool:
+    import asyncio
+    key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not key:
+        return False
+    try:
+        import google.generativeai as genai  # type: ignore[import]
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        await asyncio.wait_for(
+            asyncio.to_thread(model.generate_content, "ping"),
+            timeout=timeout,
+        )
+        return True
+    except Exception as e:
+        return not is_auth_error(str(e))
+
+
+async def _ping_groq(timeout: float) -> bool:
+    import asyncio
+    key = os.getenv("GROQ_API_KEY")
+    if not key:
+        return False
+    try:
+        from groq import AsyncGroq  # type: ignore[import]
+        client = AsyncGroq(api_key=key)
+        await asyncio.wait_for(
+            client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            ),
+            timeout=timeout,
+        )
+        return True
+    except Exception as e:
+        return not is_auth_error(str(e))
+
+
+async def _ping_openrouter(timeout: float) -> bool:
+    import asyncio
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        return False
+    try:
+        import httpx  # type: ignore[import]
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await asyncio.wait_for(
+                client.get(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                ),
+                timeout=timeout,
+            )
+        return resp.status_code == 200
+    except Exception as e:
+        return not is_auth_error(str(e))

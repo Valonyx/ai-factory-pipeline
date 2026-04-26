@@ -314,25 +314,16 @@ def get_operator_preferences(operator_id: str) -> dict:
 
 
 def _migrate_prefs(prefs: dict) -> dict:
-    """Apply one-time migrations to stored preferences.
+    """Apply schema migrations to stored preferences.
 
-    v5.8.19: execution_mode default changed cloud→local, master_mode
-    default was already basic but some installs saved "balanced" as the
-    previous wrong default.  Reset those back to the correct values
-    so users don't need to manually run /basic or /exec_local.
+    Phase 1 FIX-MODE-01: Saved values are operator-chosen and must never be
+    silently reverted on reload. The previous logic flipped any explicitly
+    saved "balanced"/"cloud" back to defaults on every cache miss, masking
+    the persistence bug behind a faux migration. Now this function only
+    backfills missing keys, never overwrites existing ones.
     """
-    changed = False
-    # If execution_mode was saved as "cloud" AND the new default is "local",
-    # reset it — this was the system default, not an explicit operator choice.
-    if prefs.get("execution_mode") == "cloud" and _PREFS_DEFAULTS["execution_mode"] == "local":
-        prefs["execution_mode"] = "local"
-        changed = True
-    # If master_mode was saved as "balanced" (old wrong default), reset to "basic"
-    if prefs.get("master_mode") == "balanced" and _PREFS_DEFAULTS["master_mode"] == "basic":
-        prefs["master_mode"] = "basic"
-        changed = True
-    if changed:
-        logger.info(f"[decisions] Applied prefs migration: {prefs}")
+    for k, v in _PREFS_DEFAULTS.items():
+        prefs.setdefault(k, v)
     return prefs
 
 

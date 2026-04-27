@@ -63,6 +63,37 @@ except ImportError:
     _ARABIC_SUPPORT = False
     logger.debug("arabic_reshaper / python-bidi not installed — Arabic text will render unshaped")
 
+# ── Arabic TTF font registration ───────────────────────────────────
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+_ARABIC_FONT = "Helvetica"        # fallback until fonts are registered
+_ARABIC_FONT_BOLD = "Helvetica-Bold"
+
+if _REPORTLAB_AVAILABLE:
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        _noto_reg  = os.path.join(_FONT_DIR, "NotoSansArabic-Regular.ttf")
+        _noto_bold = os.path.join(_FONT_DIR, "NotoSansArabic-Bold.ttf")
+        _amiri_reg = os.path.join(_FONT_DIR, "Amiri-Regular.ttf")
+
+        if os.path.exists(_noto_reg) and os.path.getsize(_noto_reg) > 10_000:
+            pdfmetrics.registerFont(TTFont("NotoSansArabic", _noto_reg))
+            _ARABIC_FONT = "NotoSansArabic"
+            logger.debug("Registered NotoSansArabic-Regular")
+
+        if os.path.exists(_noto_bold) and os.path.getsize(_noto_bold) > 10_000:
+            pdfmetrics.registerFont(TTFont("NotoSansArabic-Bold", _noto_bold))
+            _ARABIC_FONT_BOLD = "NotoSansArabic-Bold"
+            logger.debug("Registered NotoSansArabic-Bold")
+
+        if os.path.exists(_amiri_reg) and os.path.getsize(_amiri_reg) > 10_000:
+            pdfmetrics.registerFont(TTFont("Amiri", _amiri_reg))
+            logger.debug("Registered Amiri-Regular")
+
+    except Exception as _fe:
+        logger.warning(f"Arabic font registration failed (non-fatal): {_fe}")
+
 
 def reshape_arabic(text: str) -> str:
     """Return a correctly shaped + bidirectionally ordered Arabic string.
@@ -342,6 +373,24 @@ def _build_styles() -> dict:
             leading=18,
             leftIndent=10,
         ),
+        "arabic": ParagraphStyle(
+            "DossierArabic",
+            parent=base["Normal"],
+            fontName=_ARABIC_FONT,
+            fontSize=13,
+            leading=20,
+            alignment=TA_RIGHT,
+            spaceAfter=6,
+        ),
+        "arabic_body": ParagraphStyle(
+            "DossierArabicBody",
+            parent=base["Normal"],
+            fontName=_ARABIC_FONT,
+            fontSize=10,
+            leading=16,
+            alignment=TA_RIGHT,
+            spaceAfter=4,
+        ),
     }
     return styles
 
@@ -375,7 +424,7 @@ def _title_page(app_name: str, project_id: str, styles: dict) -> list:
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     elements = [
         Spacer(1, 3 * cm),
-        Paragraph("المملكة العربية السعودية", styles["subtitle"]),
+        Paragraph(reshape_arabic("المملكة العربية السعودية"), styles["arabic"]),
         Paragraph("Kingdom of Saudi Arabia", styles["subtitle"]),
         Spacer(1, 1 * cm),
         Paragraph("LEGAL COMPLIANCE DOSSIER", styles["title"]),
@@ -756,16 +805,17 @@ def _legal_document_section(doc_type: str, content: str, styles: dict) -> list:
             elements.append(Spacer(1, 4))
             continue
         clean = _safe_text(stripped)
+        _ar_style = styles["arabic_body"] if _has_arabic(stripped) else None
         if clean.startswith("# "):
-            elements.append(Paragraph(clean[2:], styles["h1"]))
+            elements.append(Paragraph(clean[2:], _ar_style or styles["h1"]))
         elif clean.startswith("## "):
-            elements.append(Paragraph(clean[3:], styles["h2"]))
+            elements.append(Paragraph(clean[3:], _ar_style or styles["h2"]))
         elif clean.startswith("### "):
-            elements.append(Paragraph(clean[4:], styles["h2"]))
+            elements.append(Paragraph(clean[4:], _ar_style or styles["h2"]))
         elif clean.startswith("- ") or clean.startswith("* "):
-            elements.append(Paragraph(f"• {clean[2:]}", styles["body_small"]))
+            elements.append(Paragraph(f"• {clean[2:]}", _ar_style or styles["body_small"]))
         else:
-            elements.append(Paragraph(clean, styles["body_small"]))
+            elements.append(Paragraph(clean, _ar_style or styles["body_small"]))
 
     elements.append(PageBreak())
     return elements

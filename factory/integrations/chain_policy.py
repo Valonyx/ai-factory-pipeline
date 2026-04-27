@@ -158,3 +158,87 @@ def latency_cap_ms(mode_name: str) -> int:
 def exceeds_latency_cap(mode_name: str, observed_ms: float) -> bool:
     """Return True when a provider's observed latency exceeds the mode cap."""
     return observed_ms > latency_cap_ms(mode_name)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Per-role AI chains
+#
+# Each role benefits from a different provider ordering:
+#   Strategist — needs deep reasoning (Gemini 2.5 Pro, large models)
+#   Engineer   — needs code quality (Codestral, Qwen-coder, GPT-4o)
+#   QuickFix   — needs low latency (small/fast models)
+#   Embeddings — needs vector quality (Cohere embed-v4, Gemini embedding)
+# ─────────────────────────────────────────────────────────────────────
+
+_ROLE_AI_CHAINS: dict[str, dict[str, list[str]]] = {
+    "strategist": {
+        "BASIC":    ["gemini", "groq", "cerebras", "openrouter"],
+        "BALANCED": ["gemini", "mistral", "cerebras", "groq", "openrouter"],
+        "TURBO":    ["anthropic", "gemini", "mistral", "cerebras", "groq"],
+        "CUSTOM":   [],
+    },
+    "engineer": {
+        # Codestral is purpose-built for code — head of engineer chain
+        "BASIC":    ["mistral", "cerebras", "cloudflare", "groq", "openrouter"],
+        "BALANCED": ["mistral", "cerebras", "groq", "github_models", "openrouter"],
+        "TURBO":    ["anthropic", "mistral", "cerebras", "groq", "github_models"],
+        "CUSTOM":   [],
+    },
+    "quick_fix": {
+        # Fastest models — latency over quality
+        "BASIC":    ["groq", "cloudflare", "gemini", "cerebras"],
+        "BALANCED": ["anthropic", "groq", "gemini", "cloudflare"],
+        "TURBO":    ["anthropic", "groq", "gemini", "cloudflare"],
+        "CUSTOM":   [],
+    },
+    "embeddings": {
+        # Cohere embed-v4 is best free embeddings; Gemini text-embedding-004 is backup
+        "BASIC":    ["cohere", "gemini", "huggingface"],
+        "BALANCED": ["cohere", "gemini", "huggingface"],
+        "TURBO":    ["cohere", "gemini", "huggingface"],
+        "CUSTOM":   [],
+    },
+}
+
+# Latency caps per role (ms) — Quick Fix is strict, Strategist is lenient
+ROLE_LATENCY_CAP_MS: dict[str, int] = {
+    "strategist": 60_000,
+    "engineer":   30_000,
+    "quick_fix":  10_000,
+    "embeddings": 15_000,
+}
+
+
+def get_ai_chain_for_role(
+    role: str,
+    mode_name: str,
+    operator_prefs: dict | None = None,
+) -> list[str]:
+    """Return the ordered AI provider list for a role + mode combination.
+
+    Falls back to the mode-level chain when the role is not recognized.
+    """
+    from factory.integrations.provider_chain import normalize_provider_name
+
+    upper = (mode_name or "BALANCED").upper()
+    role_lower = (role or "").lower()
+
+    role_chains = _ROLE_AI_CHAINS.get(role_lower, {})
+    chain = role_chains.get(upper)
+
+    if chain is not None:
+        if not chain:
+            # CUSTOM / empty → fall back to BALANCED for this role
+            chain = role_chains.get("BALANCED", _MODE_AI_CHAINS["BALANCED"])
+        return list(chain)
+
+    # Role not in map — fall back to mode-level chain
+    return get_ai_chain_for_mode(mode_name, operator_prefs)
+
+
+def role_latency_cap_ms(role: str, mode_name: str) -> int:
+    """Return latency cap for a specific role, respecting mode minimum."""
+    role_cap = ROLE_LATENCY_CAP_MS.get((role or "").lower(), latency_cap_ms(mode_name))
+    mode_cap = latency_cap_ms(mode_name)
+    # Use the stricter of the two caps
+    return min(role_cap, mode_cap) if role_cap < mode_cap else role_cap

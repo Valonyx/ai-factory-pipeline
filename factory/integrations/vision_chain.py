@@ -195,7 +195,7 @@ def _provider_has_key(provider: str) -> bool:
         return True
     env_map = {
         "nvidia_nim_vision":   ["NVIDIA_NIM_VISION_API_KEY", "NVIDIA_NIM_API_KEY"],
-        "gemini_vision":       ["GEMINI_API_KEY"],
+        "gemini_vision":       ["GOOGLE_AI_API_KEY"],  # also accepts GEMINI_API_KEY via get_gemini_api_key()
         "groq_vision":         ["GROQ_API_KEY"],
         "cloudflare_vision":   ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
         "claude_vision":       ["ANTHROPIC_API_KEY"],

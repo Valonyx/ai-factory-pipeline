@@ -317,7 +317,8 @@ async def _generate_code_asset(
     errors: list[str] = []
 
     # Provider 1: Gemini (best free code-gen quality)
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    from factory.integrations.gemini import get_gemini_api_key
+    gemini_key = get_gemini_api_key()
     if gemini_key:
         try:
             text = await _gemini_generate_code(prompt)
@@ -382,7 +383,8 @@ async def _generate_code_asset(
 
 async def _gemini_generate_code(prompt: str) -> str:
     """Call Gemini REST API for code/spec generation (text-only mode)."""
-    api_key = os.getenv("GEMINI_API_KEY", "")
+    from factory.integrations.gemini import get_gemini_api_key
+    api_key = get_gemini_api_key()
     model = "gemini-2.0-flash"
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"

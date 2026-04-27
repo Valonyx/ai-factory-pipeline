@@ -258,7 +258,11 @@ def has_key(provider: str) -> bool:
     """Return True if the provider's required API key is present in the environment.
 
     Providers with no required key (duckduckgo, wikipedia, etc.) always return True.
+    Gemini is special: checks GOOGLE_AI_API_KEY first, then GEMINI_API_KEY.
     """
+    if provider == "gemini":
+        from factory.integrations.gemini import get_gemini_api_key
+        return bool(get_gemini_api_key())
     env_var = _KEY_ENV_VARS.get(provider)
     if env_var is None:
         return True  # keyless provider
@@ -280,7 +284,7 @@ PAID_PROVIDERS: frozenset[str] = frozenset({
     "anthropic",
     "perplexity",
     "brave",
-    "cohere",
+    # cohere REMOVED: has a real free trial tier (1,000 req/month), appropriate for BASIC
     "voyage",
     "azure_ai",
     "elevenlabs",

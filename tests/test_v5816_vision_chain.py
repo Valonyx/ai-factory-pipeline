@@ -278,7 +278,8 @@ class TestVisionChainAvailableProviders:
     def test_no_keys_returns_empty(self, monkeypatch):
         monkeypatch.delenv("AI_PROVIDER", raising=False)
         for key in ["NVIDIA_NIM_VISION_API_KEY", "NVIDIA_NIM_API_KEY",
-                    "GEMINI_API_KEY", "GROQ_API_KEY",
+                    "GEMINI_API_KEY", "GOOGLE_AI_API_KEY", "GOOGLE_API_KEY",
+                    "GROQ_API_KEY",
                     "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]:
             monkeypatch.delenv(key, raising=False)
 

@@ -63,6 +63,15 @@ def _get_gemini_model(anthropic_model: str) -> str:
     return GEMINI_MODEL_MAP.get(anthropic_model, "gemini-2.5-flash-lite")
 
 
+def get_gemini_api_key() -> str:
+    """Canonical resolver: tries GOOGLE_AI_API_KEY (primary) then GEMINI_API_KEY (alias)."""
+    return (
+        os.getenv("GOOGLE_AI_API_KEY", "")
+        or os.getenv("GEMINI_API_KEY", "")
+        or os.getenv("GOOGLE_API_KEY", "")
+    )
+
+
 async def call_gemini(
     prompt: str,
     contract: "RoleContract",
@@ -82,7 +91,7 @@ async def call_gemini(
 
     Falls back to mock when GOOGLE_AI_API_KEY is absent.
     """
-    api_key = os.getenv("GOOGLE_AI_API_KEY", "")
+    api_key = get_gemini_api_key()
     gemini_model = _get_gemini_model(contract.model)
 
     if not api_key:
@@ -187,7 +196,7 @@ async def _call_gemini_raw(
     Uses gemini-2.5-flash-lite — fastest, highest free quota.
     Raises on error so callers can cascade to the next provider.
     """
-    api_key = os.getenv("GOOGLE_AI_API_KEY", "")
+    api_key = get_gemini_api_key()
     if not api_key:
         raise ValueError("GOOGLE_AI_API_KEY not set")
 

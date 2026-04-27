@@ -438,13 +438,19 @@ async def ping_provider(name: str, *, timeout: float = 5.0) -> bool:
         else:
             # For providers without a dedicated ping, key presence is the check.
             key_env = {
-                "cerebras":   "CEREBRAS_API_KEY",
-                "together":   "TOGETHER_API_KEY",
-                "mistral":    "MISTRAL_API_KEY",
-                "perplexity": "PERPLEXITY_API_KEY",
-                "tavily":     "TAVILY_API_KEY",
-                "exa":        "EXA_API_KEY",
-                "brave":      "BRAVE_API_KEY",
+                "cerebras":      "CEREBRAS_API_KEY",
+                "together":      "TOGETHER_API_KEY",
+                "mistral":       "MISTRAL_API_KEY",
+                "perplexity":    "PERPLEXITY_API_KEY",
+                "tavily":        "TAVILY_API_KEY",
+                "exa":           "EXA_API_KEY",
+                "brave":         "BRAVE_API_KEY",
+                "github_models": "GITHUB_TOKEN",
+                "sambanova":     "SAMBANOVA_API_KEY",
+                "huggingface":   "HF_TOKEN",
+                "cohere":        "COHERE_API_KEY",
+                "nvidia_nim":    "NVIDIA_API_KEY",
+                "fireworks":     "FIREWORKS_API_KEY",
             }
             env_var = key_env.get(canonical)
             if env_var:
@@ -480,7 +486,8 @@ async def _ping_anthropic(timeout: float) -> bool:
 
 async def _ping_gemini(timeout: float) -> bool:
     import asyncio
-    key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    from factory.integrations.gemini import get_gemini_api_key
+    key = get_gemini_api_key()
     if not key:
         return False
     try:

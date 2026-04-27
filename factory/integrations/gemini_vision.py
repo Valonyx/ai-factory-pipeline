@@ -39,7 +39,8 @@ GEMINI_VISION_COST: float = 0.0001  # nominal — within free tier
 
 
 def _api_key() -> str:
-    return os.getenv("GEMINI_API_KEY", "")
+    from factory.integrations.gemini import get_gemini_api_key
+    return get_gemini_api_key()
 
 
 def is_available() -> bool:

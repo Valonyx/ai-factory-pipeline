@@ -211,7 +211,7 @@ _operator_prefs: dict[str, dict] = {}
 
 _PREFS_DEFAULTS: dict = {
     "autonomy_mode":   "autopilot",
-    "execution_mode":  "local",    # Default: run pipeline code on local machine
+    "execution_mode":  "cloud",    # Default: run pipeline on Cloud Run (safe default)
     "master_mode":     "basic",    # Default: free tier — fail safe to $0
     "transport_mode":  "polling",  # Default: local polling (no Render webhook needed)
     # FIX-CHAIN: CUSTOM mode chain storage.

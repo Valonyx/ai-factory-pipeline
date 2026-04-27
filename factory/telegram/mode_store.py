@@ -89,12 +89,12 @@ class ModeStore:
 
     @property
     def execution_mode(self) -> ExecutionMode:
-        """Active execution axis value (defaults to LOCAL)."""
-        raw = self._prefs.get("execution_mode", "local")
+        """Active execution axis value (defaults to CLOUD)."""
+        raw = self._prefs.get("execution_mode", "cloud")
         try:
             return ExecutionMode(raw)
         except ValueError:
-            return ExecutionMode.LOCAL
+            return ExecutionMode.CLOUD
 
     @property
     def autonomy_mode(self) -> AutonomyMode:
@@ -175,9 +175,9 @@ class ModeStore:
                 return em
         prefs = await load_operator_preferences(operator_id)
         try:
-            return ExecutionMode(prefs.get("execution_mode", "local"))
+            return ExecutionMode(prefs.get("execution_mode", "cloud"))
         except ValueError:
-            return ExecutionMode.LOCAL
+            return ExecutionMode.CLOUD
 
     @staticmethod
     async def get_effective_master_mode(

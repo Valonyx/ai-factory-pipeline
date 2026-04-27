@@ -1,6 +1,6 @@
 MASTER BLUEPRINT — Halal Delivery
 ============================================================
-Generated: 2026-04-26T10:20:42.409341+00:00
+Generated: 2026-04-27T09:55:23.932185+00:00
 Stack: flutterflow
 
 EXECUTIVE SUMMARY

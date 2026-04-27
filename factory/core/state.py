@@ -890,7 +890,7 @@ class PipelineState(BaseModel):
 
     # ── Autonomy & Execution ──
     autonomy_mode: AutonomyMode = AutonomyMode.AUTOPILOT
-    execution_mode: ExecutionMode = ExecutionMode.LOCAL
+    execution_mode: ExecutionMode = ExecutionMode.CLOUD
     master_mode: MasterMode = MasterMode.BASIC  # Phase 8: default free tier — operators opt in to paid
     local_heartbeat_alive: bool = False
 

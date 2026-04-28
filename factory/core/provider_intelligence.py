@@ -66,6 +66,12 @@ PROVIDER_CAPABILITIES: dict[str, set[Capability]] = {
     "nvidia_nim_ocr":        {Capability.OCR},                                            # nemotron-ocr-v1, nemoretriever-ocr-v1
     "nvidia_nim_reranking":  {Capability.RERANKING},                                      # nv-rerank-qa-mistral-4b, llama-nemotron-rerank-1b
     "nvidia_nim_image_gen":  {Capability.IMAGE_GEN},                                      # FLUX models
+    # NVIDIA NIM — April 2026 additions
+    "nvidia_nim_glm":        {Capability.CHAT, Capability.REASONING},                     # ZHIPU AI GLM-4.7 — multilingual (Arabic/Chinese)
+    "nvidia_nim_minimax":    {Capability.CHAT, Capability.REASONING},                     # MiniMax M2.7 — 1M context
+    "nvidia_nim_phi4":       {Capability.CHAT, Capability.VISION, Capability.CODING},     # Phi-4 Multimodal Instruct
+    # Fireworks AI — structured output specialist
+    "fireworks":             {Capability.CHAT, Capability.REASONING, Capability.CODING},
     # Retrieval / embedding providers
     "jina":                  {Capability.WEB_TO_TEXT, Capability.EMBEDDINGS, Capability.RERANKING},
     "voyage":                {Capability.EMBEDDINGS, Capability.RERANKING},
@@ -123,6 +129,11 @@ PROVIDER_CONTEXT_WINDOWS: dict[str, int] = {
     "github_models":           32_000,
     "cloudflare":               8_000,   # Workers AI — typically 8 K
     "nvidia_nim_fast":          8_000,   # Llama-3.1-8B   — 8 K
+    "nvidia_nim_glm":         128_000,   # GLM-4.7   — 128 K
+    "nvidia_nim_minimax":   1_000_000,   # MiniMax M2.7 — 1 M context
+    "nvidia_nim_phi4":         16_000,   # Phi-4 Multimodal — 16 K
+    "fireworks":              131_000,   # Fireworks Llama-3.3-70B — 131 K
+    "cohere":                 128_000,   # Command-R+ — 128 K
     "mock":                   200_000,
 }
 
@@ -143,6 +154,11 @@ PROVIDER_OUTPUT_LIMITS: dict[str, int] = {
     "github_models":       4_096,
     "cloudflare":          4_096,
     "nvidia_nim_fast":     4_096,
+    "nvidia_nim_glm":      8_192,
+    "nvidia_nim_minimax": 16_384,
+    "nvidia_nim_phi4":     4_096,
+    "fireworks":           8_192,
+    "cohere":              4_096,
     "mock":               16_384,
 }
 
@@ -156,30 +172,33 @@ ROLE_PROVIDERS: dict[str, dict[str, list[str]]] = {
         # tests (AI_PROVIDER=mock env var). ModeRouter._filter_available also
         # enforces this at runtime.
         "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
-                     "nvidia_nim_mixtral", "sambanova", "openrouter",
+                     "nvidia_nim_mixtral", "nvidia_nim_minimax", "nvidia_nim_glm",
+                     "sambanova", "openrouter", "cohere",
                      "nvidia_nim_gemma27b", "cloudflare", "github_models",
                      "nvidia_nim_fast"],
         # BALANCED/CUSTOM/TURBO: paid providers lead; real provider must succeed.
         # When all fail the caller gets [all-providers-exhausted] and the pipeline
         # halts with a meaningful error instead of silently producing garbage content.
         "BALANCED": ["anthropic", "kimi_k2", "gemini", "groq", "cerebras",
-                     "nvidia_nim_mixtral", "nvidia_nim_gemma27b", "nvidia_nim",
-                     "openrouter"],
+                     "fireworks", "nvidia_nim_mixtral", "nvidia_nim_gemma27b",
+                     "nvidia_nim", "openrouter"],
         "CUSTOM":   ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq",
-                     "nvidia_nim_mixtral", "openrouter", "cerebras"],
-        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq"],
+                     "fireworks", "nvidia_nim_mixtral", "openrouter", "cerebras"],
+        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "fireworks",
+                     "gemini", "groq"],
     },
     "ENGINEER": {
-        # BASIC: highest output tokens first (groq=8 192, cerebras next).
+        # BASIC: highest output tokens first; free-only (no mistral/fireworks).
         "BASIC":    ["gemini", "groq", "cerebras", "nvidia_nim",
-                     "nvidia_nim_mixtral", "sambanova", "openrouter",
-                     "nvidia_nim_gemma27b", "cloudflare", "github_models",
-                     "nvidia_nim_fast"],
-        "BALANCED": ["anthropic", "gemini", "groq", "cerebras",
-                     "nvidia_nim_mixtral", "nvidia_nim", "openrouter"],
-        "CUSTOM":   ["anthropic", "kimi_k2", "gemini", "groq",
-                     "nvidia_nim_mixtral", "openrouter"],
-        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "gemini", "groq"],
+                     "nvidia_nim_mixtral", "nvidia_nim_phi4", "sambanova",
+                     "openrouter", "nvidia_nim_gemma27b", "cloudflare",
+                     "github_models", "nvidia_nim_fast"],
+        "BALANCED": ["anthropic", "mistral", "gemini", "groq", "cerebras",
+                     "fireworks", "nvidia_nim_mixtral", "nvidia_nim", "openrouter"],
+        "CUSTOM":   ["anthropic", "kimi_k2", "mistral", "gemini", "groq",
+                     "fireworks", "nvidia_nim_mixtral", "openrouter"],
+        "TURBO":    ["anthropic", "kimi_k2", "nvidia_nim_405b", "mistral",
+                     "fireworks", "gemini", "groq"],
     },
     "QUICK_FIX": {
         # BASIC: fast models first; context window less critical for short fixes.
@@ -229,6 +248,11 @@ _KEY_ENV_VARS: dict[str, Optional[str]] = {
     "nvidia_nim_ocr":        "NVIDIA_API_KEY",
     "nvidia_nim_reranking":  "NVIDIA_API_KEY",
     "nvidia_nim_image_gen":  "NVIDIA_API_KEY",
+    # April 2026 additions — dedicated per-model keys
+    "nvidia_nim_glm":        "NVIDIA_NIM_GLM_API_KEY",
+    "nvidia_nim_minimax":    "NVIDIA_NIM_MINIMAX_API_KEY",
+    "nvidia_nim_phi4":       "NVIDIA_NIM_PHI4_API_KEY",
+    "fireworks":             "FIREWORKS_API_KEY",
     "perplexity":            "PERPLEXITY_API_KEY",
     "tavily":                "TAVILY_API_KEY",
     "brave":                 "BRAVE_API_KEY",

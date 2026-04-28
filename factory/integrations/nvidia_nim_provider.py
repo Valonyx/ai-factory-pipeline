@@ -87,6 +87,27 @@ _MODEL_REGISTRY: dict[str, dict] = {
         "key_env": "NVIDIA_NIM_MULTI_API_KEY",
         "cost": 0.0,
     },
+    # ── Added April 2026 — keys provided by operator ─────────────────
+    "nvidia_nim_glm": {
+        # ZHIPU AI GLM-4.7 — strong multilingual (Arabic/Chinese/English) reasoning
+        # Correct model ID verified via /v1/models: z-ai/glm4.7
+        "model": "z-ai/glm4.7",
+        "key_env": "NVIDIA_NIM_GLM_API_KEY",
+        "cost": 0.0,
+    },
+    "nvidia_nim_minimax": {
+        # MiniMax M2.7 — 1M context window, excellent for long legal dossiers
+        # Correct model ID verified via /v1/models: minimaxai/minimax-m2.7
+        "model": "minimaxai/minimax-m2.7",
+        "key_env": "NVIDIA_NIM_MINIMAX_API_KEY",
+        "cost": 0.0,
+    },
+    "nvidia_nim_phi4": {
+        # Phi-4 Multimodal Instruct — vision + text + code
+        "model": "microsoft/phi-4-multimodal-instruct",
+        "key_env": "NVIDIA_NIM_PHI4_API_KEY",
+        "cost": 0.0,
+    },
 }
 
 # Fallback key used when a model-specific key is absent
@@ -156,7 +177,15 @@ async def call_nvidia_nim(
     response.raise_for_status()
 
     data = response.json()
-    text = data["choices"][0]["message"]["content"] or ""
+    raw_content = data["choices"][0]["message"].get("content", "")
+    # phi-4-multimodal and some vision models return content as a list of objects
+    if isinstance(raw_content, list):
+        text = " ".join(
+            item.get("text", "") for item in raw_content
+            if isinstance(item, dict) and item.get("type") == "text"
+        )
+    else:
+        text = raw_content or ""
     logger.debug(f"[nvidia_nim] {model_id}: {len(text)} chars")
     return text, cost_per_call
 
@@ -191,3 +220,17 @@ async def call_nvidia_nim_phi4mini(prompt: str, contract: "RoleContract") -> tup
 
 async def call_nvidia_nim_gemma2b(prompt: str, contract: "RoleContract") -> tuple[str, float]:
     return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_gemma2b")
+
+# ── April 2026 additions ──────────────────────────────────────────────────────
+
+async def call_nvidia_nim_glm(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    """ZHIPU AI GLM-4.7 — strong multilingual (Arabic/Chinese/English) reasoning."""
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_glm")
+
+async def call_nvidia_nim_minimax(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    """MiniMax M2.7 — 1M context window, excellent for long legal document generation."""
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_minimax")
+
+async def call_nvidia_nim_phi4(prompt: str, contract: "RoleContract") -> tuple[str, float]:
+    """Phi-4 Multimodal Instruct — vision + text + code (uses NVIDIA_NIM_PHI4_API_KEY)."""
+    return await call_nvidia_nim(prompt, contract, provider="nvidia_nim_phi4")

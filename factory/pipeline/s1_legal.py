@@ -186,14 +186,14 @@ async def s1_legal_node(state: PipelineState) -> PipelineState:
         )
         from factory.core.halt import HaltCode, HaltReason, set_halt
 
-        # v5.8.16 Phase 6: calibrate thresholds to master mode.
-        # Chunked generation (6 sections × ~400 chars each) means every
-        # document should exceed 2 000 chars even in BASIC mode.
-        # BASIC:     2 000 chars / 3 docs (free-provider tolerance)
-        # Non-BASIC: 5 000 chars / 4 docs (richer output expected)
+        # Quality thresholds (production-calibrated):
+        # DocuGen generates 6–8 sections × 400–700 words each.
+        # Fallback sections (_fallback_legal_section) produce ~2 500 chars.
+        # BASIC:     3 000 chars / 3 docs (with fallback template guarantee)
+        # Non-BASIC: 6 000 chars / 4 docs (full AI-generated, richer output)
         from factory.core.mode_router import MasterMode
         _is_basic = getattr(state, "master_mode", MasterMode.BASIC) == MasterMode.BASIC
-        _min_chars = 2000 if _is_basic else 5000
+        _min_chars = 3000 if _is_basic else 6000
         _min_docs  = 3    if _is_basic else 4
 
         _gate_results = []
@@ -345,6 +345,20 @@ async def _iterative_classify(
             state=state,
             action="decide_legal",
         )
+
+        # Detect exhausted-provider response before attempting JSON parse
+        _EXHAUSTED_MARKERS = ("[all-providers-exhausted]", "[MOCK:")
+        _is_exhausted = any(decision_text.startswith(m) for m in _EXHAUSTED_MARKERS)
+        if _is_exhausted:
+            logger.warning(
+                f"[{state.project_id}] S1 iter {iteration + 1}: all AI providers exhausted "
+                f"— using default legal output and continuing"
+            )
+            if not legal_output:
+                legal_output = _default_legal_output()
+            # Don't break immediately; still accumulate more research if iterations remain
+            prev_risk = legal_output.get("overall_risk", "medium")
+            continue
 
         try:
             legal_output = json.loads(decision_text)

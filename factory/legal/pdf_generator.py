@@ -777,18 +777,29 @@ def _safe_text(text: str) -> str:
 
 
 def _legal_document_section(doc_type: str, content: str, styles: dict) -> list:
-    _ar = reshape_arabic  # shorthand
-    title_map = {
-        "privacy_policy": f"Privacy Policy ({_ar('سياسة الخصوصية')})",
-        "terms_of_use": f"Terms of Use ({_ar('شروط الاستخدام')})",
-        "merchant_agreement": f"Merchant Agreement ({_ar('اتفاقية التاجر')})",
+    # English title and Arabic subtitle kept separate so each renders in the correct font.
+    # Mixing Arabic glyphs into a Helvetica Paragraph produces ■ boxes.
+    _en_title_map = {
+        "privacy_policy": "Privacy Policy",
+        "terms_of_use": "Terms of Use",
+        "merchant_agreement": "Merchant Agreement",
         "driver_contract": "Driver / Contractor Agreement",
         "data_processing_agreement": "Data Processing Agreement",
     }
-    title = title_map.get(doc_type, doc_type.replace("_", " ").title())
+    _ar_subtitle_map = {
+        "privacy_policy": "سياسة الخصوصية",
+        "terms_of_use": "شروط الاستخدام",
+        "merchant_agreement": "اتفاقية التاجر",
+    }
+    en_title = _en_title_map.get(doc_type, doc_type.replace("_", " ").title())
+    ar_subtitle = _ar_subtitle_map.get(doc_type, "")
 
-    elements = [
-        Paragraph(f"6. {title}", styles["h1"]),
+    elements: list = [
+        Paragraph(f"6. {en_title}", styles["h1"]),
+    ]
+    if ar_subtitle:
+        elements.append(Paragraph(reshape_arabic(ar_subtitle), styles["arabic"]))
+    elements += [
         HRFlowable(width="100%", thickness=1, color=_GREEN, spaceAfter=8),
         Paragraph(
             "This document is an AI-generated DRAFT. It must be reviewed by a qualified "
@@ -798,24 +809,38 @@ def _legal_document_section(doc_type: str, content: str, styles: dict) -> list:
         Spacer(1, 6),
     ]
 
-    # Render Markdown-ish content
+    # Render Markdown-ish content.
+    # IMPORTANT: Detect Markdown prefixes on the RAW stripped line BEFORE
+    # calling _safe_text / reshape_arabic.  get_display() applies the Unicode
+    # bidi algorithm which reorders the entire string — including the "## "
+    # prefix — so startswith("## ") would fail on the already-reshaped string
+    # for any line where Arabic text follows the marker.
     for line in (content or "").split("\n")[:300]:  # cap at 300 lines per doc
         stripped = line.strip()
         if not stripped:
             elements.append(Spacer(1, 4))
             continue
-        clean = _safe_text(stripped)
-        _ar_style = styles["arabic_body"] if _has_arabic(stripped) else None
-        if clean.startswith("# "):
-            elements.append(Paragraph(clean[2:], _ar_style or styles["h1"]))
-        elif clean.startswith("## "):
-            elements.append(Paragraph(clean[3:], _ar_style or styles["h2"]))
-        elif clean.startswith("### "):
-            elements.append(Paragraph(clean[4:], _ar_style or styles["h2"]))
-        elif clean.startswith("- ") or clean.startswith("* "):
-            elements.append(Paragraph(f"• {clean[2:]}", _ar_style or styles["body_small"]))
+
+        if stripped.startswith("# "):
+            body = _safe_text(stripped[2:])
+            style = styles["arabic_body"] if _has_arabic(stripped[2:]) else styles["h1"]
+            elements.append(Paragraph(body, style))
+        elif stripped.startswith("## "):
+            body = _safe_text(stripped[3:])
+            style = styles["arabic_body"] if _has_arabic(stripped[3:]) else styles["h2"]
+            elements.append(Paragraph(body, style))
+        elif stripped.startswith("### "):
+            body = _safe_text(stripped[4:])
+            style = styles["arabic_body"] if _has_arabic(stripped[4:]) else styles["h2"]
+            elements.append(Paragraph(body, style))
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            body = _safe_text(stripped[2:])
+            style = styles["arabic_body"] if _has_arabic(stripped[2:]) else styles["body_small"]
+            elements.append(Paragraph(f"• {body}", style))
         else:
-            elements.append(Paragraph(clean, _ar_style or styles["body_small"]))
+            body = _safe_text(stripped)
+            style = styles["arabic_body"] if _has_arabic(stripped) else styles["body_small"]
+            elements.append(Paragraph(body, style))
 
     elements.append(PageBreak())
     return elements
@@ -847,9 +872,10 @@ def _legal_disclaimer(app_name: str, styles: dict) -> list:
         Paragraph(
             "Recommended next step: Share this dossier with a Saudi-licensed attorney "
             "specialising in technology law and PDPL compliance. "
-            "Contact the Saudi Bar Association (نقابة المحامين) for referrals.",
+            "Contact the Saudi Bar Association for referrals.",
             styles["body"],
         ),
+        Paragraph(reshape_arabic("نقابة المحامين السعوديين"), styles["arabic"]),
         Spacer(1, 8),
         Paragraph(
             f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} | "

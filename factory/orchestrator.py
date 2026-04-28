@@ -432,8 +432,11 @@ async def _persist_snapshot(state: PipelineState) -> None:
     logger.debug(f"[{state.project_id}] Snapshot #{state.snapshot_id} at {state.current_stage.value}")
     # Persist to Supabase (non-fatal — snapshot loss is acceptable; pipeline must not halt)
     try:
-        from factory.integrations.supabase import upsert_pipeline_state
+        from factory.integrations.supabase import upsert_pipeline_state, upsert_active_project
         await upsert_pipeline_state(state.project_id, state)
+        # Keep active_projects in sync so any bot instance can find the project
+        # (fixes "No active project" after S1 when two bot processes are running)
+        await upsert_active_project(state.operator_id, state)
     except Exception as _snap_err:
         logger.warning(f"[{state.project_id}] Snapshot #{state.snapshot_id} persist failed (non-fatal): {_snap_err}")
 

@@ -320,7 +320,12 @@ async def generate_via_gemini_flash_image(
     seed: Optional[int] = None,
     negative: str = "",
 ) -> Optional[bytes]:
-    """Gemini 2.0 Flash experimental image generation via Google Generative AI SDK."""
+    """Gemini 2.0 Flash experimental image generation via REST API (no SDK required).
+
+    Uses the generateContent endpoint with IMAGE responseModality.
+    Falls back to the google-genai SDK when the package is installed.
+    Requires GOOGLE_AI_API_KEY (AI Studio key).
+    """
     key = os.getenv("GOOGLE_AI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     if not key:
         logger.info("[gemini-image] GOOGLE_AI_API_KEY not set — skipping")
@@ -329,6 +334,42 @@ async def generate_via_gemini_flash_image(
     # Bake negative into prompt (Gemini has no separate field)
     main_prompt, _ = _prepare_prompt(prompt, negative, "gemini_flash_image")
 
+    # ── REST API path (works without the google-genai SDK) ─────────────
+    try:
+        _endpoint = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            "gemini-2.0-flash-exp-image-generation:generateContent"
+        )
+        _payload = {
+            "contents": [{"parts": [{"text": main_prompt}]}],
+            "generationConfig": {"responseModalities": ["IMAGE"]},
+        }
+        async with httpx.AsyncClient(timeout=90) as _client:
+            _resp = await _client.post(
+                _endpoint,
+                params={"key": key},
+                json=_payload,
+                headers={"Content-Type": "application/json"},
+            )
+        if _resp.status_code == 200:
+            _data = _resp.json()
+            # Extract first inlineData blob from candidates
+            for _cand in _data.get("candidates", []):
+                for _part in _cand.get("content", {}).get("parts", []):
+                    _inline = _part.get("inlineData", {})
+                    _b64 = _inline.get("data", "")
+                    if _b64:
+                        import base64 as _b64mod
+                        img_bytes = _b64mod.b64decode(_b64)
+                        logger.info(f"[gemini-image] REST: {len(img_bytes)} bytes")
+                        return img_bytes
+            logger.warning("[gemini-image] REST: response has no inlineData")
+        else:
+            logger.warning(f"[gemini-image] REST error {_resp.status_code}: {_resp.text[:200]}")
+    except Exception as exc:
+        logger.warning(f"[gemini-image] REST path failed: {exc}")
+
+    # ── SDK fallback (if google-genai is installed) ────────────────────
     try:
         from google import genai as gai  # type: ignore[import]
         from google.genai import types as gai_types  # type: ignore[import]
@@ -348,7 +389,7 @@ async def generate_via_gemini_flash_image(
         raw = response.generated_images[0].image.image_bytes
         return raw if raw else None
     except Exception as exc:
-        logger.warning(f"[gemini-image] {exc}")
+        logger.warning(f"[gemini-image] SDK path failed: {exc}")
         return None
 
 

@@ -112,15 +112,24 @@ async def generate_legal_documents(
 
     Args:
         state: Current pipeline state.
-        blueprint_data: Blueprint dict with app_name, business_model, etc.
+        blueprint_data: Blueprint dict with app_name, business_model,
+                        requirements (s0_output), legal_classification (s1 output),
+                        legal_research (accumulated Scout research from S1).
 
     Returns:
         Dict mapping doc_type → document content (Markdown).
     """
     business_model = blueprint_data.get("business_model", "general")
     app_name = blueprint_data.get("app_name", state.project_id)
-    target_platforms = (state.s0_output or {}).get("target_platforms", [])
+    requirements = blueprint_data.get("requirements") or state.s0_output or {}
+    legal_classification = blueprint_data.get("legal_classification") or {}
+    legal_research = blueprint_data.get("legal_research") or ""
+    target_platforms = requirements.get("target_platforms", [])
     documents: dict[str, str] = {}
+
+    # Use required_legal_docs from S1 classification when available
+    # so we generate the documents the Strategist determined are needed.
+    s1_required_docs: set[str] = set(legal_classification.get("required_legal_docs", []))
 
     # Sort by priority so universal docs (p=1) are generated before conditional (p=3)
     ordered = sorted(DOCUGEN_TEMPLATES.items(), key=lambda kv: kv[1].get("priority", 9))
@@ -129,7 +138,10 @@ async def generate_legal_documents(
     doc_queue: list[tuple[str, dict]] = []
     for doc_type, template in ordered:
         required = template["required_for"]
-        if "all" in required:
+        # Include if S1 Strategist explicitly required it
+        if s1_required_docs and doc_type in s1_required_docs:
+            doc_queue.append((doc_type, template))
+        elif "all" in required:
             doc_queue.append((doc_type, template))
         elif doc_type == "cookie_policy":
             if "web" in target_platforms:
@@ -153,6 +165,9 @@ async def generate_legal_documents(
 
         doc = await _generate_single_document(
             state, doc_type, template, business_model, app_name,
+            requirements=requirements,
+            legal_classification=legal_classification,
+            legal_research=legal_research,
         )
         documents[doc_type] = doc
 
@@ -178,6 +193,9 @@ async def _generate_single_document(
     template: dict,
     business_model: str,
     app_name: str,
+    requirements: dict | None = None,
+    legal_classification: dict | None = None,
+    legal_research: str = "",
 ) -> str:
     """Generate a single legal document via section-chunked production.
 
@@ -201,35 +219,108 @@ async def _generate_single_document(
     import re as _re
     from datetime import date as _date
 
+    requirements = requirements or {}
+    legal_classification = legal_classification or {}
+
     doc_name = doc_type.replace("_", " ")
     _today = _date.today().strftime("%B %d, %Y")
 
-    # ── Step 1: Scout researches current requirements ──
+    # ── Build rich app context for all downstream prompts ──
+    features_must = requirements.get("features_must", [])
+    features_nice = requirements.get("features_nice", [])
+    has_payments = requirements.get("has_payments", False)
+    has_location = requirements.get("has_location", False)
+    has_user_accounts = requirements.get("has_user_accounts", True)
+    has_realtime = requirements.get("has_realtime", False)
+    target_market = requirements.get("target_market", "ksa")
+    app_description = requirements.get("app_description", app_name)
+    target_platforms = requirements.get("target_platforms", [])
+
+    overall_risk = legal_classification.get("overall_risk", "medium")
+    regulatory_bodies = legal_classification.get("regulatory_bodies", ["PDPL"])
+    compliance_matrix = legal_classification.get("compliance_matrix", {})
+    feature_risks = legal_classification.get("feature_risk_assessment", [])
+    cross_border = legal_classification.get("cross_border_data", False)
+    sama_sandbox = legal_classification.get("sama_sandbox_required", False)
+    data_class_lvl = legal_classification.get("data_classification", "internal")
+
+    _app_ctx = (
+        f"App: {app_name}\n"
+        f"Description: {app_description}\n"
+        f"Business model: {business_model}\n"
+        f"Target market: {target_market}\n"
+        f"Platforms: {', '.join(target_platforms) if target_platforms else 'iOS, Android'}\n"
+        f"Core features: {', '.join(features_must[:8]) if features_must else 'N/A'}\n"
+        f"Nice-to-have: {', '.join(features_nice[:4]) if features_nice else 'N/A'}\n"
+        f"Has payments: {has_payments} | Has location: {has_location} | "
+        f"Has accounts: {has_user_accounts} | Realtime: {has_realtime}\n"
+        f"Cross-border data: {cross_border} | SAMA sandbox: {sama_sandbox}\n"
+        f"Data classification: {data_class_lvl} | Risk: {overall_risk}\n"
+        f"Regulatory bodies: {', '.join(regulatory_bodies)}\n"
+        f"Compliance: {compliance_matrix}\n"
+    )
+    if feature_risks:
+        _app_ctx += "Feature risks:\n"
+        for fr in feature_risks[:6]:
+            _app_ctx += (
+                f"  - {fr.get('feature','?')}: {fr.get('risk','?')} "
+                f"({fr.get('reason','')})\n"
+            )
+
+    # ── Step 1: Scout researches requirements for this app + doc type ──
+    _scout_prompt = (
+        f"Research KSA legal requirements for '{doc_name}' "
+        f"tailored to this specific app:\n\n{_app_ctx}\n\n"
+        f"Required: exact PDPL article numbers, CST rules for {business_model} apps, "
+        f"NCA cybersecurity obligations"
+        + (", SAMA payment-processing requirements" if has_payments else "")
+        + (", location-data collection rules" if has_location else "")
+        + (", cross-border transfer safeguards (PDPL Ch.5)" if cross_border else "")
+        + ".\nAlso cover: Apple App Store & Google Play privacy requirements. "
+        "2025-2026 KSA enforcement updates. Return specific article citations, not general statements."
+    )
+    if legal_research:
+        _scout_prompt += (
+            f"\n\nPrior S1 legal research (supplement, do not repeat verbatim):\n"
+            f"{legal_research[:2000]}"
+        )
+
     intel = await call_ai(
         role=AIRole.SCOUT,
-        prompt=(
-            f"KSA legal requirements for {doc_name} "
-            f"for a {business_model} app. "
-            f"Include PDPL, SAMA, MoC regulations. 2025-2026 changes and enforcement."
-        ),
+        prompt=_scout_prompt,
         state=state,
         action="general",
     )
 
-    # ── Step 2: Strategist produces JSON section outline ──
+    # ── Step 2: Strategist produces app-specific JSON section outline ──
+    _cond_coverage = ""
+    if has_payments:
+        _cond_coverage += "- Payment processing, refund policy, SAMA compliance\n"
+    if has_location:
+        _cond_coverage += "- Location data collection, retention, and opt-out\n"
+    if cross_border:
+        _cond_coverage += "- Cross-border data transfer safeguards (PDPL Ch.5)\n"
+    if has_realtime:
+        _cond_coverage += "- Real-time data streaming and retention limits\n"
+
     structure_raw = await call_ai(
         role=AIRole.STRATEGIST,
         prompt=(
-            f"Create a complete section outline for a production-quality {doc_name}.\n"
-            f"App: {app_name} | Business model: {business_model}\n"
-            f"Jurisdiction: KSA (Saudi Arabia) | Effective: {_today}\n"
-            f"Research:\n{intel[:3500]}\n\n"
-            f"Return a JSON array with 6-8 sections. Each section must have:\n"
-            f'  "section": "1", "title": "English Title", '
-            f'"arabic_title": "العنوان العربي", '
-            f'"clauses": ["Clause 1", "Clause 2", "Clause 3"]\n\n'
-            f"Cover: scope/definitions, data handling, user rights, "
-            f"obligations, liability, governing law, and {business_model}-specific topics."
+            f"Create a production-quality section outline for '{doc_name}'.\n\n"
+            f"APP CONTEXT:\n{_app_ctx}\n"
+            f"LEGAL RESEARCH:\n{intel[:2800]}\n\n"
+            f'Return a JSON array of 6-8 sections. Each: {{"section":"1",'
+            f'"title":"English Title","arabic_title":"العنوان العربي",'
+            f'"clauses":["clause specific to this app","..."]}}\n\n'
+            f"Must cover:\n"
+            f"- Scope, definitions, and parties\n"
+            f"- Data collection & processing (specific to {app_name} features)\n"
+            f"- User rights: PDPL Art.6 access, Art.16 erasure, Art.17 portability\n"
+            f"{_cond_coverage}"
+            f"- Security, data retention, breach notification (72h)\n"
+            f"- Third-party sharing and sub-processors\n"
+            f"- Governing law (KSA), dispute resolution, policy updates\n\n"
+            f"Each clause name must be specific to {app_name}, not a generic placeholder."
         ),
         state=state,
         action="decide_legal",
@@ -264,12 +355,16 @@ async def _generate_single_document(
 
         _section_prompt = (
             f"Write Section {sec_num} of the {doc_name} for {app_name}.\n\n"
-            f"Document context:\n"
-            f"  App Name  : {app_name}\n"
-            f"  Company   : {app_name} (operator of this application)\n"
-            f"  Model     : {business_model}\n"
-            f"  Date      : {_today}\n"
-            f"  Law       : KSA / PDPL, App Store / Play Store compliant\n"
+            f"APP CONTEXT (use to make every clause concrete and app-specific):\n"
+            f"  App          : {app_name} — {app_description}\n"
+            f"  Business model: {business_model}\n"
+            f"  Platforms    : {', '.join(target_platforms) if target_platforms else 'iOS, Android'}\n"
+            f"  Core features: {', '.join(features_must[:6]) if features_must else 'N/A'}\n"
+            f"  Has payments : {has_payments} | Has location: {has_location} | "
+            f"Has accounts: {has_user_accounts}\n"
+            f"  Cross-border : {cross_border} | Risk level: {overall_risk}\n"
+            f"  Regulatory   : {', '.join(regulatory_bodies)}\n"
+            f"  Effective    : {_today} | Jurisdiction: KSA\n"
             f"{prior_ctx}\n"
             f"THIS SECTION:\n"
             f"  Number    : {sec_num}/{len(sections)}\n"
@@ -277,22 +372,21 @@ async def _generate_single_document(
             f"  Title (AR): {arabic_title}\n"
             f"  Clauses   : {', '.join(clauses)}\n\n"
             f"Instructions:\n"
-            f"  - Write 400-700 words of real legal text for this section.\n"
-            f"  - Start with the Arabic title, then English title, then body.\n"
-            f"  - Include bilingual sub-headings where natural.\n"
-            f"  - Each clause gets at least one full legal paragraph.\n"
-            f"  - CRITICAL: NEVER use bracket placeholders like [COMPANY_NAME],\n"
-            f"    [EFFECTIVE_DATE], [ADDRESS], [INSERT], [YOUR_*], or any\n"
-            f"    [ALL_CAPS] token. Use real values: app is '{app_name}',\n"
-            f"    date is {_today}. If a value is unknown (e.g. address),\n"
-            f"    write a realistic plausible KSA address or omit it.\n"
+            f"  - Write 500-800 words of substantive, production-quality legal text.\n"
+            f"  - Reference {app_name}'s actual features (listed above) — be specific.\n"
+            f"  - Cite specific PDPL articles where relevant (e.g. Art.4, Art.6, Art.16).\n"
+            f"  - Start with '## {arabic_title}' then '## {title}', then body.\n"
+            f"  - Each clause gets at least one full paragraph of real legal prose.\n"
+            f"  - NEVER use bracket placeholders: [COMPANY_NAME], [DATE], [ADDRESS],\n"
+            f"    [INSERT*], [YOUR_*], or any [ALL_CAPS] token. Use '{app_name}' and\n"
+            f"    '{_today}' directly. For unknown addresses, write a plausible KSA one.\n"
             f"  - Return Markdown for this section only (## heading level)."
         )
         section_text = await call_ai(
             role=AIRole.ENGINEER,
             prompt=_section_prompt,
             state=state,
-            action="write_code",
+            action="general",
         )
 
         # If AI providers are exhausted or response is trivially short,

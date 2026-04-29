@@ -658,7 +658,17 @@ async def _generate_dossier(
         business_model = requirements.get("app_category", "general")
         legal_docs = await generate_legal_documents(
             state,
-            blueprint_data={"app_name": app_name, "business_model": business_model},
+            blueprint_data={
+                "app_name": app_name,
+                "business_model": business_model,
+                # Pass full requirements so DocuGen can tailor each section
+                "requirements": requirements,
+                # Pass S1 classification so DocuGen knows risk level, required docs,
+                # compliance matrix, and feature risk assessments
+                "legal_classification": legal_output,
+                # Pass accumulated research (regulation citations, Scout findings)
+                "legal_research": legal_research,
+            },
         )
 
         pdf_path = await generate_legal_dossier_pdf(
